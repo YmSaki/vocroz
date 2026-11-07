@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# .github/labels.yml と .github/milestones.yml の内容を GitHub に反映する。
+# 定義を変えたら Actions 画面から手動で実行する（何度実行しても同じ結果になる）。
+name: Repository setup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync labels
+        run: |
+          yq -o=json '.[]' .github/labels.yml | jq -c '.' | while read -r label; do
+            gh label create "$(jq -r .name <<<"$label")" \
+              --color "$(jq -r .color <<<"$label")" \
+              --description "$(jq -r .description <<<"$label")" --force
+          done
+      - name: Sync milestones
+        run: |
+          existing=$(gh api "repos/$GH_REPO/milestones?state=all&per_page=100" --jq '.[].title')
+          yq -o=json '.[]' .github/milestones.yml | jq -c '.' | while read -r ms; do
+            title=$(jq -r .title <<<"$ms")
+            if ! grep -Fxq "$title" <<<"$existing"; then
+              gh api "repos/$GH_REPO/milestones" -f title="$title" -f description="$(jq -r .description <<<"$ms")" >/dev/null
+              echo "created: $title"
+            fi
+          done

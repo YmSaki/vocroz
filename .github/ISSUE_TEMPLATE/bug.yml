@@ -1,0 +1,28 @@
+name: 不具合
+description: 期待と違う動作
+labels: ["type: bug"]
+body:
+  - type: textarea
+    id: actual
+    attributes:
+      label: 起きたこと
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待した動作
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: 回線、デバイス、OS のバージョンなど分かる範囲で。
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: バージョン
+      placeholder: "remote-pa --version の出力"

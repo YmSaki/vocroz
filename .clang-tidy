@@ -18,7 +18,8 @@ Checks: >
   -readability-magic-numbers,
   -readability-identifier-length,
   -readability-named-parameter
-WarningsAsErrors: '*'
+# 定期リファクタリングで手動実行する。結果は報告だけにする。
+WarningsAsErrors: ''
 HeaderFilterRegex: '(apps|modules)/.*'
 CheckOptions:
   - { key: readability-identifier-naming.NamespaceCase, value: lower_case }

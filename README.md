@@ -27,6 +27,16 @@ ctest --test-dir build -C Release
 cd infra/rendezvous && go test ./...
 ```
 
+## GitHub での開発
+
+作業は Issue から始め、PR でマージします。ルールの詳細は [AGENTS.md](AGENTS.md) 第 16〜17 節にあります。
+
+最初に一度だけ、リポジトリの設定で次を行ってください。
+
+1. **Actions → Repository setup → Run workflow** を実行し、ラベルとマイルストーンを作る。
+2. **@claude を使う場合**: Settings → Secrets and variables → Actions に `CLAUDE_CODE_OAUTH_TOKEN`（Claude の契約を使う場合。手元で `claude setup-token` を実行して発行）か `ANTHROPIC_API_KEY` を登録し、[Claude GitHub App](https://github.com/apps/claude) をこのリポジトリにインストールする。
+3. **main の保護（推奨）**: Settings → Branches でルールを追加し、「PR を必須にする」「CI の成功を必須にする」を有効にする。
+
 ## ライセンス
 
 [GNU Affero General Public License v3.0](LICENSE)。配布するバイナリには、対応するソースの入手先を示します。

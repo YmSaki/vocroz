@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-# すべての PR と main への push で、ビルド・テスト・整形・静的解析を行う。
-# ここが緑でない PR はマージしない（AGENTS.md「完了の定義」）。
+# PR と main への push で「ビルドが通り、テストが通る」ことだけを確かめる最小限の CI。
+# 整形・静的解析・配置のずれは CI で止めず、定期リファクタリングでまとめて直す（AGENTS.md 第 16 節）。
 name: CI
 
 on:
@@ -10,6 +10,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   windows:
@@ -25,23 +29,17 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
 
   linux:
-    name: Linux (Clang, format, tidy)
+    # audio-core / transport / common が OS に依存していないことの確認を兼ねる。
+    name: Linux (Clang)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y clang-format clang-tidy
-      - name: Check format
-        run: git ls-files '*.cpp' '*.h' | xargs clang-format --dry-run --Werror
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
       - name: Build
         run: cmake --build build -j
       - name: Test
         run: ctest --test-dir build --output-on-failure
-      - name: Static analysis
-        # テストコードは GoogleTest のマクロが多くの規則に反するため対象外にする。
-        run: run-clang-tidy -p build -quiet '(apps|modules)/.*/src/'
 
   rendezvous:
     name: Rendezvous server (Go)
@@ -54,9 +52,5 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: infra/rendezvous/go.mod
-      - name: Format
-        run: test -z "$(gofmt -l .)"
-      - name: Vet
-        run: go vet ./...
       - name: Test
-        run: go test ./...
+        run: go vet ./... && go test ./...

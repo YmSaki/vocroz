@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# 毎月 1 日に「定期リファクタリング」の Issue を作る（AGENTS.md 第 16 節）。
+# 手動実行もできる。
+name: Refactor cycle
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"  # 毎月 1 日 09:00 JST
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  open-issue:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Open refactor issue
+        run: |
+          gh issue create \
+            --title "定期リファクタリング $(date -u +%Y-%m)" \
+            --label "type: refactor" \
+            --body-file .github/refactor-cycle.md

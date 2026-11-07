@@ -1,0 +1,16 @@
+# マイルストーン定義（実装計画のフェーズ）。「Repository setup」ワークフローで GitHub に反映する。
+- { title: "P0 基盤と技術検証",       description: "リポジトリ・CI・ADR、NAT 越えと遅延・音質のスパイク" }
+- { title: "P1 ローカル音声エンジン", description: "audio-core、ミキサー、低遅延 WASAPI 入出力、SAFETY MUTE（AT-A07）" }
+- { title: "P2 トランスポート",       description: "Noise + AEAD、信頼制御層、Opus、ジッターバッファ、ドリフト補正（AT-A06 / A17）" }
+- { title: "P3 セッションと WAN 接続", description: "ランデブー、招待・承認・再接続、NAT 越え（AT-A02 / A05 / A14 / A16）" }
+- { title: "P4 デスクトップ UI",      description: "IPC、ミキサー画面、子機画面、日本語 / 英語（AT-A03 / A04 / A08 / A09）" }
+- { title: "P5 配布とライフサイクル", description: "インストーラー、署名、更新、アンインストール（AT-A01 / A10〜A13）" }
+- { title: "P6 Alpha 総合検証",       description: "実 WAN 試験、ソーク試験、全受け入れテストの証拠（AT-A15）" }
+- { title: "Beta1 ルーティング・返送", description: "ノードグラフ、Minus-Me 返送モニター" }
+- { title: "Beta2 録音・再生・SRTP",  description: "" }
+- { title: "Beta3 仮想音声デバイス",  description: "並行トラック" }
+- { title: "Beta4 VST3 エフェクト",   description: "" }
+- { title: "Beta5 MIDI・VSTi",        description: "" }
+- { title: "Beta6 映像・録画",        description: "" }
+- { title: "RC1",                     description: "新機能凍結、総合検証" }
+- { title: "v1.0",                    description: "正式リリース" }

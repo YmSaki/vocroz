@@ -1,0 +1,17 @@
+# リポジトリのラベル定義。「Repository setup」ワークフローで GitHub に反映する。
+# 種類（type）・領域（area）・状態（status）の 3 軸で付ける。
+- { name: "type: feature",  color: "1d76db", description: "機能の追加" }
+- { name: "type: bug",      color: "d73a4a", description: "不具合" }
+- { name: "type: refactor", color: "a2eeef", description: "動作を変えない構造の改善" }
+- { name: "type: drift",    color: "fbca04", description: "配置の地図とずれている箇所（定期リファクタリングで直す）" }
+- { name: "type: docs",     color: "0075ca", description: "ドキュメント・ADR" }
+- { name: "type: build",    color: "cccccc", description: "ビルド・CI・依存" }
+- { name: "area: audio",     color: "c5def5", description: "audio-core / device / capture" }
+- { name: "area: transport", color: "c5def5", description: "transport（暗号・Opus・ジッターバッファ）" }
+- { name: "area: session",   color: "c5def5", description: "session / control-protocol" }
+- { name: "area: ui",        color: "c5def5", description: "ui / remote-pa" }
+- { name: "area: infra",     color: "c5def5", description: "ランデブーサーバー" }
+- { name: "area: release",   color: "c5def5", description: "インストーラー・更新・署名" }
+- { name: "status: must-fix", color: "b60205", description: "絶対原則・依存の向き・リアルタイム・セキュリティ違反。次の定期サイクルを待たずに直す" }
+- { name: "status: blocked",  color: "000000", description: "外部の判断や作業待ち" }
+- { name: "good first task",  color: "7057ff", description: "小さく独立した作業" }
