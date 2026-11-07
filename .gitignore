@@ -1,0 +1,23 @@
+# Build output
+/build/
+/out/
+/cmake-build-*/
+CMakeUserPresets.json
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+
+# UI
+node_modules/
+ui/dist/
+
+# Go
+infra/rendezvous/rendezvous
+infra/rendezvous/rendezvous.exe
+
+# OS
+.DS_Store
+Thumbs.db
