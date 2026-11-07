@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# C++ の整形規則。CI で clang-format --dry-run --Werror により検査する。
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++20
+IndentWidth: 4
+ColumnLimit: 100
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+DerivePointerAlignment: false
+PointerAlignment: Left
+IncludeBlocks: Regroup
+IncludeCategories:
+  # 1. 対応するヘッダー（自動） 2. 標準ライブラリ 3. 外部ライブラリ 4. プロジェクト
+  - Regex: '^<[a-z_]+>$'
+    Priority: 2
+  - Regex: '^<.*>$'
+    Priority: 3
+  - Regex: '^"vocroz/.*"$'
+    Priority: 4
+  - Regex: '.*'
+    Priority: 5

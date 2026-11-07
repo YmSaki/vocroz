@@ -1,4 +1,4 @@
-# Build output
+# ビルド成果物
 /build/
 /out/
 /cmake-build-*/

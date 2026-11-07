@@ -13,14 +13,14 @@
 | `pa-updater` | セッション終了後にだけ起動し、署名を検証して更新する短命プロセス |
 | `infra/rendezvous` | 招待解決・STUN・アドレス交換を行う Go 製サーバー。音声は通さない |
 
-設計判断は [docs/adr](docs/adr/) にまとめています。
+設計判断は [docs/adr](docs/adr/)、開発ルール（設計原則・デザインパターン・コーディング規則）は [AGENTS.md](AGENTS.md) にまとめています。
 
 ## ビルド
 
 必要なもの: CMake 3.25 以上、C++20 コンパイラ（Windows では Visual Studio 2022）、Go 1.22 以上。
 
 ```sh
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ctest --test-dir build -C Release
 

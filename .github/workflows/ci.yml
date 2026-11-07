@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# すべての PR と main への push で、ビルド・テスト・整形・静的解析を行う。
+# ここが緑でない PR はマージしない（AGENTS.md「完了の定義」）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows (MSVC)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  linux:
+    name: Linux (Clang, format, tidy)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y clang-format clang-tidy
+      - name: Check format
+        run: git ls-files '*.cpp' '*.h' | xargs clang-format --dry-run --Werror
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Static analysis
+        # テストコードは GoogleTest のマクロが多くの規則に反するため対象外にする。
+        run: run-clang-tidy -p build -quiet '(apps|modules)/.*/src/'
+
+  rendezvous:
+    name: Rendezvous server (Go)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: infra/rendezvous
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: infra/rendezvous/go.mod
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
