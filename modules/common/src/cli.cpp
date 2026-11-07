@@ -10,7 +10,8 @@
 namespace vocroz::common {
 
 Args make_args(int argc, const char* const* argv) noexcept {
-    // argv[0] はプログラム名なので除外する。不正な argc でも空を返して安全側に倒す。
+    // argv[0] はプログラム名なので除外する。不正な argc
+    // では、フェイルセーフとして空の引数列を返す。
     if (argc <= 1 || argv == nullptr) {
         return {};
     }

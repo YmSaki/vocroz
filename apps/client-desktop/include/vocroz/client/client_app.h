@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 出演者用クライアント（子機）の入口。remote-pa が --client 指定時に呼び出す。
+// 子機モードのエントリポイント。remote-pa が --client 指定時に呼び出す。
 #pragma once
 
 #include "vocroz/common/cli.h"

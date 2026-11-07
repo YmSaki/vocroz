@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// remote-pa の入口。
+// remote-pa のエントリポイント。
 //   --version : バージョンを表示して終了
 //   --client  : 出演者用クライアント（子機モード）として起動
 //   指定なし  : 親機の操作卓 UI として起動（P4 で実装）

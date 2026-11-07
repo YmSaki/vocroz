@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// pa-updater の入口。更新プロセス。P5 で署名検証とバージョン切り替え（docs/adr/0004）を実装する。
+// pa-updater のエントリポイント。アップデーター。P5
+// で署名検証とバージョン切り替え（docs/adr/0004）を実装する。
 //   --version : バージョンを表示して終了
 
 #include <iostream>

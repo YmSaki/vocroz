@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// pa-engine の入口。親機の音声エンジン。P1 で音声グラフ、P2 で通信、P3 でセッション管理を載せる。
+// pa-engine のエントリポイント。親機のオーディオエンジン。P1 で音声グラフ、P2 で通信、P3
+// でセッション管理を載せる。
 //   --version : バージョンを表示して終了
 
 #include <iostream>

@@ -34,7 +34,7 @@ body:
     id: severity
     attributes:
       label: 重大度
-      description: 絶対原則・依存の向き・リアルタイム・セキュリティの違反なら「すぐ直す」。
-      options: [次の定期サイクルで直す, すぐ直す（status - must-fix）]
+      description: 製品要件、依存の向き、リアルタイム制約、外部入力と秘密情報の扱い（AGENTS.md 15.4）への違反なら「即時修正」。
+      options: [次回サイクルで修正, 即時修正（status - must-fix）]
     validations:
       required: true
