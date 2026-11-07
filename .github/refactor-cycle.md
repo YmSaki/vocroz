@@ -5,10 +5,10 @@ AGENTS.md 第 15 節「配置の地図」とコードベース全体を照合し
 ## 手順
 
 - [ ] 前回のサイクル以降に入った PR を確認する
-- [ ] 機械的な検査を回し、結果をこの Issue に貼る
-    - `git ls-files '*.cpp' '*.h' | xargs clang-format -i`
+- [ ] 機械的な検査を回し、結果をこの Issue に貼る（整形はコミット時にフックで済んでいるので、漏れの確認だけ）
     - `run-clang-tidy -p build -quiet '(apps|modules)/.*/src/'`
-    - `cd infra/rendezvous && gofmt -l . && go vet ./...`
+    - `cd infra/rendezvous && go vet ./...`
+    - 漏れの確認: `git ls-files '*.cpp' '*.h' | xargs clang-format --dry-run`、`cd infra/rendezvous && gofmt -l .`
 - [ ] 地図と照合し、ずれを下の「ずれ一覧」に書き出す（形式は AGENTS.md 第 16.3 節）
 - [ ] ずれを「1 PR = 1 種類の移動」にまとめて PR を出す（動作は変えない）
 - [ ] 地図そのものに穴や矛盾が見つかったら、先に AGENTS.md を直す PR を出す

@@ -60,6 +60,8 @@ ctest --test-dir build -C Release
 cd infra/rendezvous && go test ./...
 ```
 
+CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`）が有効になります。CMake を使わずに作業する場合は、最初に `git config core.hooksPath .githooks` を実行してください。
+
 現時点では各プログラムとも `--version` に応答するだけです。親機・子機としての起動手順は、機能の実装に合わせてこの節に追記します。
 
 ---

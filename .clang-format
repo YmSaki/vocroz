@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-# C++ の整形規則。定期リファクタリングで clang-format -i により一括適用する。
+# C++ の整形規則。コミット前に .githooks/pre-commit が自動で適用する。
 BasedOnStyle: Google
 Language: Cpp
 Standard: c++20

@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# コミットの直前に、ステージされたファイルを整形ツールで自動整形する。
+# 整形の議論を人に残さないため、コミットされるコードは常に整形済みにする。
+# 有効化: `git config core.hooksPath .githooks`（CMake の構成時に自動で設定される）。
+#
+# 整形ツールが入っていない場合は警告だけ出してコミットを止めない。
+# 整形が抜けたファイルは、定期リファクタリングでまとめて直す。
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# ステージ済みで、まだ存在するファイル（削除は除く）。
+mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR)
+[[ ${#staged[@]} -eq 0 ]] && exit 0
+
+# ステージ後にさらに手を入れたファイルは、整形して add し直すと
+# ステージしていない変更までコミットに入ってしまう。そのため整形しない。
+mapfile -t partially_staged < <(git diff --name-only)
+
+is_partially_staged() {
+  local file="$1"
+  local p
+  for p in "${partially_staged[@]}"; do
+    [[ "$p" == "$file" ]] && return 0
+  done
+  return 1
+}
+
+warn() {
+  echo "pre-commit: $*" >&2
+}
+
+# 整形コマンドを 1 ファイルずつ適用し、整形後の内容をステージし直す。
+# $1: ツール名（存在確認用） $2...: ツールの引数（最後にファイル名が付く）
+format_files() {
+  local tool="$1"
+  shift
+  local -a cmd=("$@")
+  local -a files=()
+  local f
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && files+=("$f")
+  done
+  [[ ${#files[@]} -eq 0 ]] && return 0
+
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    warn "$tool が見つからないため、${#files[@]} 件のファイルを整形せずにコミットします。"
+    return 0
+  fi
+
+  for f in "${files[@]}"; do
+    if is_partially_staged "$f"; then
+      warn "$f はステージ後に変更があるため整形しませんでした。"
+      continue
+    fi
+    if ! "${cmd[@]}" "$f"; then
+      # 構文エラーなどで整形できないファイルは、そのままコミットに進める。
+      warn "$f を整形できませんでした。"
+      continue
+    fi
+    git add -- "$f"
+  done
+}
+
+printf '%s\n' "${staged[@]}" | grep -E '\.(cpp|h)$' \
+  | format_files clang-format clang-format -i || true
+
+printf '%s\n' "${staged[@]}" | grep -E '\.go$' \
+  | format_files gofmt gofmt -w || true
+
+# UI は ui/ に Prettier が入っているときだけ整形する（ui/ は P4 で作る）。
+prettier="$repo_root/ui/node_modules/.bin/prettier"
+if [[ -x "$prettier" ]]; then
+  printf '%s\n' "${staged[@]}" | grep -E '^ui/.*\.(ts|tsx|css|json)$' \
+    | format_files "$prettier" "$prettier" --write --log-level warn || true
+fi
