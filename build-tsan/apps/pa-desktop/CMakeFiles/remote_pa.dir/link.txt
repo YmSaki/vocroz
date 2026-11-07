@@ -1,1 +1,0 @@
-/usr/bin/g++ -fsanitize=thread -g CMakeFiles/remote_pa.dir/src/main.cpp.o -o remote-pa  ../../modules/common/libvocroz_common.a ../client-desktop/libvocroz_client.a ../../modules/common/libvocroz_common.a 

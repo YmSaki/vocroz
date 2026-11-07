@@ -1,5 +1,0 @@
-if(EXISTS "/home/user/vocroz/build-tsan/modules/common/common_tests[1]_tests.cmake")
-  include("/home/user/vocroz/build-tsan/modules/common/common_tests[1]_tests.cmake")
-else()
-  add_test(common_tests_NOT_BUILT common_tests_NOT_BUILT)
-endif()

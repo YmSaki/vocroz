@@ -1,1 +1,0 @@
-/usr/bin/g++ -fsanitize=thread -g CMakeFiles/pa_updater.dir/src/main.cpp.o -o pa-updater  ../../modules/common/libvocroz_common.a 
