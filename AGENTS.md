@@ -173,7 +173,8 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `apps/*`（`client-desktop` を含む） | すべてのモジュール |
 
 - 他のモジュールは公開ヘッダー（`include/vocroz/<module>/`）経由でだけ参照する。
-- 依存は各モジュールの `CMakeLists.txt` の `target_link_libraries` に宣言する。この表と `CMakeLists.txt` を一致させることで、許可リストにない依存はビルドエラーになる。
+- 依存は各モジュールの `CMakeLists.txt` の `target_link_libraries` に宣言する。`cmake/DependencyRules.cmake` がこの表と同じ許可リストを持ち、CMake の configure 時に各モジュールの依存を検査する。許可リストにない依存を宣言すると configure が失敗する。
+- この表を変えるときは、`cmake/DependencyRules.cmake` も同じ PR で更新する。検査の対象は vocroz のモジュール同士の依存だけで、外部ライブラリの使用範囲（下の表）はレビューで確認する。
 
 外部ライブラリの使用範囲も固定します。ライブラリの型がドメインに漏れると、差し替えもモックもできなくなるためです。
 

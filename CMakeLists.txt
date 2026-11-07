@@ -19,6 +19,7 @@ option(VOCROZ_BUILD_TESTS "単体テスト（GoogleTest）をビルドする" ON
 include(cmake/CompilerWarnings.cmake)
 include(cmake/Testing.cmake)
 include(cmake/GitHooks.cmake)
+include(cmake/DependencyRules.cmake)
 
 # すべての実行ファイルが共有するバージョン情報（ビルド時に生成）。
 configure_file(cmake/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/vocroz/version.h @ONLY)
@@ -29,3 +30,6 @@ enable_testing()
 
 add_subdirectory(modules)
 add_subdirectory(apps)
+
+# すべてのターゲットを定義し終えてから、モジュール間の依存を検査する。
+vocroz_check_module_dependencies()
