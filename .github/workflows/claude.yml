@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Issue や PR のコメントで「@claude」と書くと、Claude Code が AGENTS.md に従って作業する。
-# 使うには、リポジトリの Secrets に次のどちらかを登録する（README「GitHub での開発」参照）。
+# 使うには、リポジトリの Secrets に次のどちらかを登録する（CONTRIBUTING.md「リポジトリの初期設定」参照）。
 #   CLAUDE_CODE_OAUTH_TOKEN : Claude の契約を使う場合（`claude setup-token` で発行）
 #   ANTHROPIC_API_KEY       : API キーを使う場合
 # 公開リポジトリで第三者に費用を使われないよう、オーナーと共同作業者のコメントだけに反応する。
