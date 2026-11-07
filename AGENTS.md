@@ -52,9 +52,9 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | --- | --- | --- |
 | 共通基盤 | 横断的に使うユーティリティと、横断的関心事のポート（`Clock`、`Logger`）。Result 型 | `modules/common` |
 | ドメイン | オーディオ処理、トランスポートのプロトコル、セッション管理などのドメインロジック。OS の API を呼ばない | `modules/audio-core`、`transport`、`control-protocol`、`session` |
-| アダプター（インフラストラクチャ） | ドメインが定義したポートを、Win32、WASAPI、Winsock、外部ライブラリで実装する | `modules/device`、`capture`、`network`、`persistence`、各アプリの `src/win/` |
+| アダプター（インフラストラクチャ） | ドメインが定義したポートを、Win32、WASAPI、Winsock、JUCE などの外部ライブラリで実装する | `modules/device`、`capture`、`network`、`ipc`、`webui`、`persistence`、各アプリの `src/win/` |
 | コンポジションルート | アダプターとドメインオブジェクトを生成し、依存性を注入し、プロセスを起動する | `apps/` |
-| プレゼンテーション | 状態の描画と、ユーザー操作のコマンド化。エンジンとは別プロセスで、名前付きパイプの IPC だけで接続する | `ui/` |
+| プレゼンテーション | 状態の描画と、ユーザー操作のコマンド化。JUCE の `WebBrowserComponent`（Windows のバックエンドは WebView2）上で動き、`control-protocol` のメッセージだけでネイティブ側と通信する | `ui/` |
 
 ランデブーサーバー（`infra/rendezvous`）は C++ とは独立した Go のプログラムです。内部も同じ考え方で、外部インターフェースのパッケージとドメインのパッケージに分けます（5.5）。
 
@@ -63,10 +63,12 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | プロセス | 責務 | 分離する理由 |
 | --- | --- | --- |
 | `pa-engine` | 親機のオーディオエンジン。受信、ジッターバッファ、Opus デコード、ミキシング、出力、セッション管理 | UI の障害をオーディオ処理に波及させないため |
-| `remote-pa`（親機モード） | WebView2 の UI ホスト。名前付きパイプ経由で `pa-engine` を操作する | UI の障害をオーディオ処理に波及させないため |
-| `remote-pa`（子機モード） | キャプチャ、Opus エンコード、送信と、子機の UI | 子機を単一プロセスで完結させ、配布物を 1 つにするため |
+| `remote-pa`（親機モード） | `webui` で UI をホストし、名前付きパイプ（`ipc`）経由で `pa-engine` を操作する | UI の障害をオーディオ処理に波及させないため |
+| `remote-pa`（子機モード） | キャプチャ、Opus エンコード、送信と、`webui` でホストする子機の UI | 子機を単一プロセスで完結させ、配布物を 1 つにするため |
 | `pa-updater` | セッション終了後にだけ起動するアップデーター | 本番中に更新処理を実行しないため |
 | `infra/rendezvous` | 招待コードの解決と、NAT 越えのためのアドレス交換 | メディアを中継せず、シグナリングだけを担うため |
+
+`remote-pa` の動作モードは起動ごとに固定します。招待 URL か `--client` で起動したら子機モード、それ以外は親機モードで、起動中には切り替えません。2 つのモードはプロセス内の構成（`pa-engine` への接続か、自前のキャプチャと送信か）がまったく違い、実行中の切り替えは後始末の漏れによる音声の出しっぱなしなどの事故につながるためです。ウィンドウのサイズと最小サイズはモードごとにコンポジションルートで決め、子機モードは親機モードより小さくします（`docs/adr/0005-ui-juce-webview.md`）。
 
 プロセス境界を越えるのはメッセージ（名前付きパイプ上の JSON、UDP パケット、HTTP）だけです。境界を越えるデータのスキーマは 1 か所で定義します（4.4）。
 
@@ -103,7 +105,7 @@ apps/          実行ファイル（エントリポイントとコンポジシ�
   pa-engine/       pa-engine  : 親機のオーディオエンジン
   updater/         pa-updater : アップデーター
 modules/       ドメインとアダプターのライブラリ（3.3）
-ui/            WebView2 上で動く TypeScript のフロントエンド
+ui/            WebBrowserComponent 上で動く TypeScript のフロントエンド（親機と子機の両方の画面）
 infra/         Go 製のランデブーサーバー
 docs/adr/      ADR
 cmake/         CMake の共通関数と、外部ライブラリの取得（cmake/<ライブラリ名>.cmake）
@@ -128,11 +130,13 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `common` | 共通基盤 | CLI 引数、文字列、時刻などのステートレスなユーティリティ。`Clock` と `Logger` のポート。Result 型 | 特定モジュールのドメイン知識 |
 | `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート | デバイス制御（`device`）、ネットワーク（`transport`） |
 | `transport` | ドメイン | ワイヤーフォーマット、Noise による鍵交換と AEAD（libsodium）、信頼制御層、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正。ソケットのポート | 参加者と承認の判断（`session`）、ソケットの実装（`network`） |
-| `control-protocol` | ドメイン | UI とエンジン間のコマンドとイベントの DTO、JSON のシリアライズとデシリアライズ | ビジネスロジック、状態（`session`） |
+| `control-protocol` | ドメイン | UI とエンジン間のコマンドとイベントの DTO、JSON のシリアライズとデシリアライズ。メッセージを送受信する `MessageChannel` ポートと、2 つのチャンネルをつなぐ `ChannelRelay` | ビジネスロジック、状態（`session`） |
 | `session` | ドメイン | 招待、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
 | `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知 | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
 | `capture` | アダプター | 子機のマイク入力のキャプチャ | エンコード（`transport`） |
 | `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | パケットのパース（`transport`） |
+| `ipc` | アダプター | 名前付きパイプのクライアントとサーバー（`MessageChannel` の実装）。ACL によるアクセス制御 | メッセージの検証とコマンドの適用（`control-protocol`、`session`） |
+| `webui` | アダプター | JUCE の `WebBrowserComponent` による UI のホスト、`ui/dist` を配信するリソースプロバイダー、ネイティブ関数とイベントのブリッジ（`MessageChannel` の実装）。モードごとのウィンドウ設定の適用 | メッセージの検証とコマンドの適用（`pa-engine` の `session`、子機ロジック） |
 | `persistence` | アダプター | 設定のアトミックな永続化、ログファイルへの出力、DPAPI による秘密情報の保護 | 設定値の意味づけ（`session`） |
 
 ### 3.4 クラスとファイルの粒度
@@ -163,6 +167,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `session` | `transport`、`control-protocol`、`audio-core`、`common` |
 | `device`、`capture` | `audio-core`、`common` |
 | `network` | `transport`、`session`、`common` |
+| `ipc`、`webui` | `control-protocol`、`common` |
 | `persistence` | `session`、`common` |
 | `apps/*`（`client-desktop` を含む） | すべてのモジュール |
 
@@ -175,7 +180,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | --- | --- |
 | libopus、libsodium、Noise の実装 | `transport` |
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
-| WebView2 | `apps/pa-desktop/src/win/` |
+| WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/` |
 
 ### 4.3 依存性の注入（C++）
@@ -210,7 +215,7 @@ class CompositionRoot {
 
 | 境界 | スキーマの定義 | 対になる定義 |
 | --- | --- | --- |
-| UI とエンジン（名前付きパイプ） | `control-protocol` | `ui/src/ipc/` のメッセージ型 |
+| UI とネイティブ側（`webui`）、UI とエンジン（名前付きパイプ） | `control-protocol` | `ui/src/ipc/` のメッセージ型 |
 | 子機と親機（UDP） | `transport/src/wire/` | なし（両側で同じコードを使う） |
 | エンジンとランデブーサーバー（HTTP、STUN） | `infra/rendezvous/internal/httpapi/` | `session` と `network` のクライアント実装 |
 
@@ -265,7 +270,7 @@ i18n/、utils/  →  なし
 | ポート | **利用する側**のモジュールの `include/vocroz/<module>/ports/<役割名>.h` | 純粋仮想クラスと virtual デストラクター。名前は役割を表す名詞（`AudioOutput`）。`I` などのプレフィックスは付けない。シグネチャにはドメインの型だけを使う |
 | リスナー（内側から外側への通知） | 通知する側のモジュールの `include/vocroz/<module>/ports/<名詞>_listener.h` | ポートと同じ形式 |
 | 横断的関心事のポート（`Clock`、`Logger`） | `modules/common/include/vocroz/common/ports/` | 複数のレイヤーが使うものだけ。単一モジュールだけが使うポートはそのモジュールに置く |
-| アダプター | アダプターレイヤーのモジュールの `src/win/<技術名>_<役割名>.{h,cpp}`。単一アプリだけが使うものはそのアプリの `src/win/` | クラス名は技術名をプレフィックスにする（`WasapiAudioOutput`）。具象クラスは公開せず、`include/vocroz/<module>/factories.h` のファクトリー関数（`make_wasapi_audio_output()`）だけを公開する |
+| アダプター | アダプターレイヤーのモジュールの `src/win/<技術名>_<役割名>.{h,cpp}`（Win32 を直接呼ぶ実装）か `src/juce/<技術名>_<役割名>.{h,cpp}`（JUCE による実装）。単一アプリだけが使うものはそのアプリの `src/win/` | クラス名は技術名をプレフィックスにする（`WasapiAudioOutput`）。具象クラスは公開せず、`include/vocroz/<module>/factories.h` のファクトリー関数（`make_wasapi_audio_output()`）だけを公開する |
 | ステートマシン | 状態を持つモジュールの `src/state/<名詞>_state_machine.{h,cpp}` | 6.1 の形式 |
 | ワイヤーフォーマットのパースとシリアライズ | `modules/transport/src/wire/` | バイト列から検証済みの構造体を返す純粋関数 |
 | UI とエンジン間のコマンドとイベント | `modules/control-protocol` | DTO と JSON のシリアライズとデシリアライズだけ |
@@ -287,7 +292,7 @@ i18n/、utils/  →  なし
 
 上から順に判定し、最初に該当した場所に置きます。
 
-1. OS、デバイス、ネットワークの API、JUCE を直接呼ぶか → アダプターレイヤーのモジュールの `src/win/`（生成は `factories.h`）
+1. OS、デバイス、ネットワークの API、JUCE を直接呼ぶか → アダプターレイヤーのモジュールの `src/win/`（Win32）か `src/juce/`（JUCE）。生成は `factories.h`
 2. 外部（ネットワーク、IPC、ファイル）からの入力をパースするか → 信頼境界のパーサー（`transport/src/wire/`、`control-protocol`）
 3. 状態遷移の規則か → 状態を持つモジュールの `src/state/`
 4. 複数モジュールが同じ知識として使い、特定モジュールのドメイン知識を必要としないか → `modules/common`
@@ -315,7 +320,8 @@ modules/<module>/
     state/<名詞>_state_machine.{h,cpp}
     detail/<名詞>_utils.{h,cpp}
     wire/                          ワイヤーフォーマットのパースとシリアライズ（信頼境界のモジュールだけ）
-    win/<技術名>_<役割名>.{h,cpp}  Windows のアダプター（例: win/wasapi_audio_output.cpp）
+    win/<技術名>_<役割名>.{h,cpp}  Win32 を直接呼ぶアダプター（例: win/wasapi_audio_output.cpp）
+    juce/<技術名>_<役割名>.{h,cpp} JUCE によるアダプター（例: juce/juce_web_ui_host.cpp）。JUCE は OS 非依存なので win/ と分ける
   tests/
     <対象>_test.cpp
     fakes/fake_<役割名>.h
@@ -331,11 +337,18 @@ apps/<app>/
   src/
     main.cpp                       エントリポイント（引数のパース → コンポジションルートの構築 → 実行）
     composition_root.{h,cpp}       依存性の生成と注入
-    win/                           そのアプリだけが使う Windows のアダプター（例: WebView2 のホスト）
+    win/                           そのアプリだけが使う Windows のアダプター
   tests/                           起動のスモークテスト
 ```
 
 `client-desktop` は `remote-pa` にリンクする静的ライブラリなので、モジュールと同様に `include/vocroz/client/` を持ちます。
+UI のホスト（`webui`）は親機モードと子機モードで共有します。`client-desktop` は `pa-desktop` に依存できないため、ホストはアプリ内ではなくモジュールに置いています。
+
+| モード | コンポジションルートでの接続 |
+| --- | --- |
+| 親機モード（`pa-desktop`） | `webui` の `MessageChannel` と `ipc` のクライアントを `ChannelRelay` でつなぎ、`pa-engine` へ中継する |
+| 子機モード（`client-desktop`） | `webui` の `MessageChannel` を、プロセス内の子機ロジック（`session`、`transport`、`capture`）につなぐ |
+| `pa-engine` | `ipc` のサーバーを `session` につなぐ |
 
 ### 5.5 UI とランデブーサーバーのディレクトリ構成
 
@@ -343,13 +356,14 @@ C++ はレイヤー単位でモジュールを分けます（package by layer）
 
 ```text
 ui/src/
-  main.ts                          エントリポイント。IPC クライアントとストアを接続し、画面をマウントする
-  ipc/                             IPC クライアントとメッセージ型
+  main.ts                          エントリポイント。ネイティブ側から受け取ったモードで画面を選び、IPC クライアントとストアを接続してマウントする
+  ipc/                             IPC クライアント（JUCE のネイティブ関数とイベントのラッパー）とメッセージ型
   state/                           ストア。スナップショットとイベントを保持し、画面に配信する
   screens/<画面名>/                 画面単位の Container（例: mixer/、client/、settings/）
   components/<コンポーネント名>/      共通の Presentational Component（例: fader/、meter/、toast/）
   i18n/                            ja.json、en.json と文字列リソースのローダー
   utils/                           ステートレスなヘルパー関数
+ui/dist/                           ビルド成果物（Git 管理外）。remote-pa にバイナリリソースとして埋め込む
 ```
 
 - 画面とコンポーネントは `<名前>.tsx`（PascalCase）を中心に、スタイル（`<名前>.css`）とテスト（`<名前>.test.ts`）を同じディレクトリに置く（コロケーション）。

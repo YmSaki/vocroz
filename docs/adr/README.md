@@ -6,5 +6,6 @@
 | [0002](0002-opus-low-delay.md) | Opus を低遅延モードで使う | 採用（数値は P0 で実測して確定） |
 | [0003](0003-ipc-named-pipe-json.md) | UI とエンジンの IPC は名前付きパイプ + JSON | 採用 |
 | [0004](0004-side-by-side-updates.md) | 更新はバージョン別フォルダの切り替えで行う | 採用 |
+| [0005](0005-ui-juce-webview.md) | UI は JUCE の WebBrowserComponent でホストし、親機と子機で 1 つのアプリを使う | 採用 |
 
 仕様書は RPC-SPEC-001（1.2-draft）。2026-11-07 にプロダクトオーナーが「UX を損なわない範囲で実装しやすい方法」を方針として承認した。

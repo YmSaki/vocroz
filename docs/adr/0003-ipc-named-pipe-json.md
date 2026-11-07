@@ -6,7 +6,7 @@
 
 - 親機の `remote-pa`（UI）と `pa-engine` は名前付きパイプで通信する。パイプの ACL はログイン中ユーザーの SID だけに許可する。
 - メッセージは長さ付き JSON。スキーマは 1 箇所で定義し、C++ と TypeScript の型を生成する。
-- 離散操作は `request_id` / `entity_id` / `expected_revision` を持ち、エンジンが `applied_revision` を返す。連続値（フェーダー等）は entity ごとのシーケンス番号で後勝ち（仕様 3.2）。
+- 離散操作は `request_id` / `entity_id` / `expected_revision` を持ち、エンジンが `applied_revision` を返す。連続値（フェーダーなど）は entity ごとのシーケンス番号で後勝ちにする。
 - メーターはエンジンが 10〜30Hz の統計値だけを送る。
 
 ## 理由
