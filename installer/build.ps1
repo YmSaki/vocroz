@@ -6,7 +6,7 @@
 #   pwsh installer/build.ps1 [-BuildDir build] [-Config Release] [-OutDir out/installer]
 #
 # 必要なもの: WiX Toolset 5.0.2（dotnet tool install --global wix --version 5.0.2）と、
-# 拡張 WixToolset.Util.wixext/5.0.2 と WixToolset.Bal.wixext/5.0.2（1 つずつ wix extension add -g で入れる）。
+# 拡張 WixToolset.Util.wixext/5.0.2 と WixToolset.BootstrapperApplications.wixext/5.0.2（1 つずつ wix extension add -g で入れる）。
 #
 # 出力:
 #   VOCROZ-Setup-<版>.exe   配布するインストーラー
@@ -88,7 +88,7 @@ $bundle = Join-Path $out "VOCROZ-Setup-$version.exe"
 Invoke-Checked wix @(
     'build', (Join-Path $PSScriptRoot 'Bundle.wxs'),
     '-arch', 'x64',
-    '-ext', 'WixToolset.Bal.wixext',
+    '-ext', 'WixToolset.BootstrapperApplications.wixext',
     '-ext', 'WixToolset.Util.wixext',
     '-d', "VocrozVersion=$version",
     '-bindpath', "msi=$out",
