@@ -1,0 +1,13 @@
+# 依存の更新 PR を月 1 回まとめて作る。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: ["type: build"]
+  - package-ecosystem: gomod
+    directory: /infra/rendezvous
+    schedule:
+      interval: monthly
+    labels: ["type: build", "area: infra"]

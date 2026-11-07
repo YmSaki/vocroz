@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# PR と main への push で「ビルドが通り、テストが通る」ことだけを確かめる最小限の CI。
+# 整形・静的解析・配置のずれは CI で止めず、定期リファクタリングでまとめて直す（AGENTS.md 第 15 節）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows (MSVC)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  linux:
+    # audio-core / transport / common が OS に依存していないことの確認を兼ねる。
+    name: Linux (Clang)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  rendezvous:
+    name: Rendezvous server (Go)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: infra/rendezvous
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: infra/rendezvous/go.mod
+      - name: Test
+        run: go vet ./... && go test ./...

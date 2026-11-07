@@ -1,0 +1,40 @@
+name: 配置のずれ
+description: AGENTS.md の「配置の地図」と合っていない箇所の報告（定期リファクタリングで直す）
+labels: ["type: drift"]
+body:
+  - type: input
+    id: current
+    attributes:
+      label: 現在の位置
+      placeholder: "例: apps/pa-engine/src/main.cpp の ParseInvite()"
+    validations:
+      required: true
+  - type: textarea
+    id: target
+    attributes:
+      label: あるべき位置と形式
+      placeholder: "例: modules/session の InviteParser クラス（src/invite_parser.h/.cpp）"
+    validations:
+      required: true
+  - type: input
+    id: rule
+    attributes:
+      label: 根拠（AGENTS.md の節番号）
+      placeholder: "例: 5.1 の「ワイヤーフォーマットのパースとシリアライズ」行、4.2 節"
+    validations:
+      required: true
+  - type: dropdown
+    id: fix
+    attributes:
+      label: 修正方法
+      options: [Move, Split, Extract, Rename, ポートの導入, その他]
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 重大度
+      description: 製品要件、依存の向き、リアルタイム制約、外部入力と秘密情報の扱い（AGENTS.md 15.4）への違反なら「即時修正」。
+      options: [次回サイクルで修正, 即時修正（status - must-fix）]
+    validations:
+      required: true

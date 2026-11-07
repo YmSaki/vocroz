@@ -1,0 +1,28 @@
+name: 機能
+description: 新しい機能や仕様の実装
+labels: ["type: feature"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 何をできるようにするか
+      description: 利用者から見た振る舞いで書く。
+    validations:
+      required: true
+  - type: input
+    id: spec
+    attributes:
+      label: 仕様・ADR
+      placeholder: "例: 仕様書の再接続の要件、docs/adr/0002-opus-low-delay.md"
+  - type: textarea
+    id: placement
+    attributes:
+      label: 置き場所の見込み
+      description: AGENTS.md 第 7 節の手順で分けた各部分を、どのモジュールのどこに置くか。決められなければ空でよい。
+  - type: textarea
+    id: done
+    attributes:
+      label: 完了の条件
+      description: 受け入れテスト（AT-xxx）や確認方法。
+    validations:
+      required: true
