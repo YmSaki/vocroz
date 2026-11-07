@@ -14,7 +14,7 @@
 ## 1. 前提
 
 - **プロダクト**: インターネット越しに複数の出演者の音声を集約し、1 台の親機（PA）でミキシングして出力する Windows 向けデスクトップアプリケーション。用途は合奏で、**低レイテンシが必須要件**。
-- **仕様**: 製品要求・実装仕様書 RPC-SPEC-001（1.2-draft）。仕様書の節番号は改版でずれるため、このファイルとソースコードでは参照しない（第 10 節）。
+- **仕様**: 製品要求・実装仕様書 RPC-SPEC-001（1.2-draft、[docs/spec/RPC-SPEC-001.md](docs/spec/RPC-SPEC-001.md)）。仕様書の節番号は改版でずれるため、このファイルとソースコードでは参照しない（第 10 節）。
 - **設計判断**: [docs/adr](docs/adr/)（ADR: Architecture Decision Record）。仕様と ADR が矛盾する場合は ADR を優先する（ADR は仕様を更新した判断の記録）。
 - **ライセンス**: AGPL-3.0-only。依存ライブラリは AGPL とライセンス互換のものに限る。
 
@@ -108,6 +108,7 @@ modules/       ドメインとアダプターのライブラリ（3.3）
 ui/            WebBrowserComponent 上で動く TypeScript のフロントエンド（親機と子機の両方の画面）
 infra/         Go 製のランデブーサーバー
 docs/adr/      ADR
+docs/spec/     製品要求・実装仕様書
 cmake/         CMake の共通関数と、外部ライブラリの取得（cmake/<ライブラリ名>.cmake）
 .github/       CI のワークフロー、Issue と PR のテンプレート、ラベルとマイルストーン
 .githooks/     Git フック（pre-commit での自動フォーマット）

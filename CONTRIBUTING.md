@@ -4,7 +4,7 @@
 製品の紹介は [README.md](README.md) にあります。
 
 コードの書き方、ファイルの置き場所、レビューの基準などの開発ルールは [AGENTS.md](AGENTS.md) が正本です。
-設計判断の記録は [docs/adr](docs/adr/) にあります。
+製品要求・実装仕様書は [docs/spec](docs/spec/)、設計判断の記録は [docs/adr](docs/adr/) にあります。
 
 ---
 
