@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # PR と main への push で「ビルドが通り、テストが通る」ことだけを確かめる最小限の CI。
-# 整形・静的解析・配置のずれは CI で止めず、定期リファクタリングでまとめて直す（AGENTS.md 第 16 節）。
+# 整形・静的解析・配置のずれは CI で止めず、定期リファクタリングでまとめて直す（AGENTS.md 第 15 節）。
 name: CI
 
 on:

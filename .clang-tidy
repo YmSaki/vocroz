@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-# 静的解析の規則。命名規則は AGENTS.md の「命名」と一致させる。
+# 静的解析の規則。命名規則は AGENTS.md 8.2 の「命名」と一致させる。
 Checks: >
   -*,
   bugprone-*,

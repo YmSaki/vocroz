@@ -20,7 +20,7 @@ body:
     id: rule
     attributes:
       label: 根拠（AGENTS.md の節番号）
-      placeholder: "例: 15.1 の「プロトコルの解析」行、9 節"
+      placeholder: "例: 5.1 の「外部から来たバイト列の解析と生成」行、4.2 節"
     validations:
       required: true
   - type: dropdown

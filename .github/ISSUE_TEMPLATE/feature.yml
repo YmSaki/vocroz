@@ -18,7 +18,7 @@ body:
     id: placement
     attributes:
       label: 置き場所の見込み
-      description: AGENTS.md 第 15 節「配置の地図」のどこに入るか。決められなければ空でよい。
+      description: AGENTS.md 第 7 節の手順で分けた各部分を、どのモジュールのどこに置くか。決められなければ空でよい。
   - type: textarea
     id: done
     attributes:
