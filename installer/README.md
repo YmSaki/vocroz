@@ -15,7 +15,8 @@ VOCROZ のインストーラー（WiX Toolset 5.0.2 の Burn バンドルと MSI
 
 ```powershell
 dotnet tool install --global wix --version 5.0.2
-wix extension add -g WixToolset.Util.wixext/5.0.2 WixToolset.Bal.wixext/5.0.2
+wix extension add -g WixToolset.Util.wixext/5.0.2
+wix extension add -g WixToolset.Bal.wixext/5.0.2
 
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release

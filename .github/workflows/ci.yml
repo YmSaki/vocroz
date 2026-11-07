@@ -32,7 +32,8 @@ jobs:
       - name: Install WiX Toolset
         run: |
           dotnet tool install --global wix --version 5.0.2
-          wix extension add -g WixToolset.Util.wixext/5.0.2 WixToolset.Bal.wixext/5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+          wix extension add -g WixToolset.Bal.wixext/5.0.2
       - name: Build installer
         shell: pwsh
         run: ./installer/build.ps1 -BuildDir build -Config Release -OutDir out/installer
