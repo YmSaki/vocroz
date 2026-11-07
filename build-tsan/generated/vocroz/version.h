@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// ビルド時に CMake が生成する製品名とバージョン。手で編集しない。
+// 元ファイル: cmake/version.h.in（バージョンはルート CMakeLists.txt の project() で管理）
+#pragma once
+
+namespace vocroz {
+
+/// 製品名。
+inline constexpr const char* kProductName = "VOCROZ";
+/// セマンティックバージョン（project() の VERSION）。
+inline constexpr const char* kVersion = "0.0.1";
+
+}  // namespace vocroz

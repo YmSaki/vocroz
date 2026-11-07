@@ -1,0 +1,1 @@
+/usr/bin/g++ -fsanitize=thread -g CMakeFiles/pa_engine.dir/src/main.cpp.o -o pa-engine  ../../modules/common/libvocroz_common.a 

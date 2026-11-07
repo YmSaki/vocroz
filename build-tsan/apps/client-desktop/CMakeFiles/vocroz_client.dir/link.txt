@@ -1,0 +1,2 @@
+/usr/bin/ar qc libvocroz_client.a CMakeFiles/vocroz_client.dir/src/client_app.cpp.o
+/usr/bin/ranlib libvocroz_client.a

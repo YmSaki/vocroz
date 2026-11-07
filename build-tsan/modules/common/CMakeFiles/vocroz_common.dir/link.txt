@@ -1,0 +1,2 @@
+/usr/bin/ar qc libvocroz_common.a CMakeFiles/vocroz_common.dir/src/cli.cpp.o CMakeFiles/vocroz_common.dir/src/version_info.cpp.o
+/usr/bin/ranlib libvocroz_common.a
