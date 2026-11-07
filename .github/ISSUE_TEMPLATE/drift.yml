@@ -5,14 +5,14 @@ body:
   - type: input
     id: current
     attributes:
-      label: 現在地
+      label: 現在の位置
       placeholder: "例: apps/pa-engine/src/main.cpp の ParseInvite()"
     validations:
       required: true
   - type: textarea
     id: target
     attributes:
-      label: あるべき位置と形
+      label: あるべき位置と形式
       placeholder: "例: modules/session の InviteParser クラス（src/invite_parser.h/.cpp）"
     validations:
       required: true
@@ -20,14 +20,14 @@ body:
     id: rule
     attributes:
       label: 根拠（AGENTS.md の節番号）
-      placeholder: "例: 5.1 の「外部から来たバイト列の解析と生成」行、4.2 節"
+      placeholder: "例: 5.1 の「ワイヤーフォーマットのパースとシリアライズ」行、4.2 節"
     validations:
       required: true
   - type: dropdown
     id: fix
     attributes:
-      label: 直し方
-      options: [移動, 分割, 共通化（切り出し）, 改名, インターフェース化, その他]
+      label: 修正方法
+      options: [Move, Split, Extract, Rename, ポートの導入, その他]
     validations:
       required: true
   - type: dropdown
