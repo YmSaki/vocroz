@@ -60,9 +60,34 @@ ctest --test-dir build -C Release
 cd infra/rendezvous && go test ./...
 ```
 
+初回の configure で、外部ライブラリ（下の「外部ライブラリとライセンス」）のソースをダウンロードします。
+Windows 以外では JUCE を既定で取得せず、JUCE を使うターゲット（アダプターと apps）もビルドしません。
+Linux で JUCE を使う場合は `-DVOCROZ_WITH_JUCE=ON` を付け、GTK と WebKitGTK の開発パッケージを入れてください。
+オフライン環境では、`-DFETCHCONTENT_SOURCE_DIR_<名前>=<パス>`（例: `FETCHCONTENT_SOURCE_DIR_JUCE`）で手元のソースを指定できます。
+
 CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`）が有効になります。CMake を使わずに作業する場合は、最初に `git config core.hooksPath .githooks` を実行してください。
 
 現時点では各プログラムとも `--version` に応答するだけです。親機・子機としての起動手順は、機能の実装に合わせてこの節に追記します。
+
+---
+
+## 外部ライブラリとライセンス
+
+VOCROZ は AGPL-3.0-only で配布します。依存するライブラリは、すべて AGPL-3.0 と組み合わせて配布できるライセンスのものに限ります（AGENTS.md 第 1 節）。
+取得方法とバージョンの固定は `cmake/<ライブラリ名>.cmake` に書いてあり、選定の理由は [docs/adr/0010-external-libraries.md](docs/adr/0010-external-libraries.md) にあります。
+
+| ライブラリ | バージョン | ライセンス | AGPL-3.0 との組み合わせ | 用途 |
+| --- | --- | --- | --- | --- |
+| [JUCE](https://github.com/juce-framework/JUCE) | 9.0.5 | AGPLv3 / 商用（デュアルライセンス） | 可（AGPLv3 を選んで利用する） | UI のホスト、オーディオ系のアダプター |
+| [libopus](https://opus-codec.org/) | 1.5.2 | BSD-3-Clause | 可 | 音声のエンコードとデコード |
+| [libsodium](https://libsodium.org/) | 1.0.20 | ISC | 可 | AEAD、鍵交換などの暗号プリミティブ |
+| [libsodium-cmake](https://github.com/robinlinden/libsodium-cmake) | コミット `9b2848d` | ISC | 可 | libsodium の CMake ビルド |
+| [noise-c](https://github.com/rweather/noise-c) | コミット `cfe2541` | MIT | 可 | Noise プロトコル（Noise_IK）の実装 |
+| [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | MIT | 可 | UI とエンジン間のメッセージ、設定ファイルの JSON |
+| [GoogleTest](https://github.com/google/googletest) | 1.15.2 | BSD-3-Clause | 可（テストだけで使い、配布物に含めない） | 単体テスト |
+
+ライブラリを追加するときは、ADR を書き、AGENTS.md 4.2 の使用範囲の表とこの表を同じ PR で更新してください。
+バイナリを配布するときは、各ライブラリの著作権表示とライセンス文を配布物に同梱します。
 
 ---
 
