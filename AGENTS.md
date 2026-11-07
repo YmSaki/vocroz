@@ -265,6 +265,7 @@ i18n/、utils/  →  なし
 | 対象 | 配置 | 形式 |
 | --- | --- | --- |
 | エントリポイント | `apps/<app>/src/main.cpp` | 「引数のパース → コンポジションルートの構築 → 実行」の 3 ステップだけ |
+| 起動オプションの定義とパース | `apps/<app>/src/launch_options.{h,cpp}` | コマンドライン引数を検証済みの `LaunchOptions` 構造体に変換する純粋関数。矛盾や未知の引数はエラーとして返す（`docs/adr/0007-launch-interface.md`） |
 | コンポジションルート | `apps/<app>/src/composition_root.{h,cpp}` | アプリに 1 つ。注入する依存ができた時点で作る。4.3 の手順で生成と注入を行う |
 | ドメインロジック（ミキサー、ジッターバッファ、認可判定など） | 責務の合うモジュールの `src/<名詞>.{h,cpp}`。他モジュールに公開するものは `include/vocroz/<module>/<名詞>.h` | OS 非依存のクラス。外部 I/O にはポート経由でだけアクセスする |
 | ポート | **利用する側**のモジュールの `include/vocroz/<module>/ports/<役割名>.h` | 純粋仮想クラスと virtual デストラクター。名前は役割を表す名詞（`AudioOutput`）。`I` などのプレフィックスは付けない。シグネチャにはドメインの型だけを使う |
@@ -336,6 +337,7 @@ apps/<app>/
   CMakeLists.txt
   src/
     main.cpp                       エントリポイント（引数のパース → コンポジションルートの構築 → 実行）
+    launch_options.{h,cpp}         起動オプションの定義とパース
     composition_root.{h,cpp}       依存性の生成と注入
     win/                           そのアプリだけが使う Windows のアダプター
   tests/                           起動のスモークテスト
