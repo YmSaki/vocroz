@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+
+  VOCROZ の MSI（ユーザー単位）。Bundle.wxs の Burn バンドルからだけ実行する。
+  構成は docs/adr/0009-installer-and-updater.md のとおり。
+
+  %LOCALAPPDATA%\Programs\VOCROZ\
+    vocroz.exe            起動スタブ（ショートカットと vocroz:// はこれを指す）
+    app-<バージョン>\     このインストーラーが入れた版。pa-updater は別の app-*\ を追加する
+  スタートメニュー        「VOCROZ（親機）」と「VOCROZ（子機）」
+  HKCU\Software\Classes\vocroz   URL スキーム（docs/adr/0006-invite-url-scheme.md）
+
+  ビルド時の変数:
+    VocrozVersion   x.y.z（CMake の project() のバージョン）
+  バインドパス:
+    root            起動スタブと VC++ ランタイム（cmake install の出力のルート）
+    app             バージョン別フォルダに入れるファイル（cmake install の出力の app\）
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <!-- 日本語のショートカット名を MSI のテーブルに入れるため、コードページは 932 にする。 -->
+  <Package Name="VOCROZ"
+           Manufacturer="VOCROZ"
+           Version="$(var.VocrozVersion)"
+           UpgradeCode="F9A04938-C260-40E5-A469-D1A8B41538AF"
+           Scope="perUser"
+           Language="1041"
+           Codepage="932"
+           Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="より新しいバージョンの VOCROZ がすでにインストールされています。" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="LocalProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="VOCROZ">
+          <Directory Id="AppVersionFolder" Name="app-$(var.VocrozVersion)" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="RootFiles" />
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="ShellIntegration" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="RootFiles" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.root)\*.exe" />
+      <Files Include="!(bindpath.root)\*.dll" />
+    </ComponentGroup>
+    <ComponentGroup Id="AppFiles" Directory="AppVersionFolder">
+      <Files Include="!(bindpath.app)\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <!--
+      ショートカット、URL スキーム、アンインストール時の掃除を 1 つのコンポーネントにまとめる。
+      ユーザー単位のコンポーネントは HKCU のレジストリ値をキーパスにする必要があり、
+      URL スキームの既定値をそのキーパスに使えば、レジストリに独自の値を増やさずに済むため。
+    -->
+    <Component Id="ShellIntegration" Directory="ProgramMenuFolder" Guid="44452B4E-8620-4526-9C29-6372C1E91543">
+      <RegistryKey Root="HKCU" Key="Software\Classes\vocroz">
+        <RegistryValue Type="string" Value="URL:VOCROZ" KeyPath="yes" />
+        <RegistryValue Name="URL Protocol" Type="string" Value="" />
+        <RegistryValue Key="DefaultIcon" Type="string" Value="&quot;[INSTALLFOLDER]vocroz.exe&quot;,0" />
+        <RegistryValue Key="shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]vocroz.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+      <!-- アンインストール後にレジストリへ空のキーも残さない。 -->
+      <RemoveRegistryKey Root="HKCU" Key="Software\Classes\vocroz" Action="removeOnUninstall" />
+
+      <!-- 起動の引数は docs/adr/0007-launch-interface.md のとおり（親機は引数なし）。 -->
+      <Shortcut Id="HostShortcut" Name="VOCROZ（親機）" Target="[INSTALLFOLDER]vocroz.exe"
+                WorkingDirectory="INSTALLFOLDER" Description="VOCROZ を親機モードで起動します" />
+      <Shortcut Id="ClientShortcut" Name="VOCROZ（子機）" Target="[INSTALLFOLDER]vocroz.exe"
+                Arguments="--mode=client" WorkingDirectory="INSTALLFOLDER"
+                Description="VOCROZ を子機モードで起動します" />
+
+      <!--
+        pa-updater が追加したバージョン別フォルダとポインターファイルは MSI が知らないので、
+        アンインストールではインストール先を丸ごと削除する。
+        パスはバンドルが MSI のプロパティとして渡す。メジャーアップグレードで古い MSI が
+        削除されるときにはプロパティが渡らないので、新しい版のファイルを消すことはない。
+        VOCROZ_PURGE_DIR は「すべてのアプリデータを削除する」を選んだときだけ渡る。
+      -->
+      <util:RemoveFolderEx On="uninstall" Property="VOCROZ_INSTALL_DIR" />
+      <util:RemoveFolderEx On="uninstall" Property="VOCROZ_PURGE_DIR" />
+    </Component>
+  </Fragment>
+</Wix>
