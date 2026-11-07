@@ -220,6 +220,7 @@ class CompositionRoot {
 | UI とネイティブ側（`webui`）、UI とエンジン（名前付きパイプ） | `control-protocol` | `ui/src/ipc/` のメッセージ型 |
 | 子機と親機（UDP） | `transport/src/wire/` | なし（両側で同じコードを使う） |
 | エンジンとランデブーサーバー（HTTP、STUN） | `infra/rendezvous/internal/httpapi/` | `session` と `network` のクライアント実装 |
+| エンジンとランデブーサーバー（UDP のランデブーメッセージ） | `infra/rendezvous/internal/udpapi/wire.go` | `session` と `network` のクライアント実装 |
 
 ### 4.5 モジュール内、アプリ内、UI 内の依存
 

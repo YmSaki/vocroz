@@ -64,6 +64,8 @@ CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`�
 
 現時点では各プログラムとも `--version` に応答するだけです。親機・子機としての起動手順は、機能の実装に合わせてこの節に追記します。
 
+ランデブーサーバーの起動方法と API は [infra/rendezvous/README.md](infra/rendezvous/README.md) にあります。
+
 ---
 
 ## リポジトリの初期設定
