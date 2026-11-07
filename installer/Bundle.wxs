@@ -25,8 +25,8 @@
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication
           Theme="hyperlinkLicense"
-          ThemeFile="theme\VocrozTheme.xml"
-          LocalizationFile="theme\VocrozTheme.wxl"
+          ThemeFile="$(sys.SOURCEFILEDIR)theme\VocrozTheme.xml"
+          LocalizationFile="$(sys.SOURCEFILEDIR)theme\VocrozTheme.wxl"
           LicenseUrl="https://www.gnu.org/licenses/agpl-3.0.html"
           SuppressOptionsUI="yes"
           LaunchTarget="[LocalAppDataFolder]Programs\VOCROZ\vocroz.exe" />
