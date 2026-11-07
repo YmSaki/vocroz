@@ -60,6 +60,13 @@ ctest --test-dir build -C Release
 cd infra/rendezvous && go test ./...
 ```
 
+画面（`ui/`）の開発には Node.js 22 以上が必要です。手順は [ui/README.md](ui/README.md) を参照してください。
+
+```bash
+# UI のテストとビルド（ブラウザで動かすときは npm run dev。エンジンの代わりにフェイクエンジンにつながる）
+cd ui && npm ci && npm test && npm run build
+```
+
 CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`）が有効になります。CMake を使わずに作業する場合は、最初に `git config core.hooksPath .githooks` を実行してください。
 
 現時点では各プログラムとも `--version` に応答するだけです。親機・子機としての起動手順は、機能の実装に合わせてこの節に追記します。

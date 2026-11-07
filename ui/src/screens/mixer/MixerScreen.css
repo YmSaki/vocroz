@@ -1,0 +1,311 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* ミキサー画面のレイアウト。最小 1280×720 でも Master とミュートとセッションの操作が隠れないよう、
+   チャンネル領域だけを横スクロールにし、Master は右端に固定する。 */
+.mixer-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-width: 1280px;
+    min-height: 720px;
+}
+
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 52px;
+    padding: 0 12px;
+    flex-shrink: 0;
+    background: var(--color-panel-raised);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.status-bar__item {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+.status-bar__session {
+    max-width: 240px;
+}
+
+.status-bar__label {
+    font-size: 10px;
+    color: var(--color-text-dim);
+}
+
+.status-bar__value {
+    overflow: hidden;
+    font-size: 13px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.status-bar__state {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 4px 10px;
+    background: var(--color-button);
+}
+
+.status-bar__state--active {
+    color: #fff;
+    background: var(--color-live);
+}
+
+.status-bar__state--error {
+    color: #fff;
+    background: var(--color-mute);
+}
+
+.status-bar__item--warning .status-bar__value {
+    color: var(--color-warning);
+    font-weight: 700;
+}
+
+.status-bar__item--alert {
+    color: #000;
+    background: var(--color-warning);
+}
+
+.status-bar__item--alert .status-bar__label {
+    color: #000;
+}
+
+.status-bar__spacer {
+    flex: 1;
+}
+
+.status-bar__button {
+    position: relative;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--color-text);
+    background: var(--color-button);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.status-bar__button[aria-pressed="true"] {
+    border-color: var(--color-focus);
+}
+
+.status-bar__badge {
+    margin-left: 6px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #000;
+    background: var(--color-warning);
+    border-radius: 8px;
+}
+
+.status-bar__primary {
+    background: var(--color-live);
+    border-color: var(--color-live);
+}
+
+.status-bar__danger {
+    border-color: var(--color-mute);
+}
+
+.status-bar__update {
+    border-color: var(--color-info);
+}
+
+.mixer-toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 6px 12px;
+    flex-shrink: 0;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.mixer-main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.mixer-channels {
+    display: flex;
+    flex: 1;
+    gap: 4px;
+    min-width: 0;
+    padding: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.mixer-channels__empty {
+    margin: auto;
+    color: var(--color-text-dim);
+}
+
+.strip {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 96px;
+    flex-shrink: 0;
+    padding: 6px;
+    background: var(--color-panel);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+}
+
+.strip--selected {
+    border-color: var(--color-focus);
+}
+
+.strip--master {
+    flex-shrink: 0;
+    margin: 8px;
+    background: var(--color-panel-raised);
+}
+
+.strip__header {
+    text-align: center;
+}
+
+.strip__name {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.strip__id {
+    font-size: 10px;
+    color: var(--color-text-dim);
+    font-family: ui-monospace, monospace;
+}
+
+.strip__status {
+    min-height: 18px;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--color-text-dim);
+}
+
+.strip__status--warning {
+    color: #000;
+    background: var(--color-warning);
+    border-radius: 3px;
+}
+
+.strip__body {
+    display: flex;
+    flex: 1;
+    gap: 4px;
+    min-height: 0;
+}
+
+.strip__footer {
+    display: flex;
+    gap: 4px;
+}
+
+.strip__sel,
+.strip__remove {
+    flex: 1;
+    min-height: 24px;
+    font: inherit;
+    font-size: 11px;
+    color: var(--color-text);
+    background: var(--color-button);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.strip__sel--on {
+    color: #000;
+    background: var(--color-focus);
+}
+
+.approval-panel {
+    display: flex;
+    flex-direction: column;
+    width: 320px;
+    flex-shrink: 0;
+    background: var(--color-panel);
+    border-left: 1px solid var(--color-border);
+}
+
+.approval-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.approval-panel__header h2 {
+    margin: 0;
+    font-size: 14px;
+}
+
+.approval-panel__empty {
+    padding: 12px;
+    color: var(--color-text-dim);
+}
+
+.approval-panel__list {
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.approval-panel__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.approval-panel__who {
+    display: flex;
+    flex-direction: column;
+}
+
+.approval-panel__id {
+    font-size: 11px;
+    color: var(--color-text-dim);
+    font-family: ui-monospace, monospace;
+}
+
+.approval-panel__actions {
+    display: flex;
+    gap: 6px;
+}
+
+.approval-panel__actions button,
+.approval-panel__close {
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--color-text);
+    background: var(--color-button);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.approval-panel__actions .approval-panel__approve {
+    background: var(--color-live);
+    border-color: var(--color-live);
+}
