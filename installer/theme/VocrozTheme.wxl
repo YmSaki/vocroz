@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+
+  インストーラーの画面の文字列（日本語）。VocrozTheme.xml の #(loc.*) から参照する。
+  英語は未訳。WixStdBA は 1 つの LocalizationFile を全言語で使うので、英語版を用意するときは
+  言語ごとの .wxl を Payload として追加する。
+-->
+<WixLocalization Culture="ja-jp" Language="1041" xmlns="http://wixtoolset.org/schemas/v4/wxl">
+  <String Id="Caption" Value="[WixBundleName] セットアップ" />
+  <String Id="Title" Value="[WixBundleName]" />
+  <String Id="CheckingForUpdatesLabel" Value="更新を確認しています" />
+  <String Id="UpdateButton" Value="バージョン [WixStdBAUpdateAvailable] に更新(&amp;U)" />
+  <String Id="InstallHeader" Value="ようこそ" />
+  <String Id="InstallMessage" Value="[WixBundleName] をこのユーザーにインストールします。管理者権限は必要ありません。「インストール」を押して続けてください。" />
+  <String Id="InstallMessageOptions" Value="[WixBundleName] をこのユーザーにインストールします。" />
+  <String Id="InstallVersion" Value="バージョン [WixBundleVersion]" />
+  <String Id="ConfirmCancelMessage" Value="セットアップを中止しますか?" />
+  <String Id="ExecuteUpgradeRelatedBundleMessage" Value="以前のバージョン" />
+  <String Id="HelpHeader" Value="セットアップのヘルプ" />
+  <String Id="HelpText" Value="/install | /repair | /uninstall | /layout [フォルダー] - インストール、修復、アンインストール、&#xA;   またはフォルダーへのバンドルの展開を行います。既定はインストールです。&#xA;&#xA;/passive | /quiet - 最小限の画面だけを出すか、画面を出さずに実行します。&#xA;&#xA;/norestart - 再起動しません。&#xA;/log log.txt - ログを指定したファイルに書きます。既定では %TEMP% に書きます。" />
+  <String Id="HelpCloseButton" Value="閉じる(&amp;C)" />
+  <String Id="InstallLicenseLinkText" Value="[WixBundleName] は &lt;a href=&quot;#&quot;&gt;GNU Affero General Public License v3.0&lt;/a&gt; で提供されています。" />
+  <String Id="InstallAcceptCheckbox" Value="" />
+  <String Id="InstallOptionsButton" Value="オプション(&amp;O)" />
+  <String Id="InstallInstallButton" Value="インストール(&amp;I)" />
+  <String Id="InstallCancelButton" Value="キャンセル(&amp;C)" />
+  <String Id="OptionsHeader" Value="セットアップのオプション" />
+  <String Id="OptionsLocationLabel" Value="インストール先:" />
+  <String Id="OptionsBrowseButton" Value="参照(&amp;B)" />
+  <String Id="OptionsOkButton" Value="OK(&amp;O)" />
+  <String Id="OptionsCancelButton" Value="キャンセル(&amp;C)" />
+  <String Id="ProgressHeader" Value="セットアップの進行状況" />
+  <String Id="ProgressLabel" Value="処理中:" />
+  <String Id="OverallProgressPackageText" Value="準備しています..." />
+  <String Id="ProgressCancelButton" Value="キャンセル(&amp;C)" />
+  <String Id="ModifyHeader" Value="セットアップの変更" />
+  <String Id="ModifyRepairButton" Value="修復(&amp;R)" />
+  <String Id="ModifyUninstallButton" Value="削除(&amp;U)" />
+  <String Id="ModifyCancelButton" Value="閉じる(&amp;C)" />
+  <String Id="UninstallOptionsHeader" Value="アンインストール" />
+  <String Id="UninstallOptionsMessage" Value="アプリを削除します。設定とログは、既定では残します。再インストールすると、同じ設定で使えます。" />
+  <String Id="DeleteUserDataCheckbox" Value="すべてのアプリデータ（設定、ログ、キャッシュ）も削除する(&amp;D)" />
+  <String Id="DeleteUserDataWarning" Value="削除したデータは元に戻せません。自分で指定した録音の保存先フォルダーと、他のアプリと共有する WebView2 ランタイムは削除しません。" />
+  <String Id="UninstallButton" Value="削除する(&amp;U)" />
+  <String Id="UninstallBackButton" Value="戻る(&amp;B)" />
+  <String Id="SuccessHeader" Value="セットアップが完了しました" />
+  <String Id="SuccessCacheHeader" Value="キャッシュが完了しました" />
+  <String Id="SuccessInstallHeader" Value="インストールが完了しました" />
+  <String Id="SuccessLayoutHeader" Value="展開が完了しました" />
+  <String Id="SuccessModifyHeader" Value="変更が完了しました" />
+  <String Id="SuccessRepairHeader" Value="修復が完了しました" />
+  <String Id="SuccessUninstallHeader" Value="アンインストールが完了しました" />
+  <String Id="SuccessUnsafeUninstallHeader" Value="アンインストールが完了しました" />
+  <String Id="SuccessLaunchButton" Value="起動(&amp;L)" />
+  <String Id="SuccessRestartText" Value="使い始める前に、コンピューターを再起動する必要があります。" />
+  <String Id="SuccessUninstallRestartText" Value="削除を完了するには、コンピューターを再起動する必要があります。" />
+  <String Id="SuccessRestartButton" Value="再起動(&amp;R)" />
+  <String Id="SuccessCloseButton" Value="閉じる(&amp;C)" />
+  <String Id="FailureHeader" Value="セットアップに失敗しました" />
+  <String Id="FailureCacheHeader" Value="キャッシュに失敗しました" />
+  <String Id="FailureInstallHeader" Value="インストールに失敗しました" />
+  <String Id="FailureLayoutHeader" Value="展開に失敗しました" />
+  <String Id="FailureModifyHeader" Value="変更に失敗しました" />
+  <String Id="FailureRepairHeader" Value="修復に失敗しました" />
+  <String Id="FailureUninstallHeader" Value="アンインストールに失敗しました" />
+  <String Id="FailureUnsafeUninstallHeader" Value="アンインストールに失敗しました" />
+  <String Id="FailureHyperlinkLogText" Value="問題が発生したため、セットアップを完了できませんでした。詳しくは&lt;a href=&quot;#&quot;&gt;ログファイル&lt;/a&gt;をご覧ください。" />
+  <String Id="FailureRestartText" Value="元に戻す処理を完了するには、コンピューターを再起動する必要があります。" />
+  <String Id="FailureRestartButton" Value="再起動(&amp;R)" />
+  <String Id="FailureCloseButton" Value="閉じる(&amp;C)" />
+  <String Id="FilesInUseTitle" Value="使用中のファイル" />
+  <String Id="FilesInUseLabel" Value="更新するファイルを、次のアプリが使用しています:" />
+  <String Id="FilesInUseNetfxCloseRadioButton" Value="アプリを終了する(&amp;A)" />
+  <String Id="FilesInUseCloseRadioButton" Value="アプリを終了し、後で再起動する(&amp;A)" />
+  <String Id="FilesInUseDontCloseRadioButton" Value="アプリを終了しない。再起動が必要になります(&amp;D)" />
+  <String Id="FilesInUseRetryButton" Value="再試行(&amp;R)" />
+  <String Id="FilesInUseIgnoreButton" Value="無視(&amp;I)" />
+  <String Id="FilesInUseExitButton" Value="終了(&amp;X)" />
+</WixLocalization>

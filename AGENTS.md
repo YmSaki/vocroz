@@ -51,7 +51,7 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | レイヤー | 責務 | 配置 |
 | --- | --- | --- |
 | 共通基盤 | 横断的に使うユーティリティと、横断的関心事のポート（`Clock`、`Logger`）。Result 型 | `modules/common` |
-| ドメイン | オーディオ処理、トランスポートのプロトコル、セッション管理などのドメインロジック。OS の API を呼ばない | `modules/audio-core`、`transport`、`control-protocol`、`session` |
+| ドメイン | オーディオ処理、トランスポートのプロトコル、セッション管理などのドメインロジック。OS の API を呼ばない | `modules/audio-core`、`transport`、`control-protocol`、`session`、`update` |
 | アダプター（インフラストラクチャ） | ドメインが定義したポートを、Win32、WASAPI、Winsock、JUCE などの外部ライブラリで実装する | `modules/device`、`capture`、`network`、`ipc`、`webui`、`persistence`、`plugin-host`、`media`、各アプリの `src/win/` |
 | コンポジションルート | アダプターとドメインオブジェクトを生成し、依存性を注入し、プロセスを起動する | `apps/` |
 | プレゼンテーション | 状態の描画と、ユーザー操作のコマンド化。JUCE の `WebBrowserComponent`（Windows のバックエンドは WebView2）上で動き、`control-protocol` のメッセージだけでネイティブ側と通信する | `ui/` |
@@ -68,6 +68,7 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | `pa-updater` | セッション終了後にだけ起動するアップデーター | 本番中に更新処理を実行しないため |
 | `pa-plugin-scanner` | `pa-engine` がプラグインファイル 1 つにつき 1 回起動する、VST3 のスキャン用ヘルパー。結果を標準出力の JSON で返す（`docs/adr/0009-beta-module-layout.md`） | 不良プラグインのクラッシュやハングで `pa-engine` を止めないため |
 | `infra/rendezvous` | 招待コードの解決と、NAT 越えのためのアドレス交換 | メディアを中継せず、シグナリングだけを担うため |
+| `vocroz`（起動スタブ） | 現行版の `remote-pa` を選んで起動し、すぐに終了する。ショートカットと `vocroz://` はこれを指す（`docs/adr/0013-installer-and-updater.md`） | 更新でファイルが入れ替わっても、ショートカットとレジストリの登録を変えずに済ませるため |
 
 `remote-pa` の動作モードは起動ごとに固定します。招待 URL（URL スキーム `vocroz://`、`docs/adr/0006-invite-url-scheme.md`）か `--client` で起動したら子機モード、それ以外は親機モードで、起動中には切り替えません。2 つのモードはプロセス内の構成（`pa-engine` への接続か、自前のキャプチャと送信か）がまったく違い、実行中の切り替えは後始末の漏れによる音声の出しっぱなしなどの事故につながるためです。ウィンドウのサイズと最小サイズはモードごとにコンポジションルートで決め、子機モードは親機モードより小さくします（`docs/adr/0005-ui-juce-webview.md`）。
 
@@ -106,10 +107,13 @@ apps/          実行ファイル（エントリポイントとコンポジシ�
   client-desktop/  子機モード（remote-pa にリンクする静的ライブラリ）
   pa-engine/       pa-engine  : 親機のオーディオエンジン
   updater/         pa-updater : アップデーター
+  launcher/        vocroz     : 現行版の remote-pa を起動する起動スタブ
   plugin-scanner/  pa-plugin-scanner : VST3 のスキャン用ヘルパー（Beta4）
 modules/       ドメインとアダプターのライブラリ（3.3）
 ui/            WebBrowserComponent 上で動く TypeScript のフロントエンド（親機と子機の両方の画面）
 infra/         Go 製のランデブーサーバー
+installer/     WiX Burn バンドルと MSI の定義、ビルドと署名のスクリプト
+tools/         リリース作業用のツール（tools/release/: 更新マニフェストの鍵の生成と署名）
 docs/adr/      ADR
 docs/spec/     製品要求・実装仕様書
 cmake/         CMake の共通関数と、外部ライブラリの取得（cmake/<ライブラリ名>.cmake）
@@ -124,6 +128,8 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `ui/` | 描画とコマンドの送信 | 状態の導出、生の PCM データ |
 | `infra/` | シグナリング | メディアの中継 |
 | `docs/adr/` | 設計判断のコンテキスト、決定、理由、結果 | 手順書、仕様書の転記 |
+| `installer/` | WiX のソース、バンドルの画面のテーマ、インストーラーのビルドと署名のスクリプト | 更新の判断（`update`）、秘密鍵と証明書 |
+| `tools/` | 開発者とリリース担当者が手元で使うツール | 製品に組み込むコード、秘密鍵 |
 
 ### 3.3 モジュールの責務
 
@@ -144,6 +150,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `persistence` | アダプター | 設定のアトミックな永続化、ログファイルへの出力、DPAPI による秘密情報の保護 | 設定値の意味づけ（`session`） |
 | `plugin-host` | アダプター | JUCE による VST3 のスキャン、読み込み、処理、状態の保存と復元、エディターのウィンドウ（`PluginProcessor`、`PluginLoader`、`PluginScanner`、`PluginEditorHost` の実装）。`pa-plugin-scanner` との間のメッセージのスキーマ（Beta、`docs/adr/0009-beta-module-layout.md`） | グラフへの組み込みと PDC（`audio-core`）、挿入位置と状態の保存の判断（`session`） |
 | `media` | アダプター | JUCE による音声ファイルの書き出し（WAV、FLAC）と、読み込みとデコード（`AudioFileWriter`、`AudioFileReader` の実装）（Beta、`docs/adr/0009-beta-module-layout.md`） | リングバッファとオーディオスレッドとの受け渡し（`audio-core`）、録音の状態と失敗の扱い（`session`） |
+| `update` | ドメイン | セマンティックバージョン、更新マニフェストの検証（Ed25519、SHA-256）、更新の適用可否の判断（本番中のブロック）、更新トランザクションのステートマシンとロールバックの判定、現行版のポインターファイルの形式、起動するバージョンの選択。インストール先、起動確認、Authenticode、設定のバックアップのポート | ダウンロードとファイル操作の実装（`apps/updater/src/win/`）、セッションの状態（`session`） |
 
 ### 3.4 クラスとファイルの粒度
 
@@ -177,6 +184,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `persistence` | `session`、`common` |
 | `plugin-host` | `session`、`audio-core`、`common` |
 | `media` | `audio-core`、`common` |
+| `update` | `common` |
 | `apps/*`（`client-desktop` を含む） | すべてのモジュール |
 
 - 他のモジュールは公開ヘッダー（`include/vocroz/<module>/`）経由でだけ参照する。
@@ -187,7 +195,8 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 
 | ライブラリ | 使用してよい範囲 |
 | --- | --- |
-| libopus、libsodium、Noise の実装 | `transport` |
+| libopus、Noise の実装 | `transport` |
+| libsodium | `transport`、`update`（`update` は Ed25519 の署名検証と SHA-256 だけ。`docs/adr/0013-installer-and-updater.md`） |
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/` |
