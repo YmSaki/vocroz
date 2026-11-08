@@ -68,15 +68,17 @@ function stepValue(scale: FaderScale, value: GainDb, delta: number): GainDb {
 
 /** 縦型のフェーダー。 */
 export function Fader({ value, scale, label, onInput, onCommit, disabled = false }: FaderProps) {
-  const trackRef = useRef<HTMLDivElement>(null);
+  const travelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
   const position = scale.toPosition(value);
 
+  // ドラッグ量の換算には、つまみが動ける範囲の高さを毎回測って使う。
+  // 高さを覚えておくと、ウィンドウの大きさを変えたあとにつまみとポインターの動きがずれるため。
   const trackHeight = (): number => {
-    const height = trackRef.current?.getBoundingClientRect().height ?? 0;
+    const height = travelRef.current?.getBoundingClientRect().height ?? 0;
     return height > 0 ? height : kFallbackTrackPx;
   };
 
@@ -152,7 +154,6 @@ export function Fader({ value, scale, label, onInput, onCommit, disabled = false
   return (
     <div class={`fader${disabled ? " fader--disabled" : ""}`}>
       <div
-        ref={trackRef}
         class="fader__track"
         role="slider"
         tabIndex={disabled ? -1 : 0}
@@ -168,16 +169,20 @@ export function Fader({ value, scale, label, onInput, onCommit, disabled = false
         onPointerCancel={endDrag}
         onKeyDown={onKeyDown}
       >
-        {scale.marks.map((mark) => (
-          <div
-            key={mark}
-            class={`fader__mark${mark === kSnapDb ? " fader__mark--unity" : ""}`}
-            style={{ bottom: `${scale.toPosition(mark) * 100}%` }}
-          >
-            <span class="fader__mark-label">{mark > 0 ? `+${mark}` : mark}</span>
-          </div>
-        ))}
-        <div class="fader__thumb" style={{ bottom: `${position * 100}%` }} />
+        {/* 目盛りとつまみは同じ要素の中で同じ割合（bottom の %）で置く。
+            大きさが変わっても両者が同じ座標で動くので、目盛りとつまみの位置がずれない。 */}
+        <div ref={travelRef} class="fader__travel">
+          {scale.marks.map((mark) => (
+            <div
+              key={mark}
+              class={`fader__mark${mark === kSnapDb ? " fader__mark--unity" : ""}`}
+              style={{ bottom: `${scale.toPosition(mark) * 100}%` }}
+            >
+              <span class="fader__mark-label">{mark > 0 ? `+${mark}` : mark}</span>
+            </div>
+          ))}
+          <div class="fader__thumb" style={{ bottom: `${position * 100}%` }} />
+        </div>
       </div>
       {editing ? (
         <input

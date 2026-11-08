@@ -18,6 +18,7 @@
     cursor: ns-resize;
     touch-action: none;
     border-radius: 4px;
+    --fader-thumb-height: 14px;
     outline: none;
 }
 
@@ -34,25 +35,39 @@
     border-radius: 2px;
 }
 
+.fader__travel {
+    /* つまみの中心が動ける範囲。上下につまみの高さの半分を空け、
+       +10 dB と -∞ dB でもつまみが溝の外（上下の要素）にはみ出さないようにする。 */
+    position: absolute;
+    top: calc(var(--fader-thumb-height) / 2);
+    bottom: calc(var(--fader-thumb-height) / 2);
+    left: 0;
+    right: 0;
+}
+
 .fader__track:focus-visible {
     box-shadow: 0 0 0 2px var(--color-focus);
 }
 
 .fader__mark {
+    /* 線の太さの中心を値の位置に合わせる（つまみも中心を値の位置に合わせている）。 */
     position: absolute;
     left: 0;
     right: 0;
-    height: 0;
-    border-top: 1px solid var(--color-mark);
+    height: 1px;
+    transform: translateY(50%);
+    background: var(--color-mark);
 }
 
 .fader__mark--unity {
-    border-top: 2px solid var(--color-unity);
+    height: 2px;
+    background: var(--color-unity);
 }
 
 .fader__mark-label {
     position: absolute;
     right: calc(100% + 2px);
+    top: 50%;
     transform: translateY(-50%);
     font-size: 9px;
     color: var(--color-text-dim);
@@ -63,7 +78,7 @@
     position: absolute;
     left: 50%;
     width: 32px;
-    height: 14px;
+    height: var(--fader-thumb-height);
     transform: translate(-50%, 50%);
     background: linear-gradient(var(--color-thumb-top), var(--color-thumb-bottom));
     border: 1px solid var(--color-thumb-border);
