@@ -58,17 +58,18 @@ export class FakeClientEngine extends FakeEngineBase {
 
   /** 選択中のマイクの抜去を再現する。送信ミュートの状態は変えない。 */
   simulateInputMissing(): void {
-    this.update({ input_missing: true });
+    // 入力の欠落は観測値なので revision を進めない（その最中の送信ミュートを衝突させないため）。
+    this.update({ input_missing: true }, false);
     this.emit({ type: "notice", severity: "warning", code: "input_missing", params: {} });
   }
 
   /** 回線の途絶と再接続を再現する。 */
   simulateReconnect(): void {
     if (this.state.client_state !== "CONNECTED") return;
-    this.update({ client_state: "RECONNECTING" });
+    this.update({ client_state: "RECONNECTING" }, false);
     const attempt = this.attempt;
     this.later(() => {
-      if (attempt === this.attempt) this.update({ client_state: "CONNECTED" });
+      if (attempt === this.attempt) this.update({ client_state: "CONNECTED" }, false);
     }, kApprovalDelayMs);
   }
 
@@ -158,7 +159,7 @@ export class FakeClientEngine extends FakeEngineBase {
     const attempt = ++this.attempt;
     const lower = invite.toLowerCase();
     const failWith = (code: ErrorCode) =>
-      this.update({ client_state: "FAILED", failure_code: code });
+      this.update({ client_state: "FAILED", failure_code: code }, false);
     const steps: { state: ClientState; delayMs: number; failure?: ErrorCode }[] = [
       { state: "AUTHENTICATING", delayMs: kStepDelayMs },
       { state: "WAITING_APPROVAL", delayMs: kStepDelayMs },
@@ -185,10 +186,15 @@ export class FakeClientEngine extends FakeEngineBase {
           failWith(step.failure);
           return;
         }
-        this.update({
-          client_state: step.state,
-          session_name: step.state === "RESOLVING" ? null : "日曜リハーサル",
-        });
+        // 接続の進行は観測値なので revision を進めない。進めると、接続処理の途中の送信ミュートが
+        // REVISION_CONFLICT になる（docs/adr/0015-control-protocol-messages.md）。
+        this.update(
+          {
+            client_state: step.state,
+            session_name: step.state === "RESOLVING" ? null : "日曜リハーサル",
+          },
+          false,
+        );
         run(index + 1);
       }, step.delayMs);
     };
