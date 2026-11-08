@@ -24,6 +24,7 @@
 | libsodium | 1.0.20 | robinlinden/libsodium-cmake のコミット | `sodium` |
 | noise-c | コミット `cfe2541` | Git のコミット | `noise::protocol` |
 | nlohmann/json | 3.12.0 | リリースの `json.tar.xz` | `nlohmann_json::nlohmann_json` |
+| WebView2 SDK | 1.0.3912.50 | NuGet のパッケージ（SHA-256 を検査、Windows だけ。`docs/adr/0020-ipc-pipe-and-webui-bridge.md`） | `juce::juce_webview2`（`vocroz::juce` 経由） |
 
 - JSON には nlohmann/json を使う。使用してよい範囲は `control-protocol` と `persistence`（AGENTS.md 4.2）。信頼境界では例外を使わない `parse(..., nullptr, false)` で受け、`is_discarded()` で検査する。
 - オプション `VOCROZ_WITH_JUCE`（Windows では既定で ON、それ以外は OFF）を用意する。OFF のときは JUCE を取得せず、JUCE を使うターゲット（アダプターと apps）を定義しない。JUCE を使うターゲットは `if(VOCROZ_WITH_JUCE)` の中で定義する。
