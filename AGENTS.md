@@ -202,7 +202,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/` |
-| nlohmann/json | `control-protocol`、`persistence` |
+| nlohmann/json | `control-protocol`、`persistence`、`plugin-host`（`pa-plugin-scanner` との間のスキャン結果の JSON） |
 | Preact | `ui/`（UI の実行時に読み込む唯一のライブラリ。`docs/adr/0011-ui-frontend-stack.md`） |
 | Vite、TypeScript、Vitest、jsdom、Testing Library、Prettier | `ui/` の開発時の依存（成果物に含めない） |
 
