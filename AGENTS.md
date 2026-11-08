@@ -117,6 +117,7 @@ tools/         リリース作業用のツール（tools/release/: 更新マニ�
 docs/adr/      ADR
 docs/spec/     製品要求・実装仕様書
 docs/testing/  実機確認の手順書（受け入れテストの手順、合否の基準、残す証拠）
+tests/         モジュールをまたぐ結合テストと、その試験基盤と試験ツール（docs/adr/0025-integration-test-harness.md）
 cmake/         CMake の共通関数と、外部ライブラリの取得（cmake/<ライブラリ名>.cmake）
 .github/       CI のワークフロー、Issue と PR のテンプレート、ラベルとマイルストーン
 .githooks/     Git フック（pre-commit での自動フォーマット）
@@ -132,6 +133,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `docs/testing/` | CI で確かめられない受け入れテストの、実機での手順、合否の基準、残す証拠 | 自動テストのコード（各モジュールの `tests/`）、確認で集めた証拠そのもの |
 | `installer/` | WiX のソース、バンドルの画面のテーマ、インストーラーのビルドと署名のスクリプト | 更新の判断（`update`）、秘密鍵と証明書 |
 | `tools/` | 開発者とリリース担当者が手元で使うツール | 製品に組み込むコード、秘密鍵 |
+| `tests/` | 結合テスト、障害注入とプロセス内のネットワーク、遅延計測、NAT の模擬など、製品に含めない試験のためのコード。すべてのモジュールに依存してよい | 1 つのモジュールで閉じる単体テスト（各モジュールの `tests/`）、製品のターゲットがリンクするコード |
 
 ### 3.3 モジュールの責務
 
@@ -146,7 +148,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
 | `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知。JUCE の `MidiInput` による MIDI デバイスの列挙（永続 ID）、入力、抜去の検知（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧（`AudioDeviceCatalog` の実装）と、子機のマイク入力にも使う `AudioInput` の実装（`docs/adr/0023-wasapi-device-io.md`） | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
 | `capture` | アダプター | WASAPI のループバックによるアプリ音声の収集（Beta、`docs/adr/0009-beta-module-layout.md`） | 子機のマイク入力（`device` の `AudioInput`、`docs/adr/0023-wasapi-device-io.md`）、エンコード（`transport`） |
-| `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | パケットのパース（`transport`） |
+| `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信。受信の振り分け、ランデブーメッセージと PCP、NAT-PMP のパース（`src/wire/`）、UDP ホールパンチ、自動ポート開放（PCP、NAT-PMP、UPnP-IGD）（`docs/adr/0021-udp-socket-and-nat-traversal.md`） | 子機と親機の間のパケットのパース（`transport`） |
 | `ipc` | アダプター | 名前付きパイプのクライアントとサーバー（`MessageChannel` の実装）。ACL によるアクセス制御 | メッセージの検証とコマンドの適用（`control-protocol`、`session`） |
 | `webui` | アダプター | JUCE の `WebBrowserComponent` による UI のホスト、`ui/dist` を配信するリソースプロバイダー、ネイティブ関数とイベントのブリッジ（`MessageChannel` の実装）。モードごとのウィンドウ設定の適用。ルーティング画面などの独立したサブウィンドウのホスト（Beta、`docs/adr/0009-beta-module-layout.md`） | メッセージの検証とコマンドの適用（`pa-engine` の `session`、子機ロジック） |
 | `persistence` | アダプター | 設定のアトミックな永続化、ログファイルへの出力、DPAPI による秘密情報の保護 | 設定値の意味づけ（`session`） |
@@ -201,8 +203,9 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | libsodium | `transport`、`update`（`update` は Ed25519 の署名検証と SHA-256 だけ。`docs/adr/0013-installer-and-updater.md`） |
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
-| GoogleTest | 各モジュールと各アプリの `tests/` |
+| GoogleTest | 各モジュールと各アプリの `tests/`、トップレベルの `tests/` |
 | nlohmann/json | `control-protocol`、`persistence`、`plugin-host`（`pa-plugin-scanner` との間のスキャン結果の JSON） |
+| miniupnpc | `network`（UPnP-IGD による自動ポート開放だけ。Windows のビルドでだけ取得する。`docs/adr/0021-udp-socket-and-nat-traversal.md`） |
 | Preact | `ui/`（UI の実行時に読み込む唯一のライブラリ。`docs/adr/0011-ui-frontend-stack.md`） |
 | Vite、TypeScript、Vitest、jsdom、Testing Library、Prettier | `ui/` の開発時の依存（成果物に含めない） |
 
@@ -320,6 +323,11 @@ i18n/、utils/  →  なし
 | UI のテストダブル | 差し替える抽象と同じディレクトリの `fake-<名前>.ts` | `Fake` プレフィックス（`FakeTimers`）。決定的に動作する |
 | ランデブーサーバーの機能 | `infra/rendezvous/internal/<機能名>/` | 5.5 の形式 |
 | 単体テスト | C++ は対象と同じモジュールの `tests/<対象>_test.cpp`。TypeScript と Go は対象と同じディレクトリ | 対象ファイル 1 つにテストファイル 1 つ |
+| 結合テスト（モジュールをまたぐもの） | `tests/integration/<場面>_test.cpp` | 仮想時刻とプロセス内のネットワーク（`tests/netsim/`）で動かし、実時間を待たない |
+| 結合テストの試験基盤 | 障害の模型とプロセス内のネットワークは `tests/netsim/`、部品の組み立てと計測は `tests/harness/` | モジュールと同じ構成（`include/vocroz/<名前>/`、`src/`、`tests/`）。製品のターゲットからはリンクしない |
+| 試験ツール（実行ファイル） | `tests/tools/<ツール名>/` | `vocroz-` で始まる名前。ツールの単体テストは同じディレクトリの `<対象>_test.cpp` |
+| NAT の模擬など root 権限が要る試験 | `tests/nat/` | シェルスクリプト。CI では専用のジョブで動かす |
+| ランデブーサーバーの試験用のピア | `infra/rendezvous/internal/punchprobe/` と `cmd/punchprobe/` | `internal/udpapi` のワイヤーフォーマットを使う。製品には含めない |
 | ADR | `docs/adr/NNNN-<題名>.md` | コンテキスト、決定、理由、結果 |
 | 外部ライブラリの取得 | `cmake/<ライブラリ名>.cmake` | 1 ライブラリに 1 ファイル。バージョンをハッシュかコミットで固定する（`docs/adr/0010-external-libraries.md`） |
 | 外部ライブラリのリンク確認テスト | `cmake/link-tests/<ライブラリ名>_link_test.cpp` | ビルドとリンクと最小限の呼び出しだけを確かめる。使い方のテストは使うモジュールの `tests/` に書く |
@@ -681,6 +689,12 @@ run-clang-tidy -p build -quiet '(apps|modules)/.*/src/'
 
 # ランデブーサーバー
 cd infra/rendezvous && gofmt -l . && go vet ./... && go test ./...
+
+# NAT の模擬（root 権限が要る。tests/README.md）
+sudo tests/nat/run-nat-matrix.sh
+
+# 端から端までの遅延の見積もり（ビルド後）
+build/tests/tools/vocroz-latency --net delay=15ms,jitter=4ms,loss=0.01
 ```
 
 GoogleTest を取得できないオフライン環境では、`-DVOCROZ_BUILD_TESTS=OFF` で単体テスト以外をビルドできる。

@@ -44,6 +44,13 @@ target_link_libraries(vocroz_transport
 vocroz_set_warnings(vocroz_transport)
 
 if(VOCROZ_BUILD_TESTS)
+  # transport のポートのフェイク。ポートを実装する network などのテストからも
+  # #include "fakes/fake_random_source.h" の形で使えるよう、ヘッダーだけのターゲットとして公開する。
+  add_library(vocroz_transport_fakes INTERFACE)
+  add_library(vocroz::transport_fakes ALIAS vocroz_transport_fakes)
+  target_include_directories(vocroz_transport_fakes INTERFACE tests)
+  target_link_libraries(vocroz_transport_fakes INTERFACE vocroz::transport)
+
   vocroz_add_unit_test(transport_tests
     tests/drift_controller_test.cpp
     tests/drift_resampler_test.cpp
