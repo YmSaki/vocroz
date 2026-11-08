@@ -59,3 +59,25 @@ jobs:
           go-version-file: infra/rendezvous/go.mod
       - name: Test
         run: go vet ./... && go test ./...
+
+  ui:
+    # 親機と子機の画面。jsdom とフェイクエンジンでテストするので、Windows も WebView2 も要らない。
+    name: UI (TypeScript)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npm test
+      - name: Build
+        # 型検査を含む（npm run build は tsc --noEmit のあとに vite build を実行する）。
+        run: npm run build

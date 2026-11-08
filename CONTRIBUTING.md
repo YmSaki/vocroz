@@ -65,6 +65,13 @@ Windows 以外では JUCE を既定で取得せず、JUCE を使うターゲッ�
 Linux で JUCE を使う場合は `-DVOCROZ_WITH_JUCE=ON` を付け、GTK と WebKitGTK の開発パッケージを入れてください。
 オフライン環境では、`-DFETCHCONTENT_SOURCE_DIR_<名前>=<パス>`（例: `FETCHCONTENT_SOURCE_DIR_JUCE`）で手元のソースを指定できます。
 
+画面（`ui/`）の開発には Node.js 22 以上が必要です。手順は [ui/README.md](ui/README.md) を参照してください。
+
+```bash
+# UI のテストとビルド（ブラウザで動かすときは npm run dev。エンジンの代わりにフェイクエンジンにつながる）
+cd ui && npm ci && npm test && npm run build
+```
+
 CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`）が有効になります。CMake を使わずに作業する場合は、最初に `git config core.hooksPath .githooks` を実行してください。
 
 現時点では各プログラムとも `--version` に応答するだけです。親機・子機としての起動手順は、機能の実装に合わせてこの節に追記します。

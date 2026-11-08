@@ -192,6 +192,8 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/` |
 | nlohmann/json | `control-protocol`、`persistence` |
+| Preact | `ui/`（UI の実行時に読み込む唯一のライブラリ。`docs/adr/0011-ui-frontend-stack.md`） |
+| Vite、TypeScript、Vitest、jsdom、Testing Library、Prettier | `ui/` の開発時の依存（成果物に含めない） |
 
 ### 4.3 依存性の注入（C++）
 
@@ -256,13 +258,16 @@ main.cpp  →  composition_root  →  各モジュールの公開ヘッダーと
 **UI 内**
 
 ```text
-main.ts       →  screens/、state/、ipc/
+main.ts       →  screens/、state/、ipc/、i18n/（初期ロケールの設定）
 screens/      →  components/、state/（購読）、ipc/（コマンド送信）、i18n/、utils/
 components/   →  i18n/、utils/（state/ と ipc/ に依存しない Presentational Component）
 state/        →  ipc/（メッセージ型のみ）、utils/
 ipc/          →  utils/
 i18n/、utils/  →  なし
 ```
+
+`screens/shared/` は複数の画面で使う Container の部品（コマンドの送信、楽観的更新、トーストへの変換）で、`screens/` と同じ依存の規則に従う。
+`ipc/fake-engine/` は開発とテストのためのフェイクエンジンで、`ipc/` の `Transport` を実装する。本番では読み込まない。
 
 `components/` を Presentational Component（props だけで描画するコンポーネント）に限定するのは、親機と子機の両方の画面とテストで、props を渡すだけで再利用できるようにするためです。ストアの購読とコマンドの送信は Container の役割として `screens/` が担います。
 
@@ -296,6 +301,10 @@ i18n/、utils/  →  なし
 | UI のストア | `ui/src/state/` | エンジンのスナップショットとイベントを保持する |
 | UI の IPC クライアント | `ui/src/ipc/` | コマンドの送信と、スナップショットとイベントの受信 |
 | UI の文字列リソース | `ui/src/i18n/ja.json`、`ui/src/i18n/en.json` | キーで参照する |
+| UI の画面間で共有する Container の部品 | `ui/src/screens/shared/` | 2 つ以上の画面で同じ知識として使うフックと関数だけ |
+| UI の開発用フェイクエンジン | `ui/src/ipc/fake-engine/fake-<モード>-engine.ts` | `Transport` を実装する。JUCE の外で開いたときだけ動的に読み込む |
+| UI の配色と基本の書式 | `ui/src/theme.css` | CSS 変数で定義し、各コンポーネントの CSS が参照する |
+| UI のテストダブル | 差し替える抽象と同じディレクトリの `fake-<名前>.ts` | `Fake` プレフィックス（`FakeTimers`）。決定的に動作する |
 | ランデブーサーバーの機能 | `infra/rendezvous/internal/<機能名>/` | 5.5 の形式 |
 | 単体テスト | C++ は対象と同じモジュールの `tests/<対象>_test.cpp`。TypeScript と Go は対象と同じディレクトリ | 対象ファイル 1 つにテストファイル 1 つ |
 | ADR | `docs/adr/NNNN-<題名>.md` | コンテキスト、決定、理由、結果 |

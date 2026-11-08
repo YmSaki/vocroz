@@ -1,0 +1,24 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* 子機側の送信ミュートの表示。親機の MUTE（赤）と区別するため紫にし、アイコンとラベルを付ける。 */
+.mute-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 3px;
+    visibility: hidden;
+}
+
+.mute-badge--on {
+    visibility: visible;
+    color: #fff;
+    background: var(--color-send-mute);
+}
+
+.mute-badge__icon {
+    width: 12px;
+    height: 12px;
+}
