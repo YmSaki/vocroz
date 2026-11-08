@@ -6,7 +6,7 @@
 | モジュール | 内容 | 追加するフェーズ |
 | --- | --- | --- |
 | `common` | 引数解析・バージョン表示などのユーティリティ、Result 型、SPSC キュー、`Clock` と `Logger` のポート | P0（追加済み） |
-| `audio-core` | 48kHz Float32 の音声グラフ、ミキサー、ランプ、リミッター。Windows API に依存しない | P1 |
+| `audio-core` | 48kHz Float32 の音声グラフ、ミキサー、ランプ、リミッター、メーター、オーディオ入出力のポート。Windows API に依存しない | P1（追加済み） |
 | `device` | WASAPI 入出力（低遅延共有 / 排他）、デバイス永続ID、抜去検知 | P1 |
 | `transport` | パケット形式、Noise 鍵交換と AEAD、信頼制御層、Opus、ジッターバッファ、ドリフト補正 | P2 |
 | `capture` | 子機のマイク入力キャプチャ | P2 |

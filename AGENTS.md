@@ -547,7 +547,8 @@ infra/rendezvous/
 - OS の待機関数（`WaitForSingleObject` など）、プラグインのスキャン
 
 オーディオスレッドから呼ぶ関数は `noexcept` にし、公開ヘッダーのコメントに「オーディオスレッドから呼び出し可能」と明記します。
-`audio-core` は Linux の CI で Clang の RealtimeSanitizer（`-fsanitize=realtime`）を有効にして検査します（P1 で導入）。
+あわせて、宣言と定義の `noexcept` の後に `VOCROZ_NONBLOCKING`（`vocroz/audio_core/realtime.h`）を付けます。
+`audio-core` は Linux の CI（`Linux (RealtimeSanitizer)` のジョブ）で Clang の RealtimeSanitizer（`-fsanitize=realtime`）を有効にしてテストを実行し、`VOCROZ_NONBLOCKING` を付けた関数の実行中の違反を検出します。
 
 ## 10. コメント
 
