@@ -54,6 +54,7 @@ add_subdirectory(modules)
 add_subdirectory(apps)
 if(VOCROZ_BUILD_TESTS)
   add_subdirectory(cmake/link-tests)
+  add_subdirectory(tests)
 endif()
 
 # すべてのターゲットを定義し終えてから、モジュール間の依存を検査する。

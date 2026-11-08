@@ -110,8 +110,10 @@ UDP を受けられるホスト（VPS や仮想マシン）で動かしてくだ
 | `internal/stun` | 外部インターフェース | STUN Binding のパースと応答 |
 | `internal/invite` | ドメイン | 招待コード、招待の登録・解決・失効 |
 | `internal/signaling` | ドメイン | 親機と子機の引き合わせ（候補アドレスの交換） |
+| `cmd/punchprobe`、`internal/punchprobe` | 試験専用 | ホールパンチの試験用のピア（`tests/nat/`）。サーバーのバイナリには含めない |
 
 外部インターフェースのパッケージからドメインのパッケージへだけ依存します（AGENTS.md 5.5）。
+試験専用のパッケージは `internal/udpapi` のワイヤーフォーマットを使いますが、サーバーのパッケージからは参照しません。
 
 ## テスト
 

@@ -106,6 +106,21 @@ jobs:
       - name: Test
         run: go vet ./... && go test ./...
 
+  nat-simulation:
+    # ネットワーク名前空間で NAT の種類（フルコーン、ポート制限、対称型）を模し、ランデブーサーバー越しの
+    # ホールパンチの成否と、不成立のときの原因の区別を確かめる（docs/adr/0025-integration-test-harness.md）。
+    # 名前空間と iptables に root 権限が要るので、ほかのジョブと分けて sudo で動かす。
+    name: NAT simulation (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: infra/rendezvous/go.mod
+      # sudo の環境では PATH が変わるので、setup-go が入れた go の場所を引き継ぐ。
+      - name: Run NAT matrix
+        run: sudo env "PATH=$PATH" tests/nat/run-nat-matrix.sh "$RUNNER_TEMP/nat"
+
   release-tools:
     name: Release tools (Go)
     runs-on: ubuntu-24.04

@@ -78,6 +78,8 @@ CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`�
 
 ランデブーサーバーの起動方法と API は [infra/rendezvous/README.md](infra/rendezvous/README.md) にあります。
 
+モジュールをまたぐ結合テスト、障害注入のプロキシ、遅延の計測ツール、NAT の模擬の使い方は [tests/README.md](tests/README.md) にあります。
+
 CI で確かめられない受け入れテスト（音出し、デバイスの抜き差し、インストーラー、実回線）の実機での手順は [docs/testing/alpha-acceptance.md](docs/testing/alpha-acceptance.md) にあります。
 
 ### インストーラー
