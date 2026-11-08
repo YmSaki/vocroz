@@ -46,6 +46,33 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  realtime-sanitizer:
+    # オーディオスレッドで実行する関数（VOCROZ_NONBLOCKING を付けたもの）の中で、ヒープ確保、ロック、
+    # システムコールなど実行時間に上限がない操作をしていないかを、テストの実行中に検査する（AGENTS.md 第 9 節）。
+    # RealtimeSanitizer は Clang 20 以降にしかないので、LLVM の apt リポジトリから入れる。
+    name: Linux (RealtimeSanitizer)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Clang 20
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          sudo bash llvm.sh 20
+          sudo apt-get install -y libclang-rt-20-dev
+      # 検査の対象は audio-core のテストだけなので、そのターゲットだけをビルドする。
+      # -Wno-function-effects: [[clang::nonblocking]] のコンパイル時の解析は、標準ライブラリの関数を
+      # 呼ぶたびに警告を出す。違反の判定は実行時の検査で行うので、ログが読めるよう警告を外す。
+      - name: Configure
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
+          "-DCMAKE_CXX_FLAGS=-fsanitize=realtime -Wno-function-effects"
+          -DVOCROZ_WITH_JUCE=OFF
+      - name: Build
+        run: cmake --build build -j --target audio_core_tests
+      - name: Test
+        run: ctest --test-dir build/modules/audio-core --output-on-failure
+
   rendezvous:
     name: Rendezvous server (Go)
     runs-on: ubuntu-24.04
