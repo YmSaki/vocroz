@@ -146,7 +146,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
 | `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知。JUCE の `MidiInput` による MIDI デバイスの列挙（永続 ID）、入力、抜去の検知（Beta、`docs/adr/0009-beta-module-layout.md`） | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
 | `capture` | アダプター | 子機のマイク入力のキャプチャ。WASAPI のループバックによるアプリ音声の収集（Beta、`docs/adr/0009-beta-module-layout.md`） | エンコード（`transport`） |
-| `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信。受信の振り分け、ランデブーメッセージと PCP、NAT-PMP のパース（`src/wire/`）、UDP ホールパンチ、自動ポート開放（PCP、NAT-PMP、UPnP-IGD）（`docs/adr/0021-udp-socket-and-nat-traversal.md`） | パケットのパース（`transport`） |
+| `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信。受信の振り分け、ランデブーメッセージと PCP、NAT-PMP のパース（`src/wire/`）、UDP ホールパンチ、自動ポート開放（PCP、NAT-PMP、UPnP-IGD）（`docs/adr/0021-udp-socket-and-nat-traversal.md`） | 子機と親機の間のパケットのパース（`transport`） |
 | `ipc` | アダプター | 名前付きパイプのクライアントとサーバー（`MessageChannel` の実装）。ACL によるアクセス制御 | メッセージの検証とコマンドの適用（`control-protocol`、`session`） |
 | `webui` | アダプター | JUCE の `WebBrowserComponent` による UI のホスト、`ui/dist` を配信するリソースプロバイダー、ネイティブ関数とイベントのブリッジ（`MessageChannel` の実装）。モードごとのウィンドウ設定の適用。ルーティング画面などの独立したサブウィンドウのホスト（Beta、`docs/adr/0009-beta-module-layout.md`） | メッセージの検証とコマンドの適用（`pa-engine` の `session`、子機ロジック） |
 | `persistence` | アダプター | 設定のアトミックな永続化、ログファイルへの出力、DPAPI による秘密情報の保護 | 設定値の意味づけ（`session`） |
