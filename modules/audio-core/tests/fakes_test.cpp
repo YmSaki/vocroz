@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// テスト用のフェイク（FakeAudioOutput、FakeAudioInput、FakeAudioSource）自体の単体テスト。
+// テスト用のフェイク（FakeAudioOutput、FakeAudioInput、FakeAudioSource、FakeAudioDeviceCatalog）自体の単体テスト。
 // 他のモジュールのテストがフェイクの振る舞いを前提にできるようにする。
 
 #include <vector>
 
 #include <gtest/gtest.h>
 
+#include "fakes/fake_audio_device_catalog.h"
 #include "fakes/fake_audio_input.h"
 #include "fakes/fake_audio_output.h"
 #include "fakes/fake_audio_source.h"
@@ -86,6 +87,19 @@ TEST(FakesTest, SineSourceIsContinuousAcrossPulls) {
     split.pull(std::span<float>(parts).first(37));
     split.pull(std::span<float>(parts).subspan(37));
     EXPECT_EQ(whole, parts);
+}
+
+TEST(FakesTest, DeviceCatalogReturnsDevicesPerDirection) {
+    FakeAudioDeviceCatalog catalog;
+    catalog.set_devices(AudioDeviceDirection::kOutput, {AudioDeviceInfo{"out-1", "USB", 2, false}});
+    catalog.set_devices(AudioDeviceDirection::kInput, {});
+    const auto outputs = catalog.list(AudioDeviceDirection::kOutput);
+    ASSERT_TRUE(outputs.has_value());
+    ASSERT_EQ(outputs.value().size(), 1U);
+    EXPECT_EQ(outputs.value()[0].id, "out-1");
+    EXPECT_TRUE(catalog.list(AudioDeviceDirection::kInput).value().empty());
+    catalog.set_error(AudioDeviceError::kInternal);
+    EXPECT_EQ(catalog.list(AudioDeviceDirection::kOutput).error(), AudioDeviceError::kInternal);
 }
 
 }  // namespace
