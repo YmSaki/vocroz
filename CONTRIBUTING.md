@@ -78,6 +78,8 @@ CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`�
 
 ランデブーサーバーの起動方法と API は [infra/rendezvous/README.md](infra/rendezvous/README.md) にあります。
 
+CI で確かめられない受け入れテスト（音出し、デバイスの抜き差し、インストーラー、実回線）の実機での手順は [docs/testing/alpha-acceptance.md](docs/testing/alpha-acceptance.md) にあります。
+
 ### インストーラー
 
 Windows で `installer/build.ps1` を実行すると、未署名のインストーラー（`VOCROZ-Setup-<バージョン>.exe`）と更新パッケージができます。
