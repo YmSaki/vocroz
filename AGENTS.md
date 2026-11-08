@@ -184,6 +184,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/` |
+| nlohmann/json | `control-protocol`、`persistence` |
 | Preact | `ui/`（UI の実行時に読み込む唯一のライブラリ。`docs/adr/0011-ui-frontend-stack.md`） |
 | Vite、TypeScript、Vitest、jsdom、Testing Library、Prettier | `ui/` の開発時の依存（成果物に含めない） |
 
@@ -299,6 +300,8 @@ i18n/、utils/  →  なし
 | ランデブーサーバーの機能 | `infra/rendezvous/internal/<機能名>/` | 5.5 の形式 |
 | 単体テスト | C++ は対象と同じモジュールの `tests/<対象>_test.cpp`。TypeScript と Go は対象と同じディレクトリ | 対象ファイル 1 つにテストファイル 1 つ |
 | ADR | `docs/adr/NNNN-<題名>.md` | コンテキスト、決定、理由、結果 |
+| 外部ライブラリの取得 | `cmake/<ライブラリ名>.cmake` | 1 ライブラリに 1 ファイル。バージョンをハッシュかコミットで固定する（`docs/adr/0010-external-libraries.md`） |
+| 外部ライブラリのリンク確認テスト | `cmake/link-tests/<ライブラリ名>_link_test.cpp` | ビルドとリンクと最小限の呼び出しだけを確かめる。使い方のテストは使うモジュールの `tests/` に書く |
 
 ### 5.2 配置の決定手順
 
