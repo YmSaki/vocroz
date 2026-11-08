@@ -12,6 +12,7 @@ add_library(vocroz_audio_core STATIC
   src/graph_description.cpp
   src/graph_exchange.cpp
   src/graph_validator.cpp
+  src/latency_planner.cpp
   src/meter_bank.cpp
   src/mixer.cpp
   src/render_graph.cpp
@@ -22,7 +23,7 @@ target_link_libraries(vocroz_audio_core PUBLIC vocroz::common)
 vocroz_set_warnings(vocroz_audio_core)
 
 if(VOCROZ_BUILD_TESTS)
-  # AudioOutput、AudioInput、AudioSource のフェイク。device や transport のテストからも
+  # AudioOutput、AudioInput、AudioSource、PluginProcessor のフェイク。device や transport のテストからも
   # #include "fakes/fake_audio_output.h" の形で使えるよう、ヘッダーだけのターゲットとして公開する。
   add_library(vocroz_audio_core_fakes INTERFACE)
   add_library(vocroz::audio_core_fakes ALIAS vocroz_audio_core_fakes)
@@ -39,6 +40,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/gain_test.cpp
     tests/graph_exchange_test.cpp
     tests/graph_validator_test.cpp
+    tests/latency_planner_test.cpp
     tests/meter_bank_test.cpp
     tests/mixer_test.cpp
     tests/realtime_sanitizer_test.cpp

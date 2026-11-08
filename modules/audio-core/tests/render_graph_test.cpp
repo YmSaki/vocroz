@@ -13,7 +13,10 @@
 
 #include <gtest/gtest.h>
 
+#include "vocroz/audio_core/constants.h"
+
 #include "fakes/fake_audio_source.h"
+#include "fakes/fake_plugin_processor.h"
 
 namespace vocroz::audio_core {
 namespace {
@@ -334,6 +337,177 @@ TEST(RenderGraphTest, ApprovedFeedbackThroughDelayNodeRecirculatesOncePerDelay) 
         // 先頭のサンプルはランプ（1 サンプル）の途中を含むので、ブロックの末尾で比べる。
         EXPECT_FLOAT_EQ(out[0].left[kBlockSize - 1], value);
     }
+}
+
+// ソース 1 → プラグイン 2 → ストリップ 3 → バス 4 → 出力 5。
+GraphDescription plugin_chain(std::shared_ptr<PluginProcessor> plugin, float value) {
+    GraphDescription graph;
+    graph.nodes = {NodeSpec::make_source(NodeId{1}, constant_source(value)),
+                   NodeSpec::make_plugin(NodeId{2}, std::move(plugin)),
+                   NodeSpec::make_strip(NodeId{3}, FaderId{0}, std::nullopt),
+                   NodeSpec::make_bus(NodeId{4}, FaderId{1}, std::nullopt),
+                   NodeSpec::make_output(NodeId{5}, std::nullopt)};
+    graph.connections = {{NodeId{1}, NodeId{2}},
+                         {NodeId{2}, NodeId{3}},
+                         {NodeId{3}, NodeId{4}},
+                         {NodeId{4}, NodeId{5}}};
+    return graph;
+}
+
+TEST(RenderGraphTest, ProcessesSignalThroughPluginNode) {
+    auto plugin = std::make_shared<FakePluginProcessor>(PluginBusLayout{1, 1}, 0, 0.5F);
+    auto graph = RenderGraph::build(plugin_chain(plugin, 0.4F), kCapacity, kCapacity);
+    ASSERT_TRUE(graph.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1});
+    (void)graph.value()->process(kBlockSize, faders, meters);
+    const auto out = graph.value()->process(kBlockSize, faders, meters);
+    EXPECT_FLOAT_EQ(out[0].left[kBlockSize - 1], 0.2F);
+    EXPECT_EQ(plugin->process_count(), 2U);
+}
+
+TEST(RenderGraphTest, MonoInputStereoOutputPluginFeedsStereoBus) {
+    // モノラルのチャンネルにステレオのリバーブを挿す構成。バッファは入出力の多い方（2 本）。
+    auto plugin = std::make_shared<FakePluginProcessor>(PluginBusLayout{1, 2});
+    GraphDescription graph;
+    graph.nodes = {NodeSpec::make_source(NodeId{1}, constant_source(0.3F)),
+                   NodeSpec::make_plugin(NodeId{2}, plugin),
+                   NodeSpec::make_bus(NodeId{3}, FaderId{0}, std::nullopt),
+                   NodeSpec::make_output(NodeId{4}, std::nullopt)};
+    graph.connections = {{NodeId{1}, NodeId{2}}, {NodeId{2}, NodeId{3}}, {NodeId{3}, NodeId{4}}};
+    auto built = RenderGraph::build(graph, kCapacity, kCapacity);
+    ASSERT_TRUE(built.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute(faders, FaderId{0});
+    (void)built.value()->process(kBlockSize, faders, meters);
+    const auto out = built.value()->process(kBlockSize, faders, meters);
+    EXPECT_EQ(plugin->last_channel_count(), 2U);
+    EXPECT_FLOAT_EQ(out[0].left[0], 0.3F);
+    EXPECT_FLOAT_EQ(out[0].right[0], 0.3F);
+}
+
+TEST(RenderGraphTest, InstrumentPluginRunsWithoutAudioInput) {
+    // VSTi（入力 0）は結線の入力がなくても処理され、出力を後段へ渡す。
+    auto plugin = std::make_shared<FakePluginProcessor>(PluginBusLayout{0, 2});
+    GraphDescription graph;
+    graph.nodes = {NodeSpec::make_plugin(NodeId{1}, plugin),
+                   NodeSpec::make_bus(NodeId{2}, FaderId{0}, std::nullopt),
+                   NodeSpec::make_output(NodeId{3}, std::nullopt)};
+    graph.connections = {{NodeId{1}, NodeId{2}}, {NodeId{2}, NodeId{3}}};
+    auto built = RenderGraph::build(graph, kCapacity, kCapacity);
+    ASSERT_TRUE(built.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    (void)built.value()->process(kBlockSize, faders, meters);
+    EXPECT_EQ(plugin->process_count(), 1U);
+    EXPECT_EQ(plugin->last_channel_count(), 2U);
+
+    // 音声入力を持たないプラグインへの結線は拒否する。
+    graph.nodes.push_back(NodeSpec::make_source(NodeId{4}, constant_source(0.1F)));
+    graph.connections.push_back({NodeId{4}, NodeId{1}});
+    EXPECT_EQ(build_error(graph), GraphError::kInvalidConnection);
+}
+
+TEST(RenderGraphTest, MutesPluginNodeAfterFailureUntilGraphIsRebuilt) {
+    auto plugin = std::make_shared<FakePluginProcessor>(PluginBusLayout{1, 1});
+    plugin->fail_after(2);
+    auto graph = RenderGraph::build(plugin_chain(plugin, 0.5F), kCapacity, kCapacity);
+    ASSERT_TRUE(graph.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1});
+    (void)graph.value()->process(kBlockSize, faders, meters);
+    EXPECT_FLOAT_EQ(graph.value()->process(kBlockSize, faders, meters)[0].left[0], 0.5F);
+    // 3 回目で失敗する。素通しにせず無音にし、以降はプラグインを呼ばない。
+    EXPECT_EQ(graph.value()->process(kBlockSize, faders, meters)[0].left[0], 0.0F);
+    EXPECT_EQ(graph.value()->process(kBlockSize, faders, meters)[0].left[0], 0.0F);
+    EXPECT_EQ(plugin->process_count(), 3U);
+}
+
+TEST(RenderGraphTest, MutesPluginNodeThatProducesNonFiniteSamples) {
+    auto plugin = std::make_shared<FakePluginProcessor>(PluginBusLayout{1, 1});
+    plugin->produce_nan_after(1);
+    auto graph = RenderGraph::build(plugin_chain(plugin, 0.5F), kCapacity, kCapacity);
+    ASSERT_TRUE(graph.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1});
+    (void)graph.value()->process(kBlockSize, faders, meters);
+    const auto out = graph.value()->process(kBlockSize, faders, meters);
+    for (std::size_t i = 0; i < kBlockSize; ++i) {
+        ASSERT_EQ(out[0].left[i], 0.0F) << i;
+    }
+}
+
+TEST(RenderGraphTest, AlignsPathsWithAndWithoutPluginLatencyAtTheBus) {
+    // ソース 1 → プラグイン 2（遅延 32）→ ストリップ 3 ─┐
+    // ソース 4 ─────────────────────→ ストリップ 5 ─┴→ バス 6 → 出力 7
+    // PDC がなければ、最初の 32 サンプルはストリップ 5 の信号だけが先に聞こえる。
+    constexpr std::size_t kLatency = 32;
+    GraphDescription graph;
+    graph.nodes = {NodeSpec::make_source(NodeId{1}, constant_source(0.25F)),
+                   NodeSpec::make_plugin(NodeId{2}, std::make_shared<FakePluginProcessor>(
+                                                        PluginBusLayout{1, 1}, kLatency)),
+                   NodeSpec::make_strip(NodeId{3}, FaderId{0}, std::nullopt),
+                   NodeSpec::make_source(NodeId{4}, constant_source(0.25F)),
+                   NodeSpec::make_strip(NodeId{5}, FaderId{1}, std::nullopt),
+                   NodeSpec::make_bus(NodeId{6}, FaderId{2}, std::nullopt),
+                   NodeSpec::make_output(NodeId{7}, std::nullopt)};
+    graph.connections = {{NodeId{1}, NodeId{2}}, {NodeId{2}, NodeId{3}}, {NodeId{3}, NodeId{6}},
+                         {NodeId{4}, NodeId{5}}, {NodeId{5}, NodeId{6}}, {NodeId{6}, NodeId{7}}};
+    auto built = RenderGraph::build(graph, kCapacity, kCapacity);
+    ASSERT_TRUE(built.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1, 2});
+    const auto out = built.value()->process(kBlockSize, faders, meters);
+    // 先頭はフェーダーのランプ（1 サンプル）を避けて 1 から見る。
+    for (std::size_t i = 1; i < kLatency; ++i) {
+        ASSERT_EQ(out[0].left[i], 0.0F) << i;
+    }
+    for (std::size_t i = kLatency + 1; i < kBlockSize; ++i) {
+        ASSERT_FLOAT_EQ(out[0].left[i], 0.5F) << i;
+    }
+}
+
+TEST(RenderGraphTest, RejectsInvalidPluginNodes) {
+    GraphDescription missing;
+    missing.nodes = {NodeSpec::make_plugin(NodeId{1}, nullptr)};
+    EXPECT_EQ(build_error(missing), GraphError::kMissingPlugin);
+
+    for (const PluginBusLayout layout :
+         {PluginBusLayout{3, 2}, PluginBusLayout{2, 0}, PluginBusLayout{2, 3}}) {
+        GraphDescription invalid;
+        invalid.nodes = {
+            NodeSpec::make_plugin(NodeId{1}, std::make_shared<FakePluginProcessor>(layout))};
+        EXPECT_EQ(build_error(invalid), GraphError::kInvalidPluginLayout);
+    }
+
+    // ステレオ出力のプラグインはモノラルのストリップへつなげない。
+    GraphDescription stereo_into_strip;
+    stereo_into_strip.nodes = {
+        NodeSpec::make_source(NodeId{1}, constant_source(0.0F)),
+        NodeSpec::make_plugin(NodeId{2},
+                              std::make_shared<FakePluginProcessor>(PluginBusLayout{1, 2})),
+        NodeSpec::make_strip(NodeId{3}, FaderId{0}, std::nullopt)};
+    stereo_into_strip.connections = {{NodeId{1}, NodeId{2}}, {NodeId{2}, NodeId{3}}};
+    EXPECT_EQ(build_error(stereo_into_strip), GraphError::kChannelMismatch);
+
+    // プラグインはフェーダーを持たないので、プリフェーダーのセンドの送り元にできない。
+    GraphDescription pre_fader;
+    pre_fader.nodes = {NodeSpec::make_plugin(
+                           NodeId{1}, std::make_shared<FakePluginProcessor>(PluginBusLayout{0, 2})),
+                       NodeSpec::make_bus(NodeId{2}, FaderId{0}, std::nullopt)};
+    pre_fader.connections = {{NodeId{1}, NodeId{2}, SendTap::kPreFader, FaderId{1}}};
+    EXPECT_EQ(build_error(pre_fader), GraphError::kInvalidSendTap);
+
+    GraphDescription too_late;
+    too_late.nodes = {NodeSpec::make_plugin(
+        NodeId{1}, std::make_shared<FakePluginProcessor>(PluginBusLayout{0, 2},
+                                                         kMaxLatencyCompensationSamples + 1))};
+    EXPECT_EQ(build_error(too_late), GraphError::kLatencyOutOfRange);
 }
 
 }  // namespace

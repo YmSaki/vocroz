@@ -65,6 +65,8 @@ private:
         std::size_t position = 0;      // 送り元のノードの nodes_ 上の位置
         bool pre_fader = false;        // 送り元のフェーダーの前から取り出す
         std::optional<FaderId> level;  // センドレベル
+        // プラグイン遅延補正。補正があるときだけ、送り元のチャンネルごとに 1 本ずつ確保する。
+        std::vector<DelayLine> compensation;
     };
 
     struct Node {
@@ -72,7 +74,9 @@ private:
         std::shared_ptr<AudioSource> source;
         std::optional<FaderId> fader;
         std::optional<MeterId> meter;
-        std::size_t channel_count = 0;
+        std::size_t channel_count = 0;        // 出力のチャンネル数（後段が読む数）
+        std::size_t input_channel_count = 0;  // 入力の加算で受け取るチャンネル数
+        std::size_t buffer_channel_count = 0;  // channels に確保した数（入力と出力の多い方）
         std::array<float*, kStereoChannels> channels{};
         // プリフェーダーのセンドの送り元のときだけ確保する、フェーダーの前の信号。
         std::array<float*, kStereoChannels> pre_fader{};
@@ -80,7 +84,11 @@ private:
         std::vector<Input> inputs;
         // kStrip の手動ディレイ（遅延があるときだけ 1 本）と、kDelay のチャンネルごとの遅延。
         std::vector<DelayLine> delays;
-        SafetyLimiter limiter;  // kLimiter のときだけ使う
+        SafetyLimiter limiter;                    // kLimiter のときだけ使う
+        std::shared_ptr<PluginProcessor> plugin;  // kPlugin のときだけ使う
+        // プラグインの処理が失敗したら立て、このグラフを破棄するまで出力を無音にする。
+        // オーディオスレッドだけが読み書きする。
+        bool plugin_failed = false;
     };
 
     RenderGraph() = default;
@@ -89,6 +97,7 @@ private:
     void process_node(Node& node, std::size_t frames, FaderBank& faders,
                       MeterBank& meters) noexcept VOCROZ_NONBLOCKING;
     static void keep_pre_fader(Node& node, std::size_t frames) noexcept VOCROZ_NONBLOCKING;
+    static void process_plugin(Node& node, std::size_t frames) noexcept VOCROZ_NONBLOCKING;
 
     std::vector<float>
         storage_;  // 全ノードのバッファ（channels、pre_fader、scratch_ はこの中を指す）
