@@ -44,7 +44,29 @@ cp::MixerSnapshot HostContext::snapshot() const {
         snapshot.channels.push_back(p.strip);
     }
     snapshot.pending = registry.pending_entries();
+    snapshot.routing = routing.info();
     return snapshot;
+}
+
+std::vector<std::string> HostContext::strip_ids() const {
+    std::vector<std::string> ids;
+    ids.reserve(registry.participants().size());
+    for (const auto& p : registry.participants()) {
+        ids.push_back(p.strip.entity_id);
+    }
+    return ids;
+}
+
+void HostContext::forget_strip_in_routing(const std::string& strip_id) {
+    if (routing.forget_strip(strip_id, strip_ids())) {
+        const auto& info = routing.info();
+        // 参照を取り除いただけなのでループは増えず、承認の状態はそのまま引き継げる。
+        if (!ports.mixer.apply_routing(info.applied, info.feedback_approved)) {
+            log(common::LogLevel::kWarning,
+                "ストリップを削除したあとのルーティングをミキサーに適用できませんでした");
+        }
+    }
+    publish_routing();
 }
 
 void HostContext::deny(PeerHandle peer, ErrorCode reason) {
@@ -161,6 +183,7 @@ void HostContext::teardown() {
     }
     // Master を先にミュートし、ミキサーのランプでフェードアウトさせてからチャンネルを外す。
     mute_master(cp::MasterMuteReason::kOperator);
+    const auto removed = strip_ids();
     for (auto& p : registry.participants()) {
         if (p.peer) {
             send(*p.peer, wire::SessionEndedNotice{});
@@ -173,6 +196,10 @@ void HostContext::teardown() {
     registry.clear();
     if (had_pending) {
         publish_pending();
+    }
+    // バスや出力の構成はセッションをまたいで残し、消えたストリップへの参照だけを片付ける。
+    for (const auto& strip_id : removed) {
+        forget_strip_in_routing(strip_id);
     }
     save_settings();
 }
@@ -212,6 +239,14 @@ void HostContext::publish_channel(const Participant& p) {
 
 void HostContext::publish_pending() {
     ports.ui.publish(cp::PendingUpdated{registry.pending_entries()});
+}
+
+void HostContext::publish_routing() {
+    ports.ui.publish(cp::RoutingUpdated{routing.info()});
+}
+
+void HostContext::publish_route_level(const cp::RouteLevel& level) {
+    ports.ui.publish(cp::RouteLevelUpdated{level});
 }
 
 void HostContext::notice(cp::NoticeSeverity severity, const char* code, const std::string& name) {

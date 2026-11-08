@@ -1,7 +1,7 @@
 # control-protocol
 
 UI とエンジンの間でやり取りするメッセージを 1 か所で定義するモジュールです。レイヤーはドメインで、依存してよいのは `common` だけです（AGENTS.md 4.2）。
-メッセージの形、revision の進め方、検証の範囲は `docs/adr/0015-control-protocol-messages.md` で決めています。
+メッセージの形、revision の進め方、検証の範囲は `docs/adr/0015-control-protocol-messages.md` で、ルーティングのメッセージは `docs/adr/0026-routing-staging.md` で決めています。
 
 ## 責務
 
@@ -15,12 +15,12 @@ UI とエンジンの間でやり取りするメッセージを 1 か所で定�
 
 | ヘッダー | 内容 |
 | --- | --- |
-| `vocroz/control_protocol/states.h` | `SessionState`、`ConnectionState`、`SignalState`、`OutputDeviceState`、`MasterMuteReason`、`ClientState`、`ErrorCode`、`NoticeSeverity` |
-| `vocroz/control_protocol/entities.h` | 状態の DTO（`SessionInfo`、`ChannelStrip`、`MasterStrip`、`PendingParticipant`、`MixerSnapshot`、`ClientSnapshot` など）と `Revision`、`Sequence`、`GainDb` |
+| `vocroz/control_protocol/states.h` | `SessionState`、`ConnectionState`、`SignalState`、`OutputDeviceState`、`MasterMuteReason`、`ClientState`、`ErrorCode`、`NoticeSeverity`、ルーティングの `BusKind`、`SendTap`、`RoutingIssue` |
+| `vocroz/control_protocol/entities.h` | 状態の DTO（`SessionInfo`、`ChannelStrip`、`MasterStrip`、`PendingParticipant`、`MixerSnapshot`、`ClientSnapshot`、ルーティングの `RoutingConfig`、`RoutingInfo`、`RouteLevel` など）と `Revision`、`Sequence`、`GainDb` |
 | `vocroz/control_protocol/commands.h` | `UiToEngineMessage`（`Hello`、`DiscreteCommand`、`SetGain`） |
 | `vocroz/control_protocol/events.h` | `EngineToUiMessage`（スナップショット、差分イベント、`Ack`、`Reject`、`GainAck`、`Meters`、`Notice`） |
 | `vocroz/control_protocol/json_codec.h` | `decode_ui_to_engine()`、`encode_ui_to_engine()`、`decode_engine_to_ui()`、`encode_engine_to_ui()`、`DecodeError` |
-| `vocroz/control_protocol/constants.h` | `kMaxMessageBytes`、`kMinFiniteGainDb`、`kMaxGainDb`、`kMaxCounter` |
+| `vocroz/control_protocol/constants.h` | `kMaxMessageBytes`、`kMinFiniteGainDb`、`kMaxGainDb`、`kMaxRoutingDelayMs`、`kMaxCounter` |
 | `vocroz/control_protocol/ports/message_channel.h` | `MessageChannel` ポート（`ipc` と `webui` が実装する） |
 | `vocroz/control_protocol/ports/message_listener.h` | `MessageListener` |
 | `vocroz/control_protocol/channel_relay.h` | `ChannelRelay`（親機モードの `remote-pa` で、WebView と `pa-engine` をつなぐ） |

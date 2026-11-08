@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 親機のミキサーへ、チャンネルの追加と削除、ミュート、ゲインを反映するポート。
+// 親機のミキサーへ、チャンネルの追加と削除、ミュート、ゲイン、ルーティングを反映するポート。
 // コンポジションルートが audio-core のミキサーへ SPSC キューかグラフのスワップで渡す。
 // session はオーディオスレッドの受け渡し方を知らずに、適用すべき値だけを決める。
 #pragma once
@@ -43,6 +43,27 @@ public:
     /// Master のフェーダーを反映する。
     /// @param gain_db ゲイン。std::nullopt は -∞ dB
     virtual void set_master_gain(control_protocol::GainDb gain_db) = 0;
+
+    /// ルーティングの構成をミキサーのグラフにして差し替える。構成は session が検証済み
+    /// （参照、つなげる組み合わせ、値の範囲、ループ）。ストリップから Master と、Master から
+    /// メインの出力への結線は暗黙にあるものとして加える（docs/adr/0026-routing-staging.md）。
+    /// 新しいバスとセンドはミュートで 0 dB とし（初期ミュート）、同じ entity_id のものは
+    /// フェーダーとミュートの値を引き継ぐ。遅延は delay_samples() でサンプル数に換算する。
+    /// @param config            適用する構成
+    /// @param feedback_approved 遅延ノードを通るループをオペレーターが承認した
+    /// @return 適用したら true。ミキサーが記述を受け付けなければ false で、今のグラフを使い続ける
+    [[nodiscard]] virtual bool apply_routing(const control_protocol::RoutingConfig& config,
+                                             bool feedback_approved) = 0;
+
+    /// バスかセンドのミュートを反映する。
+    /// @param entity_id バスかセンドの entity_id
+    /// @param muted     ミュートするなら true
+    virtual void set_route_muted(const std::string& entity_id, bool muted) = 0;
+
+    /// バスかセンドのフェーダーを反映する。5〜20 ms のゲインランプで適用する。
+    /// @param entity_id バスかセンドの entity_id
+    /// @param gain_db   ゲイン。std::nullopt は -∞ dB
+    virtual void set_route_gain(const std::string& entity_id, control_protocol::GainDb gain_db) = 0;
 };
 
 }  // namespace vocroz::session

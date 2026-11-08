@@ -9,6 +9,7 @@ import type {
   MasterStrip,
   MixerSnapshot,
   PendingParticipant,
+  RoutingInfo,
   SessionInfo,
   SetGainCommand,
   SignalState,
@@ -26,6 +27,7 @@ export interface FakeMixerEngineOptions extends FakeEngineOptions {
 
 const kSessionId = "session";
 const kMasterId = "master";
+const kRoutingId = "routing";
 /** 招待 URL の例。HTTPS の /join#<コード> の形（docs/adr/0006-invite-url-scheme.md）。 */
 const kInviteUrl = "https://vocroz.example/join#7KQ2-M9XD";
 
@@ -80,7 +82,16 @@ function initialSnapshot(scenario: MixerScenario): MixerSnapshot {
     output_device_name: "スピーカー (USB Audio Interface)",
     update_available: null,
   };
-  if (scenario === "empty") return { session, channels: [], master, pending: [] };
+  // ルーティングは空（バスも追加の出力もない）から始める。
+  const routing: RoutingInfo = {
+    entity_id: kRoutingId,
+    revision: 1,
+    applied: { buses: [], outputs: [], sends: [], delays: [], input_delays: [] },
+    feedback_approved: false,
+    staged: null,
+    levels: [],
+  };
+  if (scenario === "empty") return { session, channels: [], master, pending: [], routing };
   return {
     session: {
       ...session,
@@ -100,6 +111,7 @@ function initialSnapshot(scenario: MixerScenario): MixerSnapshot {
     ],
     master,
     pending: [{ entity_id: "pending1", revision: 1, name: "Tp 渡辺", short_id: "#08" }],
+    routing,
   };
 }
 
@@ -185,6 +197,12 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "leave":
       case "select_input":
       case "set_send_mute":
+      // ルーティング画面はまだないので、フェイクエンジンもルーティングを変えない。
+      // 画面を作る PR で、ステージングと適用を再現する。
+      case "stage_routing":
+      case "commit_routing":
+      case "discard_routing":
+      case "set_route_mute":
         this.reject(message, "INVALID_STATE");
         return;
     }
@@ -301,6 +319,10 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "leave":
       case "select_input":
       case "set_send_mute":
+      case "stage_routing":
+      case "commit_routing":
+      case "discard_routing":
+      case "set_route_mute":
         this.reject(command, "INVALID_STATE");
         return;
     }

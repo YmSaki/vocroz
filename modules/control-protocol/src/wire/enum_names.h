@@ -116,6 +116,38 @@ struct EnumNames<NoticeSeverity> {
     }};
 };
 
+template <>
+struct EnumNames<BusKind> {
+    static constexpr std::array<EnumName<BusKind>, 2> kTable{{
+        {BusKind::kUser, "USER"},
+        {BusKind::kCue, "CUE"},
+    }};
+};
+
+template <>
+struct EnumNames<SendTap> {
+    static constexpr std::array<EnumName<SendTap>, 2> kTable{{
+        {SendTap::kPostFader, "POST_FADER"},
+        {SendTap::kPreFader, "PRE_FADER"},
+    }};
+};
+
+template <>
+struct EnumNames<RoutingIssue> {
+    static constexpr std::array<EnumName<RoutingIssue>, 10> kTable{{
+        {RoutingIssue::kInvalidId, "INVALID_ID"},
+        {RoutingIssue::kDuplicateId, "DUPLICATE_ID"},
+        {RoutingIssue::kTooManyItems, "TOO_MANY_ITEMS"},
+        {RoutingIssue::kUnknownNode, "UNKNOWN_NODE"},
+        {RoutingIssue::kInvalidSend, "INVALID_SEND"},
+        {RoutingIssue::kInvalidSendTap, "INVALID_SEND_TAP"},
+        {RoutingIssue::kDelayOutOfRange, "DELAY_OUT_OF_RANGE"},
+        {RoutingIssue::kOutputChannelOutOfRange, "OUTPUT_CHANNEL_OUT_OF_RANGE"},
+        {RoutingIssue::kOverlappingOutputs, "OVERLAPPING_OUTPUTS"},
+        {RoutingIssue::kUndelayedLoop, "UNDELAYED_LOOP"},
+    }};
+};
+
 /// 対応表が列挙子の宣言順（0, 1, 2, ...）に並んでいるかを確かめる。
 /// 列挙子を追加したのに表を更新し忘れると、途中の抜けはここで、末尾の抜けは往復のテストで見つかる。
 template <typename E>
@@ -137,6 +169,9 @@ static_assert(is_in_declaration_order<MasterMuteReason>());
 static_assert(is_in_declaration_order<ClientState>());
 static_assert(is_in_declaration_order<ErrorCode>());
 static_assert(is_in_declaration_order<NoticeSeverity>());
+static_assert(is_in_declaration_order<BusKind>());
+static_assert(is_in_declaration_order<SendTap>());
+static_assert(is_in_declaration_order<RoutingIssue>());
 
 /// 列挙子の JSON での名前を返す。
 template <typename E>

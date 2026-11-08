@@ -47,6 +47,14 @@ template <>
 inline constexpr std::string_view kMessageType<SelectInput> = "select_input";
 template <>
 inline constexpr std::string_view kMessageType<SetSendMute> = "set_send_mute";
+template <>
+inline constexpr std::string_view kMessageType<StageRouting> = "stage_routing";
+template <>
+inline constexpr std::string_view kMessageType<CommitRouting> = "commit_routing";
+template <>
+inline constexpr std::string_view kMessageType<DiscardRouting> = "discard_routing";
+template <>
+inline constexpr std::string_view kMessageType<SetRouteMute> = "set_route_mute";
 
 // エンジンから UI へ。
 template <>
@@ -65,6 +73,10 @@ template <>
 inline constexpr std::string_view kMessageType<PendingUpdated> = "pending_updated";
 template <>
 inline constexpr std::string_view kMessageType<ClientUpdated> = "client_updated";
+template <>
+inline constexpr std::string_view kMessageType<RoutingUpdated> = "routing_updated";
+template <>
+inline constexpr std::string_view kMessageType<RouteLevelUpdated> = "route_level_updated";
 template <>
 inline constexpr std::string_view kMessageType<Ack> = "ack";
 template <>
