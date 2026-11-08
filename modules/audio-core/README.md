@@ -7,6 +7,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 
 - 内部フォーマット（48kHz、Float32、標準ブロック 128 サンプル）。デバイスのコールバック長が違っても 128 サンプル以下に分けて処理する
 - 音声グラフ（ソース → ストリップ → バス → リミッター → 出力）の記述、検証（ループの検出を含む）、レンダーグラフの構築
+- ルーティング（Beta1、`docs/adr/0018-routing-graph.md`）: プリフェーダー / ポストフェーダーのセンドとセンドレベル、キュー / モニターバス、入力ごとの手動ディレイ、遅延ノードを通るフィードバック経路（承認があるときだけ）、1 台の出力デバイスの複数のチャンネルの組への出力
 - グラフのスワップ（オーディオスレッド外で構築し、アトミックなポインター交換で差し替え、古いグラフはオーディオスレッド外で破棄）
 - ミキサー（Alpha はモノラル 8 チャンネル以上 + Master の固定構成を、グラフの 1 構成として記述する）
 - 5〜20ms のゲインランプ、安全リミッター、ピークと RMS のメーター算出
@@ -19,9 +20,10 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 
 | ヘッダー | 内容 | オーディオスレッド |
 | --- | --- | --- |
-| `vocroz/audio_core/constants.h` | `kSampleRate`、`kBlockSize`、`kMaxFaderGainDb` | 対象外 |
+| `vocroz/audio_core/constants.h` | `kSampleRate`、`kBlockSize`、`kMaxFaderGainDb`、遅延と出力チャンネルの上限 | 対象外 |
 | `vocroz/audio_core/mixer.h` | `Mixer`、`MixerConfig`、`MixerError` | `render()` だけ呼び出し可能 |
-| `vocroz/audio_core/graph_description.h` | `GraphDescription`、`NodeSpec`、`Connection`、`NodeId`、`FaderId`、`MeterId`、`GraphError` | 対象外（コントロールスレッドで記述する） |
+| `vocroz/audio_core/graph_description.h` | `GraphDescription`、`NodeSpec`、`Connection`、`SendTap`、`NodeId`、`FaderId`、`MeterId`、`GraphError` | 対象外（コントロールスレッドで記述する） |
+| `vocroz/audio_core/feedback_analysis.h` | `analyze_feedback()`、`FeedbackReport`（ループに含まれるノードと、遅延のないループ） | 対象外 |
 | `vocroz/audio_core/fixed_mixer_layout.h` | `FixedMixerLayout`（Alpha の固定ミキサーの記述と識別子の割り当て） | 対象外 |
 | `vocroz/audio_core/gain_ramp.h` | `GainRamp` | 呼び出し可能 |
 | `vocroz/audio_core/gain.h` | `fader_db_to_linear()`、`linear_to_db()` | 呼び出し可能 |
@@ -59,6 +61,35 @@ mixer.engage_safety_mute();
 const MeterReading level = mixer.read_meter(layout.channel_meter(0));
 mixer.collect_garbage();
 ```
+
+### 使い方（ルーティング）
+
+```cpp
+using namespace vocroz::audio_core;
+
+// ソース → ストリップ（手動ディレイ 10ms）→ Main バス → 出力（チャンネル 1-2）と、
+// ストリップ → プリフェーダーのセンド → キューバス → 出力（チャンネル 3-4）。
+GraphDescription graph;
+graph.nodes = {NodeSpec::make_source(NodeId{1}, source),
+               NodeSpec::make_strip(NodeId{2}, FaderId{0}, MeterId{0}, 480),
+               NodeSpec::make_bus(NodeId{3}, FaderId{1}, MeterId{1}),
+               NodeSpec::make_output(NodeId{4}, MeterId{2}, 0),
+               NodeSpec::make_bus(NodeId{5}, FaderId{2}, MeterId{3}),
+               NodeSpec::make_output(NodeId{6}, MeterId{4}, 2)};
+graph.connections = {{NodeId{1}, NodeId{2}},
+                     {NodeId{2}, NodeId{3}},
+                     {NodeId{3}, NodeId{4}},
+                     {NodeId{2}, NodeId{5}, SendTap::kPreFader, FaderId{3}},  // センドレベル
+                     {NodeId{5}, NodeId{6}}};
+
+// ステージング: 適用せずに検証し、ループがあれば画面に示す。
+const FeedbackReport loops = analyze_feedback(graph);
+if (auto valid = mixer.validate_graph(graph); !valid) { /* GraphError を UI へ */ }
+// 遅延ノードを通るループは、オペレーターが承認したら feedback_approved を立てて適用する。
+(void)mixer.apply_graph(graph);
+```
+
+プリフェーダーのセンドには必ずセンドレベル（ミュートで始まるフェーダー）を付けます。新規参加者のストリップを割り当てるときは、チャンネルのフェーダーと同じくセンドレベルも `reset_fader()` で初期状態に戻します。
 
 `Mixer` は `AudioRenderCallback` を実装しているので、`AudioOutput::start(mixer, listener)` でデバイスのコールバックにつなぎます。
 

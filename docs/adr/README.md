@@ -15,5 +15,6 @@
 | [0011](0011-ui-frontend-stack.md) | UI のフロントエンドは Vite + Preact + TypeScript で作り、フェイクエンジンで単独に開発する | 採用 |
 | [0012](0012-rendezvous-protocol.md) | ランデブーサーバーのプロトコルと状態の持ち方 | 採用 |
 | [0013](0013-installer-and-updater.md) | インストーラー、pa-updater、起動スタブの構成 | 採用 |
+| [0018](0018-routing-graph.md) | ルーティンググラフのセンド、遅延ノード、複数の物理出力 | 採用 |
 
 仕様書は RPC-SPEC-001（1.2-draft）。2026-11-07 にプロダクトオーナーが「UX を損なわない範囲で実装しやすい方法」を方針として承認した。

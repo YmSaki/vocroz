@@ -22,4 +22,22 @@ inline constexpr std::size_t kBlockSize = 128;
 /// フェーダーの上限（dB）。フェーダーの調整範囲は -∞ dB 〜 +10 dB。
 inline constexpr float kMaxFaderGainDb = 10.0F;
 
+/// 入力ストリップの手動同期オフセット（ディレイ）の上限（サンプル、1 秒）。
+/// 子機ごとの回線遅延の差や、映像との同期のずれを手で合わせる用途で、数百 ms 程度の差を
+/// 余裕をもって吸収できる長さにする。ディレイラインはグラフの構築時に確保するので、
+/// 上限を大きくするとストリップ 1 本あたりのメモリ（1 秒で 192KB）が増える。
+inline constexpr std::size_t kMaxInputDelaySamples = kSampleRate;
+
+/// 遅延ノード（フィードバック経路を許す明示的なディレイ）の遅延の下限（サンプル）。
+/// ループを含むグラフは、遅延ノードの出力を前のブロックまでに書いたサンプルから作ることで
+/// 処理順を決める。そのため遅延は 1 ブロック以上でなければならない。
+inline constexpr std::size_t kMinFeedbackDelaySamples = kBlockSize;
+
+/// 遅延ノードの遅延の上限（サンプル、2 秒）。エコーなどの演出で使う長さを想定する。
+inline constexpr std::size_t kMaxFeedbackDelaySamples = 2 * kSampleRate;
+
+/// 出力デバイスのチャンネル数の上限。出力ノードはこの範囲のチャンネルの組に書く。
+/// 多チャンネルのオーディオインターフェース（ADAT を含めて 32〜64 チャンネル）を想定する。
+inline constexpr std::size_t kMaxOutputChannels = 64;
+
 }  // namespace vocroz::audio_core

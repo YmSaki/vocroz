@@ -9,6 +9,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -252,6 +253,82 @@ TEST_F(MixerTest, WritesAverageToMonoDeviceAndSilenceToExtraChannels) {
             EXPECT_EQ(out[frame * 6 + ch], 0.0F);
         }
     }
+}
+
+// ソース → ストリップ → Main バス → 出力（チャンネル 0-1）と、
+// ストリップ → プリフェーダー（センドレベル）→ モニターバス → 出力（channel から 2 チャンネル）。
+GraphDescription main_and_monitor(std::shared_ptr<AudioSource> source, std::size_t channel) {
+    GraphDescription graph;
+    graph.nodes = {NodeSpec::make_source(NodeId{1}, std::move(source)),
+                   NodeSpec::make_strip(NodeId{2}, FaderId{0}, std::nullopt),
+                   NodeSpec::make_bus(NodeId{3}, FaderId{1}, std::nullopt),
+                   NodeSpec::make_output(NodeId{4}, std::nullopt, 0),
+                   NodeSpec::make_bus(NodeId{5}, FaderId{2}, std::nullopt),
+                   NodeSpec::make_output(NodeId{6}, std::nullopt, channel)};
+    graph.connections = {{NodeId{1}, NodeId{2}},
+                         {NodeId{2}, NodeId{3}},
+                         {NodeId{3}, NodeId{4}},
+                         {NodeId{2}, NodeId{5}, SendTap::kPreFader, FaderId{3}},
+                         {NodeId{5}, NodeId{6}}};
+    return graph;
+}
+
+TEST(MixerRoutingTest, WritesEachOutputNodeToItsDeviceChannels) {
+    Mixer mixer;
+    FakeAudioOutput output(6);
+    SafetyMuteOnDeviceLost listener(mixer);
+    ASSERT_TRUE(mixer
+                    .apply_graph(main_and_monitor(
+                        std::make_shared<FakeAudioSource>(FakeAudioSource::constant(0.2F)), 4))
+                    .has_value());
+    for (const std::uint16_t id :
+         {std::uint16_t{0}, std::uint16_t{1}, std::uint16_t{2}, std::uint16_t{3}}) {
+        ASSERT_TRUE(mixer.set_fader_muted(FaderId{id}, false).has_value());
+    }
+    ASSERT_TRUE(mixer.set_fader_gain_db(FaderId{0}, -6.0F).has_value());  // Main だけ下げる
+    ASSERT_TRUE(output.start(mixer, listener).has_value());
+    (void)output.render_frames(kAfterRamp);
+    const std::vector<float> out = output.render_frames(16);
+    const float main_level = 0.2F * std::pow(10.0F, -6.0F / 20.0F);
+    for (std::size_t frame = 0; frame < 16; ++frame) {
+        EXPECT_NEAR(out[frame * 6], main_level, 1e-5F);
+        EXPECT_NEAR(out[frame * 6 + 1], main_level, 1e-5F);
+        EXPECT_EQ(out[frame * 6 + 2], 0.0F);  // どの出力ノードも書かないチャンネル
+        EXPECT_EQ(out[frame * 6 + 3], 0.0F);
+        EXPECT_FLOAT_EQ(out[frame * 6 + 4], 0.2F);  // モニター（プリフェーダー）
+        EXPECT_FLOAT_EQ(out[frame * 6 + 5], 0.2F);
+    }
+}
+
+TEST(MixerRoutingTest, DropsOutputBeyondDeviceChannelsWithoutFallback) {
+    // モニターの出力先がデバイスにないとき、Main のチャンネルへ振り替えて混ぜたりしない。
+    Mixer mixer;
+    FakeAudioOutput output(2);
+    SafetyMuteOnDeviceLost listener(mixer);
+    ASSERT_TRUE(mixer
+                    .apply_graph(main_and_monitor(
+                        std::make_shared<FakeAudioSource>(FakeAudioSource::constant(0.2F)), 2))
+                    .has_value());
+    ASSERT_TRUE(mixer.set_fader_muted(FaderId{2}, false).has_value());
+    ASSERT_TRUE(mixer.set_fader_muted(FaderId{3}, false).has_value());
+    ASSERT_TRUE(output.start(mixer, listener).has_value());
+    (void)output.render_frames(kAfterRamp);
+    const std::vector<float> out = output.render_frames(16);
+    for (const float sample : out) {
+        EXPECT_EQ(sample, 0.0F);
+    }
+}
+
+TEST(MixerRoutingTest, ValidatesGraphWithoutApplyingIt) {
+    Mixer mixer;
+    GraphDescription loop =
+        main_and_monitor(std::make_shared<FakeAudioSource>(FakeAudioSource::constant(0.2F)), 2);
+    loop.nodes.push_back(NodeSpec::make_delay(NodeId{7}, kMinFeedbackDelaySamples));
+    loop.connections.push_back({NodeId{5}, NodeId{7}});
+    loop.connections.push_back({NodeId{7}, NodeId{5}});
+    EXPECT_EQ(mixer.validate_graph(loop).error(), GraphError::kUnapprovedFeedback);
+    loop.feedback_approved = true;
+    EXPECT_TRUE(mixer.validate_graph(loop).has_value());
 }
 
 TEST_F(MixerTest, RejectsOutOfRangeFaderAndReportsFullQueue) {

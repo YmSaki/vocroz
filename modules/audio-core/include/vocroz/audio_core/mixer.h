@@ -23,7 +23,9 @@ namespace vocroz::audio_core {
 /// Mixer の構成。構築時に必要なメモリをすべて確保する。
 struct MixerConfig {
     /// フェーダーの数。Alpha の 8 チャンネル + Master に、Beta1
-    /// のバスを足しても足りる大きさにする。
+    /// のバスを足しても足りる大きさにする。センドレベル（Connection::level）もフェーダーを 1
+    /// つ使うので、 キューやモニターのミックスを作る構成では、ストリップ数 ×
+    /// センド先のバス数のぶんを足す。
     std::size_t fader_capacity = 64;
     /// メーターの数。fader_capacity と同じ考え方で決める。
     std::size_t meter_capacity = 64;
@@ -59,6 +61,14 @@ public:
     /// @return 適用したら成功。記述が不正なら GraphError を返し、現在のグラフをそのまま使う
     /// スレッド安全性: コントロールスレッドから呼ぶ。
     [[nodiscard]] common::Result<void, GraphError> apply_graph(const GraphDescription& description);
+
+    /// グラフの記述を、適用せずに検証する。apply_graph() と同じ規則で判定する。
+    /// ルーティングのステージング（session）が、仮の構成を適用してよいかを確かめるために使う。
+    /// @param description グラフの記述
+    /// @return 適用できる記述なら成功。不正なら apply_graph() が返すのと同じ GraphError
+    /// スレッド安全性: コントロールスレッドから呼ぶ。
+    [[nodiscard]] common::Result<void, GraphError> validate_graph(
+        const GraphDescription& description) const;
 
     /// フェーダーのゲインを変える。ゲインランプで変化させる。
     /// @param fader 対象のフェーダー
@@ -114,9 +124,10 @@ public:
     [[nodiscard]] bool is_graph_settled() noexcept;
 
     /// 出力するサンプルを生成する。コールバック長が kBlockSize と違っても、kBlockSize
-    /// 以下に分けて処理する。 出力の 1、2 チャンネル目に Master の L、R を書き、3
-    /// チャンネル目以降は無音にする。 モノラルのデバイスには L と R の平均を書く。出力は必ず -1〜1
-    /// の有限の値になる。
+    /// 以下に分けて処理する。出力ノードごとに、NodeSpec::device_channel から始まるチャンネルの組へ
+    /// L、R を書き、どの出力ノードも書かないチャンネルは無音にする。デバイスにないチャンネルへの
+    /// 出力は捨てる。モノラルのデバイスには、チャンネル 0 から始まる出力ノードの L と R
+    /// の平均を書く。 出力は必ず -1〜1 の有限の値になる。
     /// @param out 書き込み先
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
     void render(InterleavedBuffer out) noexcept VOCROZ_NONBLOCKING override;
