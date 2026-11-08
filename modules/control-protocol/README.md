@@ -23,6 +23,7 @@ UI とエンジンの間でやり取りするメッセージを 1 か所で定�
 | `vocroz/control_protocol/constants.h` | `kMaxMessageBytes`、`kMinFiniteGainDb`、`kMaxGainDb`、`kMaxCounter` |
 | `vocroz/control_protocol/ports/message_channel.h` | `MessageChannel` ポート（`ipc` と `webui` が実装する） |
 | `vocroz/control_protocol/ports/message_listener.h` | `MessageListener` |
+| `vocroz/control_protocol/listener_slot.h` | `MessageListenerSlot`（`MessageChannel` の実装がリスナーを保持し、`set_listener()` の約束を守って呼び出すための部品） |
 | `vocroz/control_protocol/channel_relay.h` | `ChannelRelay`（親機モードの `remote-pa` で、WebView と `pa-engine` をつなぐ） |
 
 どの関数もオーディオスレッドからは呼び出しません（ヒープを確保するため）。

@@ -29,7 +29,8 @@ if(VOCROZ_BUILD_TESTS)
   vocroz_add_unit_test(control_protocol_tests
     tests/channel_relay_test.cpp
     tests/json_codec_test.cpp
-    tests/json_codec_examples_test.cpp)
+    tests/json_codec_examples_test.cpp
+    tests/listener_slot_test.cpp)
   target_link_libraries(control_protocol_tests PRIVATE
     vocroz::control_protocol
     vocroz::control_protocol_fakes
