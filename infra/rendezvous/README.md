@@ -2,7 +2,7 @@
 
 親機と子機が直接つながるための仲介をする Go の単一バイナリです。
 音声は通さず、メディア鍵も持ちません。サーバーが止まっても、確立済みのセッションは続きます。
-設計判断は [docs/adr/0009-rendezvous-protocol.md](../../docs/adr/0009-rendezvous-protocol.md) にあります。
+設計判断は [docs/adr/0012-rendezvous-protocol.md](../../docs/adr/0012-rendezvous-protocol.md) にあります。
 
 | 機能 | ポート | 内容 |
 | --- | --- | --- |
