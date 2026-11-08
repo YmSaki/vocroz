@@ -126,8 +126,8 @@ void RenderGraph::mix_inputs(Node& node, std::size_t frames,
         const Node& from = nodes_[input.position];
         const float* const* source = input.pre_fader ? from.pre_fader.data() : from.channels.data();
         if (input.level || !input.compensation.empty()) {
-            // 送り元のバッファは他の結線も読むので、補正の遅延とセンドレベルは作業領域に写してから
-            // 掛ける。
+            // 送り元のバッファは他の結線も読む。
+            // そのため、補正の遅延とセンドレベルは作業領域に写してから掛ける。
             for (std::size_t ch = 0; ch < from.channel_count; ++ch) {
                 std::copy(source[ch], source[ch] + frames, scratch_[ch]);
             }
@@ -165,8 +165,8 @@ void RenderGraph::process_plugin(Node& node, std::size_t frames) noexcept VOCROZ
         context.channels = std::span<float* const>(node.channels.data(), node.buffer_channel_count);
         context.frames = frames;
         const bool ok = node.plugin->process(context) == PluginProcessStatus::kOk;
-        // NaN
-        // や無限大は後段のバスとリミッターを通っても戻らず、出力全体を壊すので失敗と同じに扱う。
+        // NaN や無限大は、後段のバスとリミッターを通っても元に戻らない。
+        // 出力全体を壊すので、失敗と同じに扱う。
         node.plugin_failed = !ok || !all_finite(node.channels, node.channel_count, frames);
     }
     if (node.plugin_failed) {

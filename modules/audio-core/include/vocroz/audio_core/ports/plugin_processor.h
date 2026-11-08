@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // 音声グラフのプラグインノードが処理を呼び出すポート。
-// VST3 のエフェクト（B4）と VSTi（B5）を plugin-host が JUCE
-// で実装する（docs/adr/0009-beta-module-layout.md）。 グラフ自体は audio-core が持つので、JUCE の
-// AudioProcessorGraph は使わず、プラグイン 1 つを グラフの 1
-// ノードとしてこのポート越しに呼ぶ。プラグインノードの規則は docs/adr/0024-plugin-node-and-pdc.md。
+// VST3 のエフェクト（B4）と VSTi（B5）を、plugin-host が JUCE で実装する。
+// 置き場所は docs/adr/0009-beta-module-layout.md で決めた。
+// グラフ自体は audio-core が持つので、JUCE の AudioProcessorGraph は使わない。
+// プラグイン 1 つをグラフの 1 ノードとして、このポート越しに呼ぶ。
+// プラグインノードの規則は docs/adr/0024-plugin-node-and-pdc.md に書いた。
 #pragma once
 
 #include <cstddef>
@@ -44,10 +45,10 @@ enum class PluginProcessStatus {
 };
 
 /// グラフの 1 ノードとして処理するプラグイン。
-/// 実装は、グラフに渡す前に kSampleRate、kBlockSize、layout()
-/// のチャンネル数で処理の準備を済ませておく。 グラフには std::shared_ptr
-/// で渡す。古いグラフはオーディオスレッド外で破棄されるので、
-/// 最後の参照もオーディオスレッド外で外れる。
+/// 実装は、グラフに渡す前に処理の準備を済ませておく。
+/// 準備には kSampleRate、kBlockSize、layout() のチャンネル数を使う。
+/// グラフには std::shared_ptr で渡す。
+/// 古いグラフはオーディオスレッド外で破棄されるので、最後の参照もオーディオスレッド外で外れる。
 class PluginProcessor {
 public:
     virtual ~PluginProcessor() = default;
