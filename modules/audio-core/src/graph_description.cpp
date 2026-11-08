@@ -58,4 +58,16 @@ NodeSpec NodeSpec::make_output(NodeId id, std::optional<MeterId> meter,
     return spec;
 }
 
+NodeSpec NodeSpec::make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin) {
+    NodeSpec spec;
+    spec.id = id;
+    spec.kind = NodeKind::kPlugin;
+    if (plugin) {
+        spec.plugin_layout = plugin->layout();
+        spec.latency_samples = plugin->latency_samples();
+    }
+    spec.plugin = std::move(plugin);
+    return spec;
+}
+
 }  // namespace vocroz::audio_core

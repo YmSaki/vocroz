@@ -13,6 +13,7 @@
 #include "vocroz/audio_core/feedback_analysis.h"
 
 #include "audio_core_constants.h"
+#include "latency_planner.h"
 
 namespace vocroz::audio_core {
 namespace {
@@ -52,6 +53,19 @@ std::optional<GraphError> validate_node(const NodeSpec& spec, std::size_t fader_
                 return GraphError::kOutputChannelOutOfRange;
             }
             break;
+        case NodeKind::kPlugin:
+            if (!spec.plugin) {
+                return GraphError::kMissingPlugin;
+            }
+            if (spec.plugin_layout.input_channels > kStereoChannels ||
+                spec.plugin_layout.output_channels == 0 ||
+                spec.plugin_layout.output_channels > kStereoChannels) {
+                return GraphError::kInvalidPluginLayout;
+            }
+            if (spec.latency_samples > kMaxLatencyCompensationSamples) {
+                return GraphError::kLatencyOutOfRange;
+            }
+            break;
     }
     if (spec.fader && spec.fader->value >= fader_capacity) {
         return GraphError::kFaderOutOfRange;
@@ -80,12 +94,14 @@ std::optional<GraphError> claim_fader(std::optional<FaderId> fader, std::size_t 
 // 結線 1 本を検証する。
 std::optional<GraphError> validate_connection(const Connection& connection, const NodeSpec& from,
                                               const NodeSpec& to) {
-    if (from.kind == NodeKind::kOutput || to.kind == NodeKind::kSource) {
+    // 音声入力を持たないプラグイン（VSTi）への結線も、受け取る先がないので拒否する。
+    if (from.kind == NodeKind::kOutput || to.kind == NodeKind::kSource ||
+        input_channels_of(to) == 0) {
         return GraphError::kInvalidConnection;
     }
     // モノラルからステレオへは両チャンネルに複製するが、ステレオからモノラルへの
     // ダウンミックスの規則は決めていないので受け付けない。
-    if (channel_count_of(from.kind) > channel_count_of(to.kind)) {
+    if (output_channels_of(from) > input_channels_of(to)) {
         return GraphError::kChannelMismatch;
     }
     if (connection.tap == SendTap::kPreFader) {
@@ -101,8 +117,8 @@ std::optional<GraphError> validate_connection(const Connection& connection, cons
 
 }  // namespace
 
-std::size_t channel_count_of(NodeKind kind) noexcept {
-    switch (kind) {
+std::size_t output_channels_of(const NodeSpec& spec) noexcept {
+    switch (spec.kind) {
         case NodeKind::kSource:
         case NodeKind::kStrip:
             return 1;
@@ -111,8 +127,17 @@ std::size_t channel_count_of(NodeKind kind) noexcept {
         case NodeKind::kLimiter:
         case NodeKind::kOutput:
             return kStereoChannels;
+        case NodeKind::kPlugin:
+            return spec.plugin_layout.output_channels;
     }
     return 1;
+}
+
+std::size_t input_channels_of(const NodeSpec& spec) noexcept {
+    if (spec.kind == NodeKind::kPlugin) {
+        return spec.plugin_layout.input_channels;
+    }
+    return output_channels_of(spec);
 }
 
 common::Result<GraphPlan, GraphError> plan_graph(const GraphDescription& description,
@@ -221,6 +246,12 @@ common::Result<GraphPlan, GraphError> plan_graph(const GraphDescription& descrip
     if (plan.order.size() != specs.size()) {
         return make_unexpected(GraphError::kCycle);
     }
+
+    auto latency = compensate_latency(description, plan.order, plan.inputs_of, plan.from_of);
+    if (!latency) {
+        return make_unexpected(latency.error());
+    }
+    plan.latency = std::move(latency).value();
     return plan;
 }
 
