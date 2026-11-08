@@ -31,6 +31,7 @@ include(cmake/CompilerWarnings.cmake)
 include(cmake/Testing.cmake)
 include(cmake/GitHooks.cmake)
 include(cmake/DependencyRules.cmake)
+include(cmake/EmbedUiAssets.cmake)
 
 # 外部ライブラリ（バージョンは各ファイルで固定する。ライセンスは CONTRIBUTING.md）。
 include(cmake/ExternalSources.cmake)

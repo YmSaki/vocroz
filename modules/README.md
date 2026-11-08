@@ -13,8 +13,8 @@
 | `session` | 招待、承認、再接続、接続と信号の状態モデル | P3 |
 | `control-protocol` | UI とエンジン間のコマンド / イベント定義（名前付きパイプ + JSON） | P4（追加済み） |
 | `network` | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | P2 |
-| `ipc` | 名前付きパイプのクライアントとサーバー | P4 |
-| `webui` | JUCE の WebBrowserComponent による UI のホストとブリッジ | P4 |
+| `ipc` | 名前付きパイプのクライアントとサーバー（ACL、長さ付き JSON、再接続） | P4（追加済み） |
+| `webui` | JUCE の WebBrowserComponent による UI のホストとブリッジ、`ui/dist` の配信 | P4（追加済み） |
 | `persistence` | 設定のアトミック保存とバックアップ、ログ、秘密情報の保存 | P5 |
 | `media` | 音声ファイルの書き出し（WAV / FLAC）と読み込み。JUCE の AudioFormatManager を使う | Beta2 |
 | `plugin-host` | VST3 のスキャン、読み込み、処理、エディターのウィンドウ。スキャン用ヘルパー `pa-plugin-scanner` とのメッセージ | Beta4 |
