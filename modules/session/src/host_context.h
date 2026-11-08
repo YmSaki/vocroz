@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// 親機のセッションの状態と、状態の遷移に伴う共通の副作用。
+// UI
+// のコマンド（HostCommandHandler）と子機からの通知（HostPeerHandler）の両方が同じ状態を変えるので、
+// 正となる状態と「遷移したら何をするか」をここ 1 か所に置き、両者から使う。
+#pragma once
+
+#include <chrono>
+#include <optional>
+#include <string>
+
+#include "vocroz/control_protocol/entities.h"
+#include "vocroz/control_protocol/events.h"
+#include "vocroz/session/host_session.h"
+#include "vocroz/session/settings.h"
+
+#include "invite_book.h"
+#include "participant_registry.h"
+#include "session_constants.h"
+#include "state/connection_state_machine.h"
+#include "state/output_device_state_machine.h"
+#include "state/session_state_machine.h"
+#include "wire/peer_messages.h"
+
+namespace vocroz::session {
+
+/// 招待の登録に失敗したとき、次に発行し直すまでの間隔。
+/// ランデブーサーバーが止まっている間に、tick() のたびに要求を送り続けないため。
+inline constexpr std::chrono::seconds kInviteRetryInterval{10};
+
+/// フェーダーの値を親機のフェーダーの範囲（-∞〜+10 dB）に収める。
+/// 下限（-60 dB）は control-protocol のデコーダーが検証済み。
+[[nodiscard]] inline control_protocol::GainDb clamp_fader(control_protocol::GainDb gain) noexcept {
+    if (gain && *gain > kMaxFaderGainDb) {
+        return kMaxFaderGainDb;
+    }
+    return gain;
+}
+
+/// 通知の文言に入れる参加者の呼び名。名前が空なら短い識別 ID で呼ぶ。
+[[nodiscard]] inline const std::string& label(
+    const control_protocol::ChannelStrip& strip) noexcept {
+    return strip.name.empty() ? strip.short_id : strip.name;
+}
+
+/// 親機のセッションの状態と、共通の副作用。
+/// 内部の型なので、状態はメンバー変数として公開し、HostSession の各部分から直接読み書きする。
+/// スレッド安全性: コントロールスレッドからだけ使う。
+struct HostContext {
+    HostContext(HostSession::Config config, HostSession::Ports ports);
+
+    // --- 状態の遷移 ---
+
+    /// セッション状態を進める。受け付けないイベントなら false。
+    bool advance_session(state::SessionEvent event);
+
+    /// 出力デバイスの状態を進める。受け付けないイベントなら false。
+    bool advance_output(state::OutputDeviceEvent event);
+
+    /// 参加者の接続状態を進め、それに伴う値（信号状態、猶予の起点、原因）をそろえて UI に知らせる。
+    /// 接続状態は観測値なので revision は進めない。受け付けないイベントなら false。
+    bool advance_connection(Participant& participant, state::ConnectionEvent event);
+
+    /// CONNECTED か RECONNECTING の参加者の有無で、READY と ACTIVE を切り替える。
+    void update_session_activity();
+
+    /// 参加の申請を受け付ける状態（READY か ACTIVE）なら true。
+    [[nodiscard]] bool accepting_joins() const noexcept;
+
+    // --- 副作用 ---
+
+    /// 新しい招待を作り、ランデブーサーバーへ登録を要求する。
+    void issue_invite();
+
+    /// 招待を失効させ、すべての子機を切断し、ストリップを片付けて設定を保存する。
+    void teardown();
+
+    /// Master をミュートする。理由が変わるだけでも revision を進め、古い表示に基づく解除を
+    /// REVISION_CONFLICT で拒否できるようにする。
+    void mute_master(control_protocol::MasterMuteReason reason);
+
+    /// 設定を保存する。失敗はログに残して続行する。
+    void save_settings();
+
+    /// 申請を拒否して接続を閉じる。
+    void deny(PeerHandle peer, control_protocol::ErrorCode reason);
+
+    /// 参加者と接続の結び付きを解き、接続を閉じる。ストリップと再接続トークンは残す。
+    void release_peer(Participant& participant);
+
+    /// 子機へ制御メッセージを送る。
+    void send(PeerHandle peer, const wire::HostToClientMessage& message);
+
+    // --- UI への通知 ---
+
+    void publish_session();
+    void publish_master();
+    void publish_channel(const Participant& participant);
+    void publish_pending();
+    void notice(control_protocol::NoticeSeverity severity, const char* code,
+                const std::string& name);
+    void log(common::LogLevel level, const char* message);
+
+    /// 親機モードの全状態を返す。
+    [[nodiscard]] control_protocol::MixerSnapshot snapshot() const;
+
+    HostSession::Config config;
+    HostSession::Ports ports;
+    HostSettings settings;
+    control_protocol::SessionInfo session;
+    control_protocol::MasterStrip master;
+    RendezvousId rendezvous_id{};
+    /// 招待の登録に失敗したあと、次に発行し直してよい時刻。
+    std::optional<common::Clock::TimePoint> next_issue_at;
+    InviteBook invites;
+    ParticipantRegistry registry;
+};
+
+}  // namespace vocroz::session

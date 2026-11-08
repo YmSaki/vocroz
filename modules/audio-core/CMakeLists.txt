@@ -3,12 +3,16 @@
 # audio-core: 音声グラフ、ミキサー、ゲインランプ、安全リミッター、レベルメーターと、
 # オーディオ入出力のポート。OS API に依存せず、Linux の CI で単体テストと RealtimeSanitizer の検査を行う。
 add_library(vocroz_audio_core STATIC
+  src/delay_line.cpp
   src/fader_bank.cpp
+  src/feedback_analysis.cpp
   src/fixed_mixer_layout.cpp
   src/gain.cpp
   src/gain_ramp.cpp
   src/graph_description.cpp
   src/graph_exchange.cpp
+  src/graph_validator.cpp
+  src/latency_planner.cpp
   src/meter_bank.cpp
   src/mixer.cpp
   src/render_graph.cpp
@@ -19,7 +23,7 @@ target_link_libraries(vocroz_audio_core PUBLIC vocroz::common)
 vocroz_set_warnings(vocroz_audio_core)
 
 if(VOCROZ_BUILD_TESTS)
-  # AudioOutput、AudioInput、AudioSource のフェイク。device や transport のテストからも
+  # AudioOutput、AudioInput、AudioSource、PluginProcessor のフェイク。device や transport のテストからも
   # #include "fakes/fake_audio_output.h" の形で使えるよう、ヘッダーだけのターゲットとして公開する。
   add_library(vocroz_audio_core_fakes INTERFACE)
   add_library(vocroz::audio_core_fakes ALIAS vocroz_audio_core_fakes)
@@ -27,12 +31,16 @@ if(VOCROZ_BUILD_TESTS)
   target_link_libraries(vocroz_audio_core_fakes INTERFACE vocroz::audio_core)
 
   vocroz_add_unit_test(audio_core_tests
+    tests/delay_line_test.cpp
     tests/fader_bank_test.cpp
+    tests/feedback_analysis_test.cpp
     tests/fakes_test.cpp
     tests/fixed_mixer_layout_test.cpp
     tests/gain_ramp_test.cpp
     tests/gain_test.cpp
     tests/graph_exchange_test.cpp
+    tests/graph_validator_test.cpp
+    tests/latency_planner_test.cpp
     tests/meter_bank_test.cpp
     tests/mixer_test.cpp
     tests/realtime_sanitizer_test.cpp

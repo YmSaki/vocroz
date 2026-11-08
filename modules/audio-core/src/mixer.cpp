@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <span>
 
 #include "vocroz/audio_core/constants.h"
 #include "vocroz/audio_core/gain.h"
@@ -16,6 +17,7 @@
 #include "audio_core_constants.h"
 #include "fader_bank.h"
 #include "graph_exchange.h"
+#include "graph_validator.h"
 #include "meter_bank.h"
 #include "parameter_change.h"
 #include "render_graph.h"
@@ -67,6 +69,15 @@ public:
         return {};
     }
 
+    [[nodiscard]] common::Result<void, GraphError> validate_graph(
+        const GraphDescription& description) const {
+        auto plan = plan_graph(description, faders_.capacity(), meters_.capacity());
+        if (!plan) {
+            return make_unexpected(plan.error());
+        }
+        return {};
+    }
+
     common::Result<void, MixerError> push(const ParameterChange& change) {
         if (change.fader.value >= faders_.capacity()) {
             return make_unexpected(MixerError::kFaderOutOfRange);
@@ -114,9 +125,10 @@ public:
         const std::size_t frames = out.frames();
         for (std::size_t offset = 0; offset < frames; offset += kBlockSize) {
             const std::size_t block = std::min(kBlockSize, frames - offset);
-            const float* const* stereo =
-                graph != nullptr ? graph->process(block, faders_, meters_) : nullptr;
-            write_block(out, offset, block, stereo);
+            const std::span<const OutputBlock> outputs =
+                graph != nullptr ? graph->process(block, faders_, meters_)
+                                 : std::span<const OutputBlock>();
+            write_block(out, offset, block, outputs);
         }
     }
 
@@ -132,21 +144,35 @@ private:
         }
     }
 
+    // 出力ノードごとに、指定のチャンネルの組へ書く。どの出力ノードも書かないチャンネルは無音にし、
+    // デバイスにないチャンネルへの出力は捨てる（別のチャンネルへ暗黙に振り替えない）。
+    // モノラルのデバイスでは、チャンネル 0 から始まる出力ノードの L と R の平均を書く。
     void write_block(InterleavedBuffer out, std::size_t offset, std::size_t block,
-                     const float* const* stereo) noexcept VOCROZ_NONBLOCKING {
+                     std::span<const OutputBlock> outputs) noexcept VOCROZ_NONBLOCKING {
         const std::size_t channels = out.channels;
         float* frame = out.samples.data() + offset * channels;
         for (std::size_t i = 0; i < block; ++i, frame += channels) {
             const float gate = safety_gate_.next();
-            const float left = stereo != nullptr ? stereo[0][i] * gate : 0.0F;
-            const float right = stereo != nullptr ? stereo[1][i] * gate : 0.0F;
-            if (channels == 1) {
-                frame[0] = sanitize((left + right) * 0.5F);
-                continue;
+            std::fill(frame, frame + channels, 0.0F);
+            for (const OutputBlock& output : outputs) {
+                const float left = output.left[i] * gate;
+                const float right = output.right[i] * gate;
+                if (channels == 1) {
+                    if (output.device_channel == 0) {
+                        frame[0] = (left + right) * 0.5F;
+                    }
+                    continue;
+                }
+                if (output.device_channel < channels) {
+                    frame[output.device_channel] = left;
+                }
+                if (output.device_channel + 1 < channels) {
+                    frame[output.device_channel + 1] = right;
+                }
             }
-            frame[0] = sanitize(left);
-            frame[1] = sanitize(right);
-            std::fill(frame + 2, frame + channels, 0.0F);
+            for (std::size_t ch = 0; ch < channels; ++ch) {
+                frame[ch] = sanitize(frame[ch]);
+            }
         }
     }
 
@@ -164,6 +190,10 @@ Mixer::~Mixer() = default;
 
 common::Result<void, GraphError> Mixer::apply_graph(const GraphDescription& description) {
     return impl_->apply_graph(description);
+}
+
+common::Result<void, GraphError> Mixer::validate_graph(const GraphDescription& description) const {
+    return impl_->validate_graph(description);
 }
 
 common::Result<void, MixerError> Mixer::set_fader_gain_db(FaderId fader, float db) {
