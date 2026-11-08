@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "vocroz/audio_core/graph_description.h"
+#include "vocroz/audio_core/latency_compensation.h"
 #include "vocroz/common/result.h"
 
 namespace vocroz::audio_core {
@@ -23,12 +24,19 @@ struct GraphPlan {
     std::vector<std::size_t> from_of;
     /// ノードごとの、プリフェーダーのセンドの送り元になっているか。
     std::vector<bool> has_pre_fader_send;
+    /// プラグイン遅延補正（latency_compensation.h）。
+    LatencyReport latency;
 };
 
-/// ノードの種類ごとの出力チャンネル数を返す。モノラルの入力（ソース）とストリップは 1、
-/// バスから後段はステレオ。
-/// @param kind ノードの種類
-[[nodiscard]] std::size_t channel_count_of(NodeKind kind) noexcept;
+/// ノードの出力チャンネル数を返す。モノラルの入力（ソース）とストリップは 1、
+/// バスから後段はステレオ。プラグインは PluginBusLayout::output_channels。
+/// @param spec ノードの記述
+[[nodiscard]] std::size_t output_channels_of(const NodeSpec& spec) noexcept;
+
+/// ノードが入力の加算で受け取るチャンネル数を返す。プラグインは PluginBusLayout::input_channels
+/// （0 なら音声入力を受け付けない）、それ以外は出力チャンネル数と同じ。
+/// @param spec ノードの記述
+[[nodiscard]] std::size_t input_channels_of(const NodeSpec& spec) noexcept;
 
 /// 記述を検証し、処理計画を作る。
 /// @param description グラフの記述
