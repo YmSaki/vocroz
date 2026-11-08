@@ -16,4 +16,6 @@
 | `ipc` | 名前付きパイプのクライアントとサーバー | P4 |
 | `webui` | JUCE の WebBrowserComponent による UI のホストとブリッジ | P4 |
 | `persistence` | 設定のアトミック保存とバックアップ、ログ、秘密情報の保存 | P5 |
+| `media` | 音声ファイルの書き出し（WAV / FLAC）と読み込み。JUCE の AudioFormatManager を使う | Beta2 |
+| `plugin-host` | VST3 のスキャン、読み込み、処理、エディターのウィンドウ。スキャン用ヘルパー `pa-plugin-scanner` とのメッセージ | Beta4 |
 | `update` | 更新マニフェストの検証、本番中のブロック、更新トランザクションとロールバックの判定、現行版の選択 | P5 |

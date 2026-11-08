@@ -1,0 +1,61 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* UI 全体の色と基本の書式。各コンポーネントはここで定義した CSS 変数を使う。
+   本番の暗い会場でも眩しくないよう、暗い配色にする。 */
+:root {
+    --color-bg: #15171b;
+    --color-panel: #1d2026;
+    --color-panel-raised: #252932;
+    --color-field: #111317;
+    --color-button: #2f343e;
+    --color-border: #3a404c;
+    --color-text: #e8eaed;
+    --color-text-dim: #9aa1ad;
+    --color-focus: #5aa9ff;
+    --color-info: #5aa9ff;
+    --color-warning: #ffb020;
+    --color-live: #1f8f4e;
+    --color-mute: #d93636;
+    --color-send-mute: #8a4fd8;
+    --color-safety: #e07b00;
+    --color-safety-dark: #8a4b00;
+    --color-groove: #0b0c0f;
+    --color-mark: #3a404c;
+    --color-unity: #c9ced6;
+    --color-thumb-top: #d9dde3;
+    --color-thumb-bottom: #9ea5b0;
+    --color-thumb-border: #5c636e;
+    --color-thumb-line: #20242b;
+    color-scheme: dark;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+}
+
+body {
+    font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    font-size: 14px;
+    color: var(--color-text);
+    background: var(--color-bg);
+    /* ウィンドウが最小サイズを下回ったときだけスクロールさせる。 */
+    overflow: auto;
+}
+
+button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.screen-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    color: var(--color-text-dim);
+}

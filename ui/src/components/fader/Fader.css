@@ -1,0 +1,126 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* フェーダーの見た目。つまみと目盛りは位置（bottom の %）で置く。 */
+.fader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+}
+
+.fader__track {
+    position: relative;
+    flex: 1;
+    min-height: 120px;
+    width: 36px;
+    cursor: ns-resize;
+    touch-action: none;
+    border-radius: 4px;
+    --fader-thumb-height: 14px;
+    outline: none;
+}
+
+.fader__track::before {
+    /* つまみが動く溝 */
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    transform: translateX(-50%);
+    background: var(--color-groove);
+    border-radius: 2px;
+}
+
+.fader__travel {
+    /* つまみの中心が動ける範囲。上下につまみの高さの半分を空け、
+       +10 dB と -∞ dB でもつまみが溝の外（上下の要素）にはみ出さないようにする。 */
+    position: absolute;
+    top: calc(var(--fader-thumb-height) / 2);
+    bottom: calc(var(--fader-thumb-height) / 2);
+    left: 0;
+    right: 0;
+}
+
+.fader__track:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-focus);
+}
+
+.fader__mark {
+    /* 線の太さの中心を値の位置に合わせる（つまみも中心を値の位置に合わせている）。 */
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    transform: translateY(50%);
+    background: var(--color-mark);
+}
+
+.fader__mark--unity {
+    height: 2px;
+    background: var(--color-unity);
+}
+
+.fader__mark-label {
+    position: absolute;
+    right: calc(100% + 2px);
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 9px;
+    color: var(--color-text-dim);
+    white-space: nowrap;
+}
+
+.fader__thumb {
+    position: absolute;
+    left: 50%;
+    width: 32px;
+    height: var(--fader-thumb-height);
+    transform: translate(-50%, 50%);
+    background: linear-gradient(var(--color-thumb-top), var(--color-thumb-bottom));
+    border: 1px solid var(--color-thumb-border);
+    border-radius: 3px;
+    pointer-events: none;
+}
+
+.fader__thumb::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    right: 3px;
+    top: 50%;
+    border-top: 2px solid var(--color-thumb-line);
+}
+
+.fader__value,
+.fader__input {
+    width: 100%;
+    max-width: 72px;
+    height: 22px;
+    font: inherit;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    color: var(--color-text);
+    background: var(--color-field);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+}
+
+.fader__value--neg-inf {
+    color: var(--color-text-dim);
+}
+
+.fader__unit {
+    margin-left: 2px;
+    font-size: 10px;
+    color: var(--color-text-dim);
+}
+
+.fader--disabled .fader__track {
+    cursor: default;
+    opacity: 0.4;
+}

@@ -1,0 +1,33 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* 招待 URL の着地ページのスタイル。外部のフォントや画像は読み込まない。 */
+:root {
+  color-scheme: light dark;
+  --accent: #2563eb;
+}
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", "Yu Gothic UI", "Hiragino Sans", sans-serif;
+  line-height: 1.6;
+}
+main {
+  max-width: 32rem;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+.button {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  background: var(--accent);
+  color: #fff;
+  font-weight: bold;
+  text-decoration: none;
+}
+.hint {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+.code-row code {
+  font-size: 1.4rem;
+  letter-spacing: 0.1em;
+}
