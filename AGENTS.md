@@ -243,6 +243,7 @@ class CompositionRoot {
 | エンジンとランデブーサーバー（HTTP、STUN） | `infra/rendezvous/internal/httpapi/` | `session` と `network` のクライアント実装 |
 | `pa-engine` と `pa-plugin-scanner`（標準出力の JSON） | `plugin-host` | なし（両側で同じコードを使う） |
 | エンジンとランデブーサーバー（UDP のランデブーメッセージ） | `infra/rendezvous/internal/udpapi/wire.go` | `session` と `network` のクライアント実装 |
+| 子機と親機の制御メッセージの本文（信頼制御層の上） | `session/src/wire/`（`docs/adr/0022-session-domain.md`） | なし（両側で同じコードを使う） |
 
 ### 4.5 モジュール内、アプリ内、UI 内の依存
 
