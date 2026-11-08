@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // pa-updater の起動オプションの定義とパース。引数は内部用で、remote-pa だけが渡す
-// （docs/adr/0009-installer-and-updater.md）。
+// （docs/adr/0013-installer-and-updater.md）。
 #pragma once
 
 #include <optional>

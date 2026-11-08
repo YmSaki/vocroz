@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# pa-updater: セッション終了後にだけ更新を適用する短命のプロセス（docs/adr/0009-installer-and-updater.md）。
+# pa-updater: セッション終了後にだけ更新を適用する短命のプロセス（docs/adr/0013-installer-and-updater.md）。
 # 更新の判断は vocroz::update にあり、ここは引数のパース、Windows のアダプター、組み立てだけを持つ。
 
 # 配信先と公開鍵はビルド時に埋め込む。空のままのビルドは更新を確認せず、受け付けもしない。

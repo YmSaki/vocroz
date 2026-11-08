@@ -13,7 +13,7 @@ function(vocroz_add_app target output_name)
   set_target_properties(${target} PROPERTIES OUTPUT_NAME ${output_name})
   target_link_libraries(${target} PRIVATE vocroz::common)
   vocroz_set_warnings(${target})
-  # 配布物では、バージョン別フォルダ（app-x.y.z、docs/adr/0009-installer-and-updater.md）に入る。
+  # 配布物では、バージョン別フォルダ（app-x.y.z、docs/adr/0013-installer-and-updater.md）に入る。
   install(TARGETS ${target} RUNTIME DESTINATION app)
   add_test(NAME ${target}.version COMMAND ${target} --version)
   set_tests_properties(${target}.version PROPERTIES

@@ -3,7 +3,7 @@
 // 「現行版」を指すポインターファイル（インストール先の
 // current.txt）と、バージョン別フォルダの名前。 起動スタブと pa-updater
 // が同じ規則で読み書きするため、形式はここだけで定義する
-// （docs/adr/0004-side-by-side-updates.md、docs/adr/0009-installer-and-updater.md）。
+// （docs/adr/0004-side-by-side-updates.md、docs/adr/0013-installer-and-updater.md）。
 #pragma once
 
 #include <optional>

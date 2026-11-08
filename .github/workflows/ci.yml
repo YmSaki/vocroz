@@ -21,8 +21,9 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+      # JUCE を使うターゲットも含めてビルドする（VOCROZ_WITH_JUCE は Windows では既定で ON）。
       - name: Configure
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DVOCROZ_WITH_JUCE=ON
       - name: Build
         run: cmake --build build --config Release
       - name: Test
@@ -53,8 +54,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # JUCE は GUI のライブラリ（GTK、WebKitGTK）を要求するので、Linux では外す。
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DVOCROZ_WITH_JUCE=OFF
       - name: Build
         run: cmake --build build -j
       - name: Test

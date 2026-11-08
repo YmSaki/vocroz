@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // pa-updater のエントリポイント。引数のパース → コンポジションルートの構築 → 実行。
-// 引数は内部用（docs/adr/0009-installer-and-updater.md）。
+// 引数は内部用（docs/adr/0013-installer-and-updater.md）。
 //   --version : バージョンを表示して終了
 //   --check   : 更新を確認し、ダウンロードして検証する
 //   --apply   : 検証済みの更新を適用する

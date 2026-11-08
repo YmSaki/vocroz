@@ -3,7 +3,7 @@
   SPDX-License-Identifier: AGPL-3.0-only
 
   VOCROZ の MSI（ユーザー単位）。Bundle.wxs の Burn バンドルからだけ実行する。
-  構成は docs/adr/0009-installer-and-updater.md のとおり。
+  構成は docs/adr/0013-installer-and-updater.md のとおり。
 
   %LOCALAPPDATA%\Programs\VOCROZ\
     vocroz.exe            起動スタブ（ショートカットと vocroz:// はこれを指す）

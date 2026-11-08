@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # update: 更新マニフェストの検証、適用の判断、更新トランザクションとロールバックの判定、
-# 現行版の選択（docs/adr/0009-installer-and-updater.md）。OS の API は呼ばない。
+# 現行版の選択（docs/adr/0013-installer-and-updater.md）。OS の API は呼ばない。
 add_library(vocroz_update STATIC
   src/semantic_version.cpp
   src/manifest_verifier.cpp

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // StagedPackage の実装。ステージング領域の ZIP を読み、Windows 標準の tar.exe で展開する
-// （ライブラリを増やさないため。docs/adr/0009-installer-and-updater.md）。
+// （ライブラリを増やさないため。docs/adr/0013-installer-and-updater.md）。
 #pragma once
 
 #include <filesystem>

@@ -1,7 +1,7 @@
 # update
 
 更新に関する判断を持つドメインモジュールです。OS の API は呼ばず、I/O はすべてポート経由で行います。
-設計は [docs/adr/0009-installer-and-updater.md](../../docs/adr/0009-installer-and-updater.md) にあります。
+設計は [docs/adr/0013-installer-and-updater.md](../../docs/adr/0013-installer-and-updater.md) にあります。
 
 ## 責務
 

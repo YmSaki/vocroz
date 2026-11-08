@@ -1,7 +1,7 @@
 # installer
 
 VOCROZ のインストーラー（WiX Toolset 5.0.2 の Burn バンドルと MSI）の定義です。
-構成と判断の理由は [docs/adr/0009-installer-and-updater.md](../docs/adr/0009-installer-and-updater.md) にあります。
+構成と判断の理由は [docs/adr/0013-installer-and-updater.md](../docs/adr/0013-installer-and-updater.md) にあります。
 
 | ファイル | 内容 |
 | --- | --- |

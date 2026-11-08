@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // 更新マニフェストの信頼境界。署名（Ed25519）を確かめてから形式を検証し、
-// 検証済みの UpdateManifest に変換する。形式は docs/adr/0009-installer-and-updater.md。
+// 検証済みの UpdateManifest に変換する。形式は docs/adr/0013-installer-and-updater.md。
 #pragma once
 
 #include <array>

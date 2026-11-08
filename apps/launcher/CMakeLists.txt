@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # vocroz.exe: インストール先に固定で置く起動スタブ。現行版の remote-pa を選んで起動し、すぐに終了する
-# （docs/adr/0009-installer-and-updater.md）。受け取った引数は解釈せず、そのまま渡すので、
+# （docs/adr/0013-installer-and-updater.md）。受け取った引数は解釈せず、そのまま渡すので、
 # 他のアプリと違って --version のスモークテストは登録しない（--version も remote-pa に渡すため）。
 if(WIN32)
   add_executable(vocroz_launcher WIN32

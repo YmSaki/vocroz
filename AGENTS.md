@@ -67,7 +67,7 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | `remote-pa`（子機モード） | キャプチャ、Opus エンコード、送信と、`webui` でホストする子機の UI | 子機を単一プロセスで完結させ、配布物を 1 つにするため |
 | `pa-updater` | セッション終了後にだけ起動するアップデーター | 本番中に更新処理を実行しないため |
 | `infra/rendezvous` | 招待コードの解決と、NAT 越えのためのアドレス交換 | メディアを中継せず、シグナリングだけを担うため |
-| `vocroz`（起動スタブ） | 現行版の `remote-pa` を選んで起動し、すぐに終了する。ショートカットと `vocroz://` はこれを指す（`docs/adr/0009-installer-and-updater.md`） | 更新でファイルが入れ替わっても、ショートカットとレジストリの登録を変えずに済ませるため |
+| `vocroz`（起動スタブ） | 現行版の `remote-pa` を選んで起動し、すぐに終了する。ショートカットと `vocroz://` はこれを指す（`docs/adr/0013-installer-and-updater.md`） | 更新でファイルが入れ替わっても、ショートカットとレジストリの登録を変えずに済ませるため |
 
 `remote-pa` の動作モードは起動ごとに固定します。招待 URL（URL スキーム `vocroz://`、`docs/adr/0006-invite-url-scheme.md`）か `--client` で起動したら子機モード、それ以外は親機モードで、起動中には切り替えません。2 つのモードはプロセス内の構成（`pa-engine` への接続か、自前のキャプチャと送信か）がまったく違い、実行中の切り替えは後始末の漏れによる音声の出しっぱなしなどの事故につながるためです。ウィンドウのサイズと最小サイズはモードごとにコンポジションルートで決め、子機モードは親機モードより小さくします（`docs/adr/0005-ui-juce-webview.md`）。
 
@@ -188,11 +188,12 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 
 | ライブラリ | 使用してよい範囲 |
 | --- | --- |
-| libopus、libsodium、Noise の実装 | `transport` |
+| libopus、Noise の実装 | `transport` |
+| libsodium | `transport`、`update`（`update` は Ed25519 の署名検証と SHA-256 だけ。`docs/adr/0013-installer-and-updater.md`） |
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/` |
-| libsodium（Ed25519 の署名検証と SHA-256 だけ） | `update`（`docs/adr/0009-installer-and-updater.md`） |
+| nlohmann/json | `control-protocol`、`persistence` |
 
 ### 4.3 依存性の注入（C++）
 
@@ -299,6 +300,8 @@ i18n/、utils/  →  なし
 | ランデブーサーバーの機能 | `infra/rendezvous/internal/<機能名>/` | 5.5 の形式 |
 | 単体テスト | C++ は対象と同じモジュールの `tests/<対象>_test.cpp`。TypeScript と Go は対象と同じディレクトリ | 対象ファイル 1 つにテストファイル 1 つ |
 | ADR | `docs/adr/NNNN-<題名>.md` | コンテキスト、決定、理由、結果 |
+| 外部ライブラリの取得 | `cmake/<ライブラリ名>.cmake` | 1 ライブラリに 1 ファイル。バージョンをハッシュかコミットで固定する（`docs/adr/0010-external-libraries.md`） |
+| 外部ライブラリのリンク確認テスト | `cmake/link-tests/<ライブラリ名>_link_test.cpp` | ビルドとリンクと最小限の呼び出しだけを確かめる。使い方のテストは使うモジュールの `tests/` に書く |
 
 ### 5.2 配置の決定手順
 

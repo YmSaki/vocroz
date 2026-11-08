@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // pa-updater だけで使う定数。終了コードは remote-pa が結果を判断する契約なので、
-// docs/adr/0009-installer-and-updater.md の表と一致させる。
+// docs/adr/0013-installer-and-updater.md の表と一致させる。
 #pragma once
 
 #include <array>

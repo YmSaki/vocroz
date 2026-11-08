@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // 更新マニフェストの本文の組み立てと、Ed25519 の署名。
-// 形式は docs/adr/0009-installer-and-updater.md と、
+// 形式は docs/adr/0013-installer-and-updater.md と、
 // modules/update/src/wire/manifest_codec.cpp のパーサーに合わせる。
 package main
 

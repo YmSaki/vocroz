@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // 更新の適用（pa-updater --apply）の手順。判断と順序だけを持ち、I/O はすべてポート経由で行う。
-// 手順と失敗時の扱いは docs/adr/0009-installer-and-updater.md。
+// 手順と失敗時の扱いは docs/adr/0013-installer-and-updater.md。
 #pragma once
 
 #include <string_view>

@@ -2,7 +2,7 @@
 #
 # コード署名（Authenticode）の 1 か所の差し込み口。build.ps1 から dot-source して使う。
 # 署名の名義が決まるまでは、証明書を設定せずに未署名のまま配布の仕組みを通す
-# （docs/adr/0009-installer-and-updater.md）。証明書が届いたら、次の環境変数を設定するだけで
+# （docs/adr/0013-installer-and-updater.md）。証明書が届いたら、次の環境変数を設定するだけで
 # 実行ファイル、MSI、バンドル（Burn エンジンを含む）に署名する。
 #
 #   VOCROZ_SIGN_CERT_THUMBPRINT  証明書ストアにある署名用証明書の拇印（SHA-1）。空なら署名しない

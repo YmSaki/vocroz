@@ -6,7 +6,7 @@
   - WebView2 Evergreen Runtime が未導入なら、ユーザー単位で導入する（削除はしない）
   - VOCROZ の MSI（Package.wxs）を導入する
   - アンインストールでは、設定とログを保持するか、すべて削除するかを画面で選ぶ
-  構成は docs/adr/0009-installer-and-updater.md のとおり。
+  構成は docs/adr/0013-installer-and-updater.md のとおり。
 
   ビルド時の変数:
     VocrozVersion   x.y.z
