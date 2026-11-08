@@ -89,6 +89,7 @@
   "error.INVITE_INVALID": "招待コードまたは URL が正しくありません",
   "error.UNREACHABLE": "親機に接続できません。回線やファイアウォールの設定を確認してください",
   "error.RECONNECT_TIMEOUT": "再接続できないまま時間切れになりました",
+  "error.SESSION_ENDED": "親機がセッションを終了しました",
   "error.REVISION_CONFLICT": "ほかの操作と重なりました。もう一度操作してください",
   "error.NOT_FOUND": "対象が見つかりません",
   "error.INVALID_STATE": "今の状態ではこの操作はできません",
