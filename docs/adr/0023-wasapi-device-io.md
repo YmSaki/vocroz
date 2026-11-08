@@ -30,4 +30,5 @@ audio-core は `AudioOutput` と `AudioInput` のポートを定め、48kHz Floa
 - `modules/device` を追加する。OS に依存しない判断（ストリームの開き方）は `src/detail/stream_plan` に置き、Linux の CI でも単体テストする。WASAPI を呼ぶ部分は `src/win/` に置き、Windows の CI で、デバイスがない環境でも通るテスト（ID の解決の失敗など）を実行する。
 - 48kHz でないデバイスでは、OS の変換のぶんだけ遅延が増える。受け入れテストでは、デバイスを 48kHz に設定した状態で測る。
 - 抜去の検知から Master の安全ミュートまでの接続（session）は、S1（#13）と E1（#21）で行う。
-- AGENTS.md 3.3 の `device` と `capture` の行に、この決定を追記する。
+- AGENTS.md 3.3 の `device` の行にこの決定を追記し、`capture` の行の「子機のマイク入力」を「持たない責務」の列に移す。
+- WASAPI のループバック（Beta）を実装するときに、`device` のストリームの知識との重複を見て、置き場所（`capture` か `device` か）を決め直す。

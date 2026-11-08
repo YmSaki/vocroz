@@ -145,7 +145,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `control-protocol` | ドメイン | UI とエンジン間のコマンドとイベントの DTO、JSON のシリアライズとデシリアライズ。メッセージを送受信する `MessageChannel` ポートと、2 つのチャンネルをつなぐ `ChannelRelay` | ビジネスロジック、状態（`session`） |
 | `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
 | `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知。JUCE の `MidiInput` による MIDI デバイスの列挙（永続 ID）、入力、抜去の検知（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧（`AudioDeviceCatalog` の実装）と、子機のマイク入力にも使う `AudioInput` の実装（`docs/adr/0023-wasapi-device-io.md`） | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
-| `capture` | アダプター | 子機のマイク入力のキャプチャ。WASAPI のループバックによるアプリ音声の収集（Beta、`docs/adr/0009-beta-module-layout.md`）。Alpha の子機のマイク入力は `device` の `AudioInput` を使う（`docs/adr/0023-wasapi-device-io.md`） | エンコード（`transport`） |
+| `capture` | アダプター | WASAPI のループバックによるアプリ音声の収集（Beta、`docs/adr/0009-beta-module-layout.md`） | 子機のマイク入力（`device` の `AudioInput`、`docs/adr/0023-wasapi-device-io.md`）、エンコード（`transport`） |
 | `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | パケットのパース（`transport`） |
 | `ipc` | アダプター | 名前付きパイプのクライアントとサーバー（`MessageChannel` の実装）。ACL によるアクセス制御 | メッセージの検証とコマンドの適用（`control-protocol`、`session`） |
 | `webui` | アダプター | JUCE の `WebBrowserComponent` による UI のホスト、`ui/dist` を配信するリソースプロバイダー、ネイティブ関数とイベントのブリッジ（`MessageChannel` の実装）。モードごとのウィンドウ設定の適用。ルーティング画面などの独立したサブウィンドウのホスト（Beta、`docs/adr/0009-beta-module-layout.md`） | メッセージの検証とコマンドの適用（`pa-engine` の `session`、子機ロジック） |
