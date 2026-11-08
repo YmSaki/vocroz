@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // UI とエンジンの間でやり取りするメッセージの型。
 //
-// スキーマの正本は modules/control-protocol で、このファイルはその対になる定義（AGENTS.md 第 4.4 節）。
-// control-protocol が入るまでは、この型を仮の正本として UI とフェイクエンジンの開発を進める。
-// control-protocol が入ったら、その定義に合わせてこのファイルを置き換える。
+// スキーマの正本は modules/control-protocol（C++）で、このファイルはその対になる定義（AGENTS.md 第 4.4 節）。
+// 両者の食い違いは、modules/control-protocol/tests/data/ の全メッセージの JSON の例を C++ と UI の両方の
+// テストで読んで見つける（docs/adr/0015-control-protocol-messages.md）。メッセージを変えるときは、
+// C++ の型、JSON の例、このファイルを同じ PR で変更する。
+//
+// revision は、コマンドで変更できる値（ミュート、入力の選択など）が変わったときだけ進む。
+// 接続状態や信号状態のように、エンジンが観測して変わるだけの値の変化では進まない。
 //
 // 状態の値は仕様書の正規名（UPPER_SNAKE_CASE）、フラグは lower_snake_case で受け取る。
 // UI は正規名を画面に出さず、i18n の表示ラベルに変換して表示する。
@@ -41,7 +45,7 @@ export type ClientState =
 
 /**
  * エンジンが返すエラーコード。UI はこのコードからローカライズ済みのメッセージを表示する。
- * 子機の FAILED の原因コードと、コマンドの拒否理由を兼ねる。
+ * 子機の FAILED と DISCONNECTED の理由、セッションとストリップの失敗の原因、コマンドの拒否理由に共通で使う。
  */
 export type ErrorCode =
   | "REJECTED"
@@ -50,6 +54,7 @@ export type ErrorCode =
   | "INVITE_INVALID"
   | "UNREACHABLE"
   | "RECONNECT_TIMEOUT"
+  | "SESSION_ENDED"
   | "REVISION_CONFLICT"
   | "NOT_FOUND"
   | "INVALID_STATE"
@@ -66,7 +71,7 @@ export interface SessionInfo {
   name: string;
   state: SessionState;
   /** ERROR のときの原因コード。 */
-  error_code: string | null;
+  error_code: ErrorCode | null;
   /** 招待 URL。READY と ACTIVE のときだけ値を持つ。 */
   invite_url: string | null;
   output_device_state: OutputDeviceState;
@@ -93,7 +98,7 @@ export interface ChannelStrip {
   channel_muted: boolean;
   gain_db: GainDb;
   /** FAILED のときの原因コード。 */
-  error_code: string | null;
+  error_code: ErrorCode | null;
 }
 
 /** Master ストリップの状態。 */
@@ -138,7 +143,7 @@ export interface ClientSnapshot {
   revision: number;
   client_state: ClientState;
   /** FAILED の原因、または DISCONNECTED の直前の終了理由。 */
-  failure_code: string | null;
+  failure_code: ErrorCode | null;
   /** 接続先のセッション名。わかるまでは null。 */
   session_name: string | null;
   input_devices: InputDevice[];

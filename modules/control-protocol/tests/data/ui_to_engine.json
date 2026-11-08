@@ -1,0 +1,95 @@
+[
+  {
+    "type": "hello"
+  },
+  {
+    "type": "set_gain",
+    "entity_id": "ch1",
+    "seq": 42,
+    "gain_db": -6.5
+  },
+  {
+    "type": "set_gain",
+    "entity_id": "master",
+    "seq": 0,
+    "gain_db": null
+  },
+  {
+    "type": "create_session",
+    "request_id": "r1",
+    "entity_id": "session",
+    "expected_revision": 1
+  },
+  {
+    "type": "end_session",
+    "request_id": "r2",
+    "entity_id": "session",
+    "expected_revision": 3
+  },
+  {
+    "type": "set_channel_mute",
+    "request_id": "r3",
+    "entity_id": "ch1",
+    "expected_revision": 5,
+    "muted": false
+  },
+  {
+    "type": "set_master_mute",
+    "request_id": "r4",
+    "entity_id": "master",
+    "expected_revision": 2,
+    "muted": true
+  },
+  {
+    "type": "approve_participant",
+    "request_id": "r5",
+    "entity_id": "pending1",
+    "expected_revision": 1
+  },
+  {
+    "type": "reject_participant",
+    "request_id": "r6",
+    "entity_id": "pending2",
+    "expected_revision": 1
+  },
+  {
+    "type": "remove_strip",
+    "request_id": "r7",
+    "entity_id": "ch3",
+    "expected_revision": 9
+  },
+  {
+    "type": "join",
+    "request_id": "r8",
+    "entity_id": "client",
+    "expected_revision": 1,
+    "invite": "https://vocroz.example/join#ABCD-EFGH"
+  },
+  {
+    "type": "leave",
+    "request_id": "r9",
+    "entity_id": "client",
+    "expected_revision": 2
+  },
+  {
+    "type": "select_input",
+    "request_id": "r10",
+    "entity_id": "client",
+    "expected_revision": 2,
+    "device_id": "{0.0.1.00000000}.{mic-usb}"
+  },
+  {
+    "type": "select_input",
+    "request_id": "r11",
+    "entity_id": "client",
+    "expected_revision": 3,
+    "device_id": null
+  },
+  {
+    "type": "set_send_mute",
+    "request_id": "r12",
+    "entity_id": "client",
+    "expected_revision": 4,
+    "muted": false
+  }
+]

@@ -11,7 +11,7 @@
 | `transport` | パケット形式、Noise 鍵交換と AEAD、信頼制御層、Opus、ジッターバッファ、ドリフト補正 | P2 |
 | `capture` | 子機のマイク入力キャプチャ | P2 |
 | `session` | 招待、承認、再接続、接続と信号の状態モデル | P3 |
-| `control-protocol` | UI とエンジン間のコマンド / イベント定義（名前付きパイプ + JSON） | P4 |
+| `control-protocol` | UI とエンジン間のコマンド / イベント定義（名前付きパイプ + JSON） | P4（追加済み） |
 | `network` | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | P2 |
 | `ipc` | 名前付きパイプのクライアントとサーバー | P4 |
 | `webui` | JUCE の WebBrowserComponent による UI のホストとブリッジ | P4 |

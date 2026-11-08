@@ -121,7 +121,9 @@ export class FakeMixerEngine extends FakeEngineBase {
 
   /** 出力デバイスの抜去を再現する。エンジンは別のデバイスに切り替えず、Master を安全ミュートにする。 */
   simulateOutputLost(): void {
-    this.updateSession({ output_device_state: "LOST", output_device_name: null });
+    // 出力デバイスの状態は観測値なので revision を進めない。SAFETY のミュートはコマンドで変えられる値を
+    // エンジンが変えるので revision を進め、ミュートを知らないまま押した解除を REVISION_CONFLICT にする。
+    this.updateSession({ output_device_state: "LOST", output_device_name: null }, false);
     this.updateMaster({ master_muted: true, master_mute_reason: "SAFETY" });
     this.emit({ type: "notice", severity: "warning", code: "output_lost", params: {} });
   }
@@ -151,10 +153,15 @@ export class FakeMixerEngine extends FakeEngineBase {
     connection: Exclude<ConnectionState, "PENDING">,
     signal: SignalState | null = null,
   ): void {
-    this.updateChannel(entityId, {
-      connection_state: connection,
-      signal_state: connection === "CONNECTED" ? signal : null,
-    });
+    // 接続状態と信号状態は観測値なので revision を進めない（その最中のミュートを衝突させないため）。
+    this.updateChannel(
+      entityId,
+      {
+        connection_state: connection,
+        signal_state: connection === "CONNECTED" ? signal : null,
+      },
+      false,
+    );
   }
 
   protected receive(message: UiToEngineMessage): void {
@@ -237,7 +244,8 @@ export class FakeMixerEngine extends FakeEngineBase {
         if (this.state.session.state !== "IDLE") return this.reject(command, "INVALID_STATE");
         this.ack(command, this.updateSession({ state: "CREATING", name: "新しいセッション" }));
         this.later(() => {
-          this.updateSession({ state: "READY", invite_url: kInviteUrl });
+          // 作成の完了はエンジンの処理の進行で、コマンドで変えた値ではないので revision を進めない。
+          this.updateSession({ state: "READY", invite_url: kInviteUrl }, false);
           this.later(() => this.simulateJoinRequest("Vo 小林"), kJoinRequestDelayMs);
         }, kCreateDelayMs);
         return;
@@ -252,7 +260,7 @@ export class FakeMixerEngine extends FakeEngineBase {
           this.state = { ...this.state, channels: [], pending: [] };
           this.emit({ type: "pending_updated", pending: [] });
           this.updateMaster({ master_muted: true, master_mute_reason: "OPERATOR" });
-          this.updateSession({ state: "IDLE", name: "" });
+          this.updateSession({ state: "IDLE", name: "" }, false);
         }, kCreateDelayMs);
         return;
       case "set_channel_mute":
@@ -314,9 +322,10 @@ export class FakeMixerEngine extends FakeEngineBase {
       this.simulateConnection(strip.entity_id, "CONNECTED", "PAUSED");
       this.refreshSessionState();
       this.later(() => {
-        this.updateChannel(strip.entity_id, { send_muted: false, signal_state: "RESUMING" });
+        // 子機の送信ミュートは親機からは変えられない観測値なので、revision を進めない。
+        this.updateChannel(strip.entity_id, { send_muted: false, signal_state: "RESUMING" }, false);
         this.later(
-          () => this.updateChannel(strip.entity_id, { signal_state: "RECEIVING" }),
+          () => this.updateChannel(strip.entity_id, { signal_state: "RECEIVING" }, false),
           kResumeDelayMs,
         );
       }, kUnmuteDelayMs);
@@ -339,7 +348,7 @@ export class FakeMixerEngine extends FakeEngineBase {
       (c) => c.connection_state === "CONNECTED" || c.connection_state === "RECONNECTING",
     );
     const next = active ? "ACTIVE" : "READY";
-    if (next !== state) this.updateSession({ state: next });
+    if (next !== state) this.updateSession({ state: next }, false);
   }
 
   private revisionOf(entityId: string): number | undefined {
@@ -351,8 +360,13 @@ export class FakeMixerEngine extends FakeEngineBase {
     );
   }
 
-  private updateSession(patch: Partial<SessionInfo>): number {
-    const session = { ...this.state.session, ...patch, revision: this.state.session.revision + 1 };
+  /**
+   * revision は、コマンドで変えられる値が変わったときだけ進める（bumpRevision = true）。
+   * 観測値（接続状態、信号状態など）だけの変化では進めない（docs/adr/0015-control-protocol-messages.md）。
+   */
+  private updateSession(patch: Partial<SessionInfo>, bumpRevision = true): number {
+    const current = this.state.session;
+    const session = { ...current, ...patch, revision: current.revision + (bumpRevision ? 1 : 0) };
     this.state = { ...this.state, session };
     this.emit({ type: "session_updated", session });
     return session.revision;
