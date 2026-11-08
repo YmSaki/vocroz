@@ -20,7 +20,7 @@ jobs:
     name: Windows (MSVC)
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # JUCE を使うターゲットも含めてビルドする（VOCROZ_WITH_JUCE は Windows では既定で ON）。
       - name: Configure
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DVOCROZ_WITH_JUCE=ON
@@ -53,7 +53,7 @@ jobs:
     name: Linux (Clang)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # JUCE は GUI のライブラリ（GTK、WebKitGTK）を要求するので、Linux では外す。
       - name: Configure
         run: >-
@@ -72,7 +72,7 @@ jobs:
     name: Linux (RealtimeSanitizer)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Clang 20
         run: |
           wget -qO llvm.sh https://apt.llvm.org/llvm.sh
@@ -99,7 +99,7 @@ jobs:
       run:
         working-directory: infra/rendezvous
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version-file: infra/rendezvous/go.mod
@@ -113,7 +113,7 @@ jobs:
       run:
         working-directory: tools/release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version-file: tools/release/go.mod
@@ -128,7 +128,7 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
