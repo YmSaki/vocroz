@@ -52,7 +52,7 @@ struct PacketHeader {
 /// @param packet 受信したパケット全体
 /// @return 検証済みのヘッダー。短すぎれば kTruncated、バージョンが違えば kUnsupportedVersion、
 ///         種別が未定義なら kUnknownPacketType
-/// スレッド安全性: 純粋関数で、どのスレッドからも呼び出し可能。オーディオスレッドから呼び出し可能。
+/// スレッド安全性: 純粋関数で、どのスレッドからも呼び出し可能。ヒープを確保しない。
 [[nodiscard]] common::Result<PacketHeader, TransportError> parse_packet_header(
     std::span<const std::uint8_t> packet) noexcept;
 

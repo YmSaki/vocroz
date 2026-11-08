@@ -60,7 +60,7 @@ public:
     ///         Opus のペイロードが空なら kMalformedPayload、
     ///         平文が kMaxPlaintextBytes を超えれば kPayloadTooLarge、
     ///         out が小さければ kBufferTooSmall、シーケンス番号を使い切れば kNonceExhausted
-    /// スレッド安全性: オーディオスレッドから呼び出し可能（ヒープ確保、ロック、I/O なし）。
+    /// スレッド安全性: 送信側のネットワークスレッドから呼ぶ（ヒープ確保、ロック、I/O なし）。
     [[nodiscard]] common::Result<std::size_t, TransportError> seal_media(
         const MediaPayload& payload, std::span<std::uint8_t> out) noexcept;
 
@@ -68,7 +68,7 @@ public:
     /// @param plaintext 制御メッセージ（空でもよい。キープアライブに使える）
     /// @param out       パケットの書き込み先。sealed_packet_bytes(plaintext.size()) バイト以上
     /// @return 書き込んだバイト数。失敗の理由は seal_media() と同じ（kMalformedPayload を除く）
-    /// スレッド安全性: オーディオスレッドから呼び出し可能（ヒープ確保、ロック、I/O なし）。
+    /// スレッド安全性: 送信側のネットワークスレッドから呼ぶ（ヒープ確保、ロック、I/O なし）。
     [[nodiscard]] common::Result<std::size_t, TransportError> seal_control(
         std::span<const std::uint8_t> plaintext, std::span<std::uint8_t> out) noexcept;
 
@@ -136,7 +136,7 @@ public:
     /// @return 復号したパケット。失敗の理由は kTruncated、kUnsupportedVersion、kUnknownPacketType、
     ///         kUnexpectedPacketType（ハンドシェイクのパケット）、kConnectionMismatch、kReplayed、
     ///         kAuthenticationFailed、kBufferTooSmall、kInvalidState（ムーブ元）
-    /// スレッド安全性: オーディオスレッドから呼び出し可能（ヒープ確保、ロック、I/O なし）。
+    /// スレッド安全性: ネットワーク受信スレッドから呼ぶ（ヒープ確保、ロック、I/O なし）。
     [[nodiscard]] common::Result<OpenedPacket, TransportError> open(
         std::span<const std::uint8_t> packet, std::span<std::uint8_t> plaintext_out) noexcept;
 

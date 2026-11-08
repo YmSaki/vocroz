@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+
+  VOCROZ のインストーラー（WiX Burn バンドル）。配布するのはこの 1 つの exe だけ。
+  - WebView2 Evergreen Runtime が未導入なら、ユーザー単位で導入する（削除はしない）
+  - VOCROZ の MSI（Package.wxs）を導入する
+  - アンインストールでは、設定とログを保持するか、すべて削除するかを画面で選ぶ
+  構成は docs/adr/0013-installer-and-updater.md のとおり。
+
+  ビルド時の変数:
+    VocrozVersion   x.y.z
+  バインドパス:
+    msi             Package.wxs から作った vocroz.msi のあるフォルダ
+    redist          MicrosoftEdgeWebview2Setup.exe（Evergreen Bootstrapper）のあるフォルダ
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Bundle Name="VOCROZ"
+          Manufacturer="VOCROZ"
+          Version="$(var.VocrozVersion)"
+          UpgradeCode="82D7AC83-3F36-4134-91CE-61264AC9CA56"
+          AboutUrl="https://github.com/YmSaki/vocroz">
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+          Theme="hyperlinkLicense"
+          ThemeFile="$(sys.SOURCEFILEDIR)theme\VocrozTheme.xml"
+          LocalizationFile="$(sys.SOURCEFILEDIR)theme\VocrozTheme.wxl"
+          LicenseUrl="https://www.gnu.org/licenses/agpl-3.0.html"
+          SuppressOptionsUI="yes"
+          LaunchTarget="[LocalAppDataFolder]Programs\VOCROZ\vocroz.exe" />
+    </BootstrapperApplication>
+
+    <!-- アンインストールの画面のチェックボックス（VocrozTheme.xml の DeleteUserData）。既定は保持。 -->
+    <Variable Name="DeleteUserData" Type="numeric" Value="0" />
+
+    <!--
+      WebView2 の導入状況。Microsoft の配布ガイドに従い、マシン単位とユーザー単位の両方の
+      pv を調べ、値がないか 0.0.0.0 なら未導入とみなす。
+    -->
+    <util:RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                         Value="pv" Variable="WebView2MachineVersion" Bitness="always32" />
+    <util:RegistrySearch Root="HKCU" Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                         Value="pv" Variable="WebView2UserVersion" />
+
+    <Chain>
+      <!-- 他のアプリと共有するランタイムなので Permanent にし、アンインストールで削除しない。 -->
+      <ExePackage Id="WebView2Runtime"
+                  DisplayName="Microsoft Edge WebView2 Runtime"
+                  SourceFile="!(bindpath.redist)\MicrosoftEdgeWebview2Setup.exe"
+                  PerMachine="no"
+                  Permanent="yes"
+                  Vital="yes"
+                  Cache="remove"
+                  InstallArguments="/silent /install"
+                  DetectCondition="(WebView2MachineVersion AND WebView2MachineVersion &lt;&gt; &quot;0.0.0.0&quot;) OR (WebView2UserVersion AND WebView2UserVersion &lt;&gt; &quot;0.0.0.0&quot;)" />
+
+      <MsiPackage Id="VocrozMsi" SourceFile="!(bindpath.msi)\vocroz.msi">
+        <MsiProperty Name="VOCROZ_INSTALL_DIR" Value="[LocalAppDataFolder]Programs\VOCROZ\" />
+        <MsiProperty Name="VOCROZ_PURGE_DIR" Value="[LocalAppDataFolder]VOCROZ\" Condition="DeleteUserData = 1" />
+      </MsiPackage>
+    </Chain>
+  </Bundle>
+</Wix>

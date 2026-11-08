@@ -38,7 +38,7 @@ inline constexpr std::size_t kMediaPayloadHeaderBytes = 14;
 /// @param plaintext PacketOpener::open() が返した平文
 /// @return 変換した値。opus_payload は plaintext の一部を指す。固定部より短いか、
 ///         Opus のペイロードが空なら kMalformedPayload
-/// スレッド安全性: 純粋関数で、どのスレッドからも呼び出し可能。オーディオスレッドから呼び出し可能。
+/// スレッド安全性: 純粋関数で、どのスレッドからも呼び出し可能。ヒープを確保しない。
 [[nodiscard]] common::Result<MediaPayload, TransportError> decode_media_payload(
     std::span<const std::uint8_t> plaintext) noexcept;
 

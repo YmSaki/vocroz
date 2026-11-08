@@ -21,7 +21,7 @@ namespace vocroz::transport::wire {
 /// payload を out の先頭に書く。
 /// 前提条件: out.size() >= media_payload_bytes(payload)。呼び出し側で長さを確かめてから呼ぶ。
 /// @return 書いたバイト数
-/// スレッド安全性: 純粋関数で、オーディオスレッドから呼び出し可能。
+/// スレッド安全性: 純粋関数で、どのスレッドからも呼び出し可能。ヒープを確保しない。
 std::size_t write_media_payload(const MediaPayload& payload, std::span<std::uint8_t> out) noexcept;
 
 }  // namespace vocroz::transport::wire
