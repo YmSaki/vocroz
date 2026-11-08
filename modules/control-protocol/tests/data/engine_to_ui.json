@@ -1,0 +1,550 @@
+[
+  {
+    "type": "mixer_snapshot",
+    "snapshot": {
+      "session": {
+        "entity_id": "session",
+        "revision": 4,
+        "name": "日曜リハーサル",
+        "state": "ACTIVE",
+        "error_code": null,
+        "invite_url": "https://vocroz.example/join#ABCD-EFGH",
+        "output_device_state": "OPEN",
+        "output_device_name": "スピーカー (USB Audio)",
+        "update_available": null
+      },
+      "channels": [
+        {
+          "entity_id": "ch1",
+          "revision": 3,
+          "participant_id": "p-ch1",
+          "name": "Vo 佐藤",
+          "short_id": "#01",
+          "connection_state": "CONNECTED",
+          "signal_state": "RECEIVING",
+          "send_muted": false,
+          "channel_muted": true,
+          "gain_db": 0.0,
+          "error_code": null
+        },
+        {
+          "entity_id": "ch2",
+          "revision": 3,
+          "participant_id": "p-ch2",
+          "name": "Vo 佐藤",
+          "short_id": "#01",
+          "connection_state": "CONNECTED",
+          "signal_state": "PAUSED",
+          "send_muted": true,
+          "channel_muted": true,
+          "gain_db": 0.0,
+          "error_code": null
+        },
+        {
+          "entity_id": "ch3",
+          "revision": 3,
+          "participant_id": "p-ch3",
+          "name": "Vo 佐藤",
+          "short_id": "#01",
+          "connection_state": "CONNECTED",
+          "signal_state": "RESUMING",
+          "send_muted": false,
+          "channel_muted": true,
+          "gain_db": 0.0,
+          "error_code": null
+        },
+        {
+          "entity_id": "ch4",
+          "revision": 3,
+          "participant_id": "p-ch4",
+          "name": "Vo 佐藤",
+          "short_id": "#01",
+          "connection_state": "CONNECTED",
+          "signal_state": "NO_SIGNAL",
+          "send_muted": false,
+          "channel_muted": true,
+          "gain_db": null,
+          "error_code": null
+        },
+        {
+          "entity_id": "ch5",
+          "revision": 3,
+          "participant_id": "p-ch5",
+          "name": "Vo 佐藤",
+          "short_id": "#01",
+          "connection_state": "CONNECTING",
+          "signal_state": null,
+          "send_muted": false,
+          "channel_muted": true,
+          "gain_db": 0.0,
+          "error_code": null
+        },
+        {
+          "entity_id": "ch6",
+          "revision": 3,
+          "participant_id": "p-ch6",
+          "name": "Vo 佐藤",
+          "short_id": "#01",
+          "connection_state": "RECONNECTING",
+          "signal_state": null,
+          "send_muted": false,
+          "channel_muted": true,
+          "gain_db": 10.0,
+          "error_code": null
+        },
+        {
+          "entity_id": "ch7",
+          "revision": 3,
+          "participant_id": "p-ch7",
+          "name": "Vo 佐藤",
+          "short_id": "#01",
+          "connection_state": "LOST",
+          "signal_state": null,
+          "send_muted": false,
+          "channel_muted": true,
+          "gain_db": -60.0,
+          "error_code": null
+        },
+        {
+          "entity_id": "ch8",
+          "revision": 3,
+          "participant_id": "p-ch8",
+          "name": "Vo 佐藤",
+          "short_id": "#01",
+          "connection_state": "FAILED",
+          "signal_state": null,
+          "send_muted": false,
+          "channel_muted": true,
+          "gain_db": 0.0,
+          "error_code": "UNREACHABLE"
+        }
+      ],
+      "master": {
+        "entity_id": "master",
+        "revision": 2,
+        "gain_db": -3.5,
+        "master_muted": true,
+        "master_mute_reason": "OPERATOR"
+      },
+      "pending": [
+        {
+          "entity_id": "pending1",
+          "revision": 1,
+          "name": "Tp 渡辺",
+          "short_id": "#08"
+        }
+      ]
+    }
+  },
+  {
+    "type": "mixer_snapshot",
+    "snapshot": {
+      "session": {
+        "entity_id": "session",
+        "revision": 1,
+        "name": "",
+        "state": "IDLE",
+        "error_code": null,
+        "invite_url": null,
+        "output_device_state": "NONE",
+        "output_device_name": null,
+        "update_available": null
+      },
+      "channels": [],
+      "master": {
+        "entity_id": "master",
+        "revision": 2,
+        "gain_db": -3.5,
+        "master_muted": true,
+        "master_mute_reason": "OPERATOR"
+      },
+      "pending": []
+    }
+  },
+  {
+    "type": "session_updated",
+    "session": {
+      "entity_id": "session",
+      "revision": 2,
+      "name": "日曜リハーサル",
+      "state": "CREATING",
+      "error_code": null,
+      "invite_url": null,
+      "output_device_state": "OPEN",
+      "output_device_name": "スピーカー (USB Audio)",
+      "update_available": null
+    }
+  },
+  {
+    "type": "session_updated",
+    "session": {
+      "entity_id": "session",
+      "revision": 3,
+      "name": "日曜リハーサル",
+      "state": "READY",
+      "error_code": null,
+      "invite_url": "https://vocroz.example/join#ABCD-EFGH",
+      "output_device_state": "OPEN",
+      "output_device_name": "スピーカー (USB Audio)",
+      "update_available": "1.0.1"
+    }
+  },
+  {
+    "type": "session_updated",
+    "session": {
+      "entity_id": "session",
+      "revision": 5,
+      "name": "日曜リハーサル",
+      "state": "ENDING",
+      "error_code": null,
+      "invite_url": null,
+      "output_device_state": "OPEN",
+      "output_device_name": "スピーカー (USB Audio)",
+      "update_available": null
+    }
+  },
+  {
+    "type": "session_updated",
+    "session": {
+      "entity_id": "session",
+      "revision": 6,
+      "name": "日曜リハーサル",
+      "state": "ERROR",
+      "error_code": "ENGINE_ERROR",
+      "invite_url": null,
+      "output_device_state": "LOST",
+      "output_device_name": null,
+      "update_available": null
+    }
+  },
+  {
+    "type": "channel_updated",
+    "channel": {
+      "entity_id": "ch1",
+      "revision": 3,
+      "participant_id": "p-ch1",
+      "name": "Vo 佐藤",
+      "short_id": "#01",
+      "connection_state": "CONNECTED",
+      "signal_state": "RECEIVING",
+      "send_muted": false,
+      "channel_muted": true,
+      "gain_db": -12.3,
+      "error_code": null
+    }
+  },
+  {
+    "type": "channel_removed",
+    "entity_id": "ch7"
+  },
+  {
+    "type": "master_updated",
+    "master": {
+      "entity_id": "master",
+      "revision": 3,
+      "gain_db": null,
+      "master_muted": true,
+      "master_mute_reason": "SAFETY"
+    }
+  },
+  {
+    "type": "master_updated",
+    "master": {
+      "entity_id": "master",
+      "revision": 4,
+      "gain_db": 0.0,
+      "master_muted": false,
+      "master_mute_reason": null
+    }
+  },
+  {
+    "type": "pending_updated",
+    "pending": [
+      {
+        "entity_id": "pending1",
+        "revision": 1,
+        "name": "Tp 渡辺",
+        "short_id": "#08"
+      },
+      {
+        "entity_id": "pending2",
+        "revision": 1,
+        "name": "",
+        "short_id": "#09"
+      }
+    ]
+  },
+  {
+    "type": "pending_updated",
+    "pending": []
+  },
+  {
+    "type": "client_snapshot",
+    "snapshot": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "DISCONNECTED",
+      "failure_code": null,
+      "session_name": null,
+      "input_devices": [
+        {
+          "id": "{0.0.1.00000000}.{mic-usb}",
+          "name": "マイク (USB Audio Interface)"
+        }
+      ],
+      "selected_input_id": null,
+      "input_missing": false,
+      "send_muted": true,
+      "send_level_db": 0.0
+    }
+  },
+  {
+    "type": "client_updated",
+    "client": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "DISCONNECTED",
+      "failure_code": "SESSION_ENDED",
+      "session_name": null,
+      "input_devices": [
+        {
+          "id": "{0.0.1.00000000}.{mic-usb}",
+          "name": "マイク (USB Audio Interface)"
+        }
+      ],
+      "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
+      "input_missing": false,
+      "send_muted": true,
+      "send_level_db": 0.0
+    }
+  },
+  {
+    "type": "client_updated",
+    "client": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "RESOLVING",
+      "failure_code": null,
+      "session_name": null,
+      "input_devices": [
+        {
+          "id": "{0.0.1.00000000}.{mic-usb}",
+          "name": "マイク (USB Audio Interface)"
+        }
+      ],
+      "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
+      "input_missing": false,
+      "send_muted": true,
+      "send_level_db": 0.0
+    }
+  },
+  {
+    "type": "client_updated",
+    "client": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "AUTHENTICATING",
+      "failure_code": null,
+      "session_name": "日曜リハーサル",
+      "input_devices": [
+        {
+          "id": "{0.0.1.00000000}.{mic-usb}",
+          "name": "マイク (USB Audio Interface)"
+        }
+      ],
+      "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
+      "input_missing": false,
+      "send_muted": true,
+      "send_level_db": 0.0
+    }
+  },
+  {
+    "type": "client_updated",
+    "client": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "WAITING_APPROVAL",
+      "failure_code": null,
+      "session_name": "日曜リハーサル",
+      "input_devices": [
+        {
+          "id": "{0.0.1.00000000}.{mic-usb}",
+          "name": "マイク (USB Audio Interface)"
+        }
+      ],
+      "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
+      "input_missing": false,
+      "send_muted": true,
+      "send_level_db": 0.0
+    }
+  },
+  {
+    "type": "client_updated",
+    "client": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "CONNECTING",
+      "failure_code": null,
+      "session_name": "日曜リハーサル",
+      "input_devices": [
+        {
+          "id": "{0.0.1.00000000}.{mic-usb}",
+          "name": "マイク (USB Audio Interface)"
+        }
+      ],
+      "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
+      "input_missing": false,
+      "send_muted": true,
+      "send_level_db": 0.0
+    }
+  },
+  {
+    "type": "client_updated",
+    "client": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "CONNECTED",
+      "failure_code": null,
+      "session_name": "日曜リハーサル",
+      "input_devices": [
+        {
+          "id": "{0.0.1.00000000}.{mic-usb}",
+          "name": "マイク (USB Audio Interface)"
+        }
+      ],
+      "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
+      "input_missing": false,
+      "send_muted": false,
+      "send_level_db": 12.0
+    }
+  },
+  {
+    "type": "client_updated",
+    "client": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "RECONNECTING",
+      "failure_code": null,
+      "session_name": "日曜リハーサル",
+      "input_devices": [
+        {
+          "id": "{0.0.1.00000000}.{mic-usb}",
+          "name": "マイク (USB Audio Interface)"
+        }
+      ],
+      "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
+      "input_missing": true,
+      "send_muted": true,
+      "send_level_db": -60.0
+    }
+  },
+  {
+    "type": "client_updated",
+    "client": {
+      "entity_id": "client",
+      "revision": 2,
+      "client_state": "FAILED",
+      "failure_code": "REJECTED",
+      "session_name": "日曜リハーサル",
+      "input_devices": [],
+      "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
+      "input_missing": false,
+      "send_muted": true,
+      "send_level_db": 0.0
+    }
+  },
+  {
+    "type": "ack",
+    "request_id": "r3",
+    "applied_revision": 6
+  },
+  {
+    "type": "gain_ack",
+    "entity_id": "ch1",
+    "seq": 42,
+    "applied_revision": 6
+  },
+  {
+    "type": "meters",
+    "levels": {
+      "ch1": -18.25,
+      "ch2": null,
+      "master": -6.0
+    }
+  },
+  {
+    "type": "meters",
+    "levels": {}
+  },
+  {
+    "type": "notice",
+    "severity": "warning",
+    "code": "participant_lost",
+    "params": {
+      "name": "Vo 佐藤"
+    }
+  },
+  {
+    "type": "notice",
+    "severity": "info",
+    "code": "update_available",
+    "params": {
+      "version": "1.0.1"
+    }
+  },
+  {
+    "type": "reject",
+    "request_id": "r-rejected",
+    "error_code": "REJECTED"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-invite_expired",
+    "error_code": "INVITE_EXPIRED"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-invite_revoked",
+    "error_code": "INVITE_REVOKED"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-invite_invalid",
+    "error_code": "INVITE_INVALID"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-unreachable",
+    "error_code": "UNREACHABLE"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-reconnect_timeout",
+    "error_code": "RECONNECT_TIMEOUT"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-session_ended",
+    "error_code": "SESSION_ENDED"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-revision_conflict",
+    "error_code": "REVISION_CONFLICT"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-not_found",
+    "error_code": "NOT_FOUND"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-invalid_state",
+    "error_code": "INVALID_STATE"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-engine_error",
+    "error_code": "ENGINE_ERROR"
+  }
+]

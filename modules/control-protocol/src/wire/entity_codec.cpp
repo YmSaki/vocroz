@@ -1,0 +1,207 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// 状態の DTO と JSON の変換の実装。フィールドの名前と規則は、書き出しと読み込みで同じ順に並べる。
+
+#include "wire/entity_codec.h"
+
+#include "vocroz/control_protocol/constants.h"
+
+#include "wire/field_rules.h"
+#include "wire/json_values.h"
+#include "wire/object_reader.h"
+
+namespace vocroz::control_protocol::wire {
+namespace {
+
+/// DTO の配列を JSON の配列にする。
+template <typename T>
+nlohmann::json write_array(const std::vector<T>& items) {
+    auto array = nlohmann::json::array();
+    for (const auto& item : items) {
+        array.push_back(write_json(item));
+    }
+    return array;
+}
+
+}  // namespace
+
+nlohmann::json write_json(const SessionInfo& session) {
+    return {
+        {"entity_id", session.entity_id},
+        {"revision", session.revision},
+        {"name", session.name},
+        {"state", enum_json(session.state)},
+        {"error_code", enum_json(session.error_code)},
+        {"invite_url", nullable(session.invite_url)},
+        {"output_device_state", enum_json(session.output_device_state)},
+        {"output_device_name", nullable(session.output_device_name)},
+        {"update_available", nullable(session.update_available)},
+    };
+}
+
+common::Result<SessionInfo, DecodeError> read_session_info(const nlohmann::json& value) {
+    return read_object<SessionInfo>(value, [](ObjectReader& r) {
+        SessionInfo session;
+        session.entity_id = r.text("entity_id", kIdentifierRule);
+        session.revision = r.counter("revision");
+        session.name = r.text("name", kTextRule);
+        session.state = r.enumeration<SessionState>("state");
+        session.error_code = r.nullable_enumeration<ErrorCode>("error_code");
+        session.invite_url = r.nullable_text("invite_url", kUrlRule);
+        session.output_device_state = r.enumeration<OutputDeviceState>("output_device_state");
+        session.output_device_name = r.nullable_text("output_device_name", kTextRule);
+        session.update_available = r.nullable_text("update_available", kTextRule);
+        return session;
+    });
+}
+
+nlohmann::json write_json(const ChannelStrip& channel) {
+    return {
+        {"entity_id", channel.entity_id},
+        {"revision", channel.revision},
+        {"participant_id", channel.participant_id},
+        {"name", channel.name},
+        {"short_id", channel.short_id},
+        {"connection_state", enum_json(channel.connection_state)},
+        {"signal_state", enum_json(channel.signal_state)},
+        {"send_muted", channel.send_muted},
+        {"channel_muted", channel.channel_muted},
+        {"gain_db", nullable(channel.gain_db)},
+        {"error_code", enum_json(channel.error_code)},
+    };
+}
+
+common::Result<ChannelStrip, DecodeError> read_channel_strip(const nlohmann::json& value) {
+    return read_object<ChannelStrip>(value, [](ObjectReader& r) {
+        ChannelStrip channel;
+        channel.entity_id = r.text("entity_id", kIdentifierRule);
+        channel.revision = r.counter("revision");
+        channel.participant_id = r.text("participant_id", kIdentifierRule);
+        channel.name = r.text("name", kTextRule);
+        channel.short_id = r.text("short_id", kTextRule);
+        channel.connection_state = r.enumeration<ConnectionState>("connection_state");
+        // PENDING の参加者はストリップを持たないので、ストリップの状態としては不正。
+        if (channel.connection_state == ConnectionState::kPending) {
+            r.fail(DecodeErrorCode::kOutOfRange, "connection_state");
+        }
+        channel.signal_state = r.nullable_enumeration<SignalState>("signal_state");
+        channel.send_muted = r.boolean("send_muted");
+        channel.channel_muted = r.boolean("channel_muted");
+        channel.gain_db = r.gain("gain_db");
+        channel.error_code = r.nullable_enumeration<ErrorCode>("error_code");
+        return channel;
+    });
+}
+
+nlohmann::json write_json(const MasterStrip& master) {
+    return {
+        {"entity_id", master.entity_id},
+        {"revision", master.revision},
+        {"gain_db", nullable(master.gain_db)},
+        {"master_muted", master.master_muted},
+        {"master_mute_reason", enum_json(master.master_mute_reason)},
+    };
+}
+
+common::Result<MasterStrip, DecodeError> read_master_strip(const nlohmann::json& value) {
+    return read_object<MasterStrip>(value, [](ObjectReader& r) {
+        MasterStrip master;
+        master.entity_id = r.text("entity_id", kIdentifierRule);
+        master.revision = r.counter("revision");
+        master.gain_db = r.gain("gain_db");
+        master.master_muted = r.boolean("master_muted");
+        master.master_mute_reason = r.nullable_enumeration<MasterMuteReason>("master_mute_reason");
+        return master;
+    });
+}
+
+nlohmann::json write_json(const PendingParticipant& participant) {
+    return {
+        {"entity_id", participant.entity_id},
+        {"revision", participant.revision},
+        {"name", participant.name},
+        {"short_id", participant.short_id},
+    };
+}
+
+common::Result<PendingParticipant, DecodeError> read_pending_participant(
+    const nlohmann::json& value) {
+    return read_object<PendingParticipant>(value, [](ObjectReader& r) {
+        PendingParticipant participant;
+        participant.entity_id = r.text("entity_id", kIdentifierRule);
+        participant.revision = r.counter("revision");
+        participant.name = r.text("name", kTextRule);
+        participant.short_id = r.text("short_id", kTextRule);
+        return participant;
+    });
+}
+
+nlohmann::json write_json(const MixerSnapshot& snapshot) {
+    return {
+        {"session", write_json(snapshot.session)},
+        {"channels", write_array(snapshot.channels)},
+        {"master", write_json(snapshot.master)},
+        {"pending", write_array(snapshot.pending)},
+    };
+}
+
+common::Result<MixerSnapshot, DecodeError> read_mixer_snapshot(const nlohmann::json& value) {
+    return read_object<MixerSnapshot>(value, [](ObjectReader& r) {
+        MixerSnapshot snapshot;
+        snapshot.session = r.nested<SessionInfo>("session", read_session_info);
+        snapshot.channels = r.list<ChannelStrip>("channels", read_channel_strip);
+        snapshot.master = r.nested<MasterStrip>("master", read_master_strip);
+        snapshot.pending = r.list<PendingParticipant>("pending", read_pending_participant);
+        return snapshot;
+    });
+}
+
+nlohmann::json write_json(const InputDevice& device) {
+    return {
+        {"id", device.id},
+        {"name", device.name},
+    };
+}
+
+common::Result<InputDevice, DecodeError> read_input_device(const nlohmann::json& value) {
+    return read_object<InputDevice>(value, [](ObjectReader& r) {
+        InputDevice device;
+        device.id = r.text("id", kDeviceIdRule);
+        device.name = r.text("name", kTextRule);
+        return device;
+    });
+}
+
+nlohmann::json write_json(const ClientSnapshot& snapshot) {
+    return {
+        {"entity_id", snapshot.entity_id},
+        {"revision", snapshot.revision},
+        {"client_state", enum_json(snapshot.client_state)},
+        {"failure_code", enum_json(snapshot.failure_code)},
+        {"session_name", nullable(snapshot.session_name)},
+        {"input_devices", write_array(snapshot.input_devices)},
+        {"selected_input_id", nullable(snapshot.selected_input_id)},
+        {"input_missing", snapshot.input_missing},
+        {"send_muted", snapshot.send_muted},
+        {"send_level_db", snapshot.send_level_db},
+    };
+}
+
+common::Result<ClientSnapshot, DecodeError> read_client_snapshot(const nlohmann::json& value) {
+    return read_object<ClientSnapshot>(value, [](ObjectReader& r) {
+        ClientSnapshot snapshot;
+        snapshot.entity_id = r.text("entity_id", kIdentifierRule);
+        snapshot.revision = r.counter("revision");
+        snapshot.client_state = r.enumeration<ClientState>("client_state");
+        snapshot.failure_code = r.nullable_enumeration<ErrorCode>("failure_code");
+        snapshot.session_name = r.nullable_text("session_name", kTextRule);
+        snapshot.input_devices = r.list<InputDevice>("input_devices", read_input_device);
+        snapshot.selected_input_id = r.nullable_text("selected_input_id", kDeviceIdRule);
+        snapshot.input_missing = r.boolean("input_missing");
+        snapshot.send_muted = r.boolean("send_muted");
+        snapshot.send_level_db = r.number("send_level_db", kMinFiniteGainDb, kMaxGainDb);
+        return snapshot;
+    });
+}
+
+}  // namespace vocroz::control_protocol::wire

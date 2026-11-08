@@ -23,3 +23,6 @@ infra/rendezvous/rendezvous.exe
 # OS
 .DS_Store
 Thumbs.db
+
+# 実機確認の証拠（docs/testing/alpha-acceptance.md）。IP アドレスや音声を含みうる
+/evidence/
