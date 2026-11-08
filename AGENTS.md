@@ -140,12 +140,12 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | モジュール | レイヤー | 責務 | 持たない責務（担当モジュール） |
 | --- | --- | --- | --- |
 | `common` | 共通基盤 | CLI 引数、文字列、時刻などのステートレスなユーティリティ。`Clock` と `Logger` のポート。Result 型 | 特定モジュールのドメイン知識 |
-| `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート。ルーティンググラフ、フィードバックループの検出、PDC、Minus-Me のミックス、録音タップと再生ノード、プラグインノード、MIDI の処理と Panic と、`PluginProcessor`、`AudioFileWriter`、`AudioFileReader`、`MidiInput` のポート（Beta、`docs/adr/0009-beta-module-layout.md`） | デバイス制御（`device`）、ネットワーク（`transport`） |
+| `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート。ルーティンググラフ、フィードバックループの検出、PDC、Minus-Me のミックス、録音タップと再生ノード、プラグインノード、MIDI の処理と Panic と、`PluginProcessor`、`AudioFileWriter`、`AudioFileReader`、`MidiInput` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧の `AudioDeviceCatalog` のポート（`docs/adr/0023-wasapi-device-io.md`） | デバイス制御（`device`）、ネットワーク（`transport`） |
 | `transport` | ドメイン | ワイヤーフォーマット、Noise による鍵交換と AEAD（libsodium）、信頼制御層、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正。ソケットのポート。親機から子機への下りストリーム、ステレオと複数ストリーム、MIDI 専用チャンネル（Beta、`docs/adr/0009-beta-module-layout.md`） | 参加者と承認の判断（`session`）、ソケットの実装（`network`） |
 | `control-protocol` | ドメイン | UI とエンジン間のコマンドとイベントの DTO、JSON のシリアライズとデシリアライズ。メッセージを送受信する `MessageChannel` ポートと、2 つのチャンネルをつなぐ `ChannelRelay` | ビジネスロジック、状態（`session`） |
 | `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
-| `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知。JUCE の `MidiInput` による MIDI デバイスの列挙（永続 ID）、入力、抜去の検知（Beta、`docs/adr/0009-beta-module-layout.md`） | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
-| `capture` | アダプター | 子機のマイク入力のキャプチャ。WASAPI のループバックによるアプリ音声の収集（Beta、`docs/adr/0009-beta-module-layout.md`） | エンコード（`transport`） |
+| `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知。JUCE の `MidiInput` による MIDI デバイスの列挙（永続 ID）、入力、抜去の検知（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧（`AudioDeviceCatalog` の実装）と、子機のマイク入力にも使う `AudioInput` の実装（`docs/adr/0023-wasapi-device-io.md`） | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
+| `capture` | アダプター | WASAPI のループバックによるアプリ音声の収集（Beta、`docs/adr/0009-beta-module-layout.md`） | 子機のマイク入力（`device` の `AudioInput`、`docs/adr/0023-wasapi-device-io.md`）、エンコード（`transport`） |
 | `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | パケットのパース（`transport`） |
 | `ipc` | アダプター | 名前付きパイプのクライアントとサーバー（`MessageChannel` の実装）。ACL によるアクセス制御 | メッセージの検証とコマンドの適用（`control-protocol`、`session`） |
 | `webui` | アダプター | JUCE の `WebBrowserComponent` による UI のホスト、`ui/dist` を配信するリソースプロバイダー、ネイティブ関数とイベントのブリッジ（`MessageChannel` の実装）。モードごとのウィンドウ設定の適用。ルーティング画面などの独立したサブウィンドウのホスト（Beta、`docs/adr/0009-beta-module-layout.md`） | メッセージの検証とコマンドの適用（`pa-engine` の `session`、子機ロジック） |
