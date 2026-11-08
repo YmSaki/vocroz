@@ -31,7 +31,7 @@ MediaReceiver::MediaReceiver(transport::PacketOpener& opener,
       plaintext_(transport::kMaxPacketBytes) {}
 
 void MediaReceiver::unmute(std::uint32_t mute_epoch, common::Clock::TimePoint now) {
-    monitor_.on_send_mute(false, mute_epoch, now);
+    on_send_mute(false, mute_epoch, now);
 }
 
 void MediaReceiver::on_datagram(std::span<const std::uint8_t> datagram,
@@ -55,12 +55,21 @@ void MediaReceiver::on_datagram(std::span<const std::uint8_t> datagram,
         ++stats_.rejected_invalid;
         return;
     }
-    if (!monitor_.on_media_frame(media.value().mute_epoch, now)) {
+    on_media(media.value(), now);
+}
+
+void MediaReceiver::on_send_mute(bool send_muted, std::uint32_t mute_epoch,
+                                 common::Clock::TimePoint now) {
+    monitor_.on_send_mute(send_muted, mute_epoch, now);
+}
+
+void MediaReceiver::on_media(const transport::MediaPayload& media, common::Clock::TimePoint now) {
+    if (!monitor_.on_media_frame(media.mute_epoch, now)) {
         ++stats_.rejected_by_signal;
         return;
     }
-    const auto frame = transport::make_media_frame(
-        media.value().timestamp, media.value().mute_epoch, media.value().opus_payload);
+    const auto frame =
+        transport::make_media_frame(media.timestamp, media.mute_epoch, media.opus_payload);
     if (!frame) {
         ++stats_.rejected_invalid;
         return;
