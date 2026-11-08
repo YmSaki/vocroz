@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // transport の内部だけで使う定数。
+// 値の根拠を各定数のコメントに書く。
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+
+#include "vocroz/transport/constants.h"
 
 namespace vocroz::transport {
 
@@ -25,5 +29,101 @@ inline constexpr std::size_t kAeadNonceBytes = 12;
 
 /// Noise のハンドシェイクメッセージの一時公開鍵の長さ（バイト）。
 inline constexpr std::size_t kEphemeralKeyBytes = 32;
+
+/// 再生の開始時（ミュート解除後の区間の始まりと、無音からの復帰）のフェードインの長さ。
+/// クリックノイズを防ぐランプの長さ 5〜20ms の中から、立ち上がりの遅れが目立たない 10ms にする。
+inline constexpr std::size_t kFadeInSamples = kSampleRate / 100;
+
+/// フレームが届かないときに PLC で補間し続ける長さの上限（40ms）。
+/// 単発の欠損は PLC で隠すが、長い途絶で古い音を引き延ばして鳴らし続けないよう、
+/// これを超えたら無音にする。
+/// Opus の PLC は数十 ms を超えると不自然な持続音になるので、その手前で止める。
+inline constexpr std::size_t kMaxConcealmentSamples = kSampleRate / 25;
+
+/// PLC の上限の手前で無音へ落とすフェードアウトの長さ（10ms）。
+/// 無音への切り替えでクリックノイズを出さないため。
+inline constexpr std::size_t kConcealmentFadeSamples = kSampleRate / 100;
+
+/// RECEIVING 中にこの時間フレームが届かなければ、回線が途絶したとみなして NO_SIGNAL にする。
+inline constexpr std::chrono::milliseconds kReceiveTimeout{500};
+
+/// 送信ミュートの解除通知のあと、この時間内に最初のフレームが届かなければ NO_SIGNAL にする。
+/// 解除の通知（制御メッセージ）と最初のフレームの到着順が逆転したり、
+/// 送信の再開に時間がかかったりしても、誤って NO_SIGNAL にしないための猶予。
+inline constexpr std::chrono::seconds kResumeTimeout{1};
+
+/// ドリフト補正で変えてよい再生レートの上限（±0.2%）。
+/// 0.2% のピッチの変化は約 3.5 セントで、合奏で聞き分けられる量より小さい。
+/// 水晶発振子の誤差（±100ppm 程度）の 20 倍あるので、
+/// ドリフトを打ち消したうえで深さの調整にも使える。
+inline constexpr double kMaxRateDeviation = 0.002;
+
+/// ドリフト補正の比例ゲイン（1/秒）。
+/// 深さの誤差が 5ms のときにレートを 0.1% 変える。
+/// 誤差が縮む時定数は約 5 秒で、
+/// ジッターによる深さの揺れにレートが追従してピッチが揺れるのを避ける。
+inline constexpr double kRateProportionalGain = 0.2;
+
+/// ドリフト補正の積分ゲイン（1/秒^2）。
+/// 比例ゲインの 2 乗の 1/4 にして臨界減衰にし、一定のドリフトを定常偏差なしで打ち消しつつ、
+/// 深さが振動しないようにする。
+inline constexpr double kRateIntegralGain = kRateProportionalGain * kRateProportionalGain / 4.0;
+
+/// 積分項（推定したドリフト）の上限（±0.1%）。
+/// 実際の時計の誤差より十分大きく、暴走したときの上限として働く。
+inline constexpr double kMaxDriftEstimate = 0.001;
+
+/// 深さの平滑化の時定数（秒）。
+/// フレーム単位の取り出しによる深さの鋸歯状の変化を均すため、5ms のフレームより十分長く、
+/// ドリフト補正の時定数（約 5 秒）より十分短くする。
+inline constexpr double kDepthSmoothingSeconds = 0.5;
+
+/// 目標の深さを 1 フレーム浅くするまでに、枯渇が起きていないことを確かめる時間（10 秒）。
+/// 深くするのは枯渇の直後にすぐ行い、浅くするのは慎重に行って、遅延と途切れの振動を避ける。
+inline constexpr std::size_t kTargetDecreaseIntervalSamples = std::size_t{kSampleRate} * 10;
+
+/// ネットワーク受信スレッドからオーディオスレッドへフレームを渡すキューの容量。
+/// 2.5ms のフレームで 640ms 分あり、
+/// オーディオスレッドが数ブロック遅れても新しいフレームを取りこぼさない。
+inline constexpr std::size_t kInboundQueueCapacity = 256;
+
+// ---- 信頼制御層（docs/adr/0019-reliable-control-layer.md） ----
+
+/// 制御パケットのフレーム種別: ACK。
+inline constexpr std::uint8_t kAckFrameType = 1;
+
+/// 制御パケットのフレーム種別: データ（制御メッセージ 1 つ）。
+inline constexpr std::uint8_t kDataFrameType = 2;
+
+/// レーンごとに、ACK を待たずに送ってよいメッセージの数。
+/// 選択 ACK のビット列（64 ビット）で受信状況を 1 回に伝えきれる幅にそろえる。
+/// 制御メッセージは操作 1 回に 1 つ程度なので、MIDI の連打でも 64 は十分に大きい。
+inline constexpr std::uint32_t kReliableWindowMessages = 64;
+
+/// レーンごとに、送信待ちとして保持するメッセージの上限。
+/// 相手が ACK を返さないまま送り続けたときに、メモリを使い続けないための上限。
+/// 窓の 4 倍あれば、一時的な輻輳で窓が詰まっても操作を取りこぼさない。
+inline constexpr std::size_t kMaxQueuedMessages = 256;
+
+/// RTT の測定値がまだないときの再送タイムアウト。
+/// インターネット越しの RTT（数十〜200ms 程度）を上回り、最初の欠落からの回復を遅らせすぎない値。
+inline constexpr std::chrono::milliseconds kInitialRetransmitTimeout{250};
+
+/// 再送タイムアウトの下限。
+/// TCP の 1 秒（RFC 6298）は合奏中のミュート通知には遅すぎるので、LAN の RTT でも
+/// 不要な再送が続かない程度まで下げる。
+inline constexpr std::chrono::milliseconds kMinRetransmitTimeout{50};
+
+/// 再送タイムアウトの上限。再送のたびに倍にしても、受信の途絶の判定（5 秒）までに
+/// 数回は再送できるようにする。
+inline constexpr std::chrono::milliseconds kMaxRetransmitTimeout{1000};
+
+/// 送信が途絶えたときに、キープアライブの制御パケットを送る間隔。
+/// NAT のマッピングを保ち、相手が受信の途絶を判定できるようにする。
+inline constexpr std::chrono::seconds kKeepaliveInterval{1};
+
+/// 音声と制御のどちらも届かなければ、受信が途絶したとみなす時間。
+/// キープアライブ 5 回分で、1 つや 2 つの欠落では途絶と判定しない。
+inline constexpr std::chrono::seconds kPeerTimeout{5};
 
 }  // namespace vocroz::transport
