@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// ビルド時に CMake が生成する、更新の配信先と署名鍵。手で編集しない。
+// 元ファイル: apps/updater/src/update_config.h.in
+// 値は CMake のキャッシュ変数 VOCROZ_UPDATE_MANIFEST_URL と VOCROZ_UPDATE_PUBLIC_KEY で渡す。
+#pragma once
+
+#include <string_view>
+
+namespace vocroz::updater {
+
+/// 更新マニフェストの HTTPS の URL。空なら --check は常に「更新なし」として終了する。
+inline constexpr std::string_view kManifestUrl = "@VOCROZ_UPDATE_MANIFEST_URL@";
+
+/// マニフェストの Ed25519 公開鍵（64 桁の小文字の 16 進数）。空ならどの更新も受け付けない。
+inline constexpr std::string_view kPublicKeyHex = "@VOCROZ_UPDATE_PUBLIC_KEY@";
+
+}  // namespace vocroz::updater

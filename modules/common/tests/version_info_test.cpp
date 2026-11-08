@@ -18,5 +18,10 @@ TEST(VersionLineTest, ContainsProductAppAndVersion) {
     EXPECT_EQ(version_line("pa-engine"), expected);
 }
 
+TEST(VersionLineTest, FormatsGivenVersionWithSameLayout) {
+    const std::string expected = std::string{kProductName} + " pa-updater 0.1.0-alpha.2";
+    EXPECT_EQ(version_line("pa-updater", "0.1.0-alpha.2"), expected);
+}
+
 }  // namespace
 }  // namespace vocroz::common
