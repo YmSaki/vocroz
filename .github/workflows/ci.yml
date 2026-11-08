@@ -100,7 +100,7 @@ jobs:
         working-directory: infra/rendezvous
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: infra/rendezvous/go.mod
       - name: Test
@@ -114,7 +114,7 @@ jobs:
         working-directory: tools/release
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: tools/release/go.mod
       - name: Test
