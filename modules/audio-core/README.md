@@ -12,7 +12,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 - ミキサー（Alpha はモノラル 8 チャンネル以上 + Master の固定構成を、グラフの 1 構成として記述する）
 - 5〜20ms のゲインランプ、安全リミッター、ピークと RMS のメーター算出
 - 初期ミュート（すべてのフェーダーはミュートで始まる）と、安全ミュート（SAFETY MUTE）の受け口
-- オーディオ入出力のポート（`AudioOutput`、`AudioInput`）と、グラフのソースのポート（`AudioSource`）
+- オーディオ入出力のポート（`AudioOutput`、`AudioInput`、デバイスの一覧の `AudioDeviceCatalog`）と、グラフのソースのポート（`AudioSource`）
 
 デバイス制御（`device`）、ネットワークとジッターバッファ（`transport`）、ミュートの理由と解除の判断（`session`）は持ちません。
 
@@ -36,6 +36,8 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/ports/audio_render_callback.h` | `AudioRenderCallback`（`Mixer` が実装） | 呼び出し可能 |
 | `vocroz/audio_core/ports/audio_capture_callback.h` | `AudioCaptureCallback` | 呼び出し可能 |
 | `vocroz/audio_core/ports/audio_device_listener.h` | `AudioDeviceListener`（デバイスの抜去の通知） | 対象外 |
+| `vocroz/audio_core/ports/audio_device_catalog.h` | `AudioDeviceCatalog`（デバイスの一覧。`device` が実装） | 対象外 |
+| `vocroz/audio_core/audio_device_info.h` | `AudioDeviceInfo`、`AudioDeviceDirection` | 対象外 |
 | `vocroz/audio_core/ports/audio_source.h` | `AudioSource`（`transport` のジッターバッファが実装） | 呼び出し可能 |
 
 ### 使い方（親機の固定ミキサー）
@@ -104,7 +106,7 @@ if (auto valid = mixer.validate_graph(graph); !valid) { /* GraphError を UI へ
 
 ## テストダブル
 
-`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource` は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
+`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog` は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
 
 ```cmake
 target_link_libraries(device_tests PRIVATE vocroz::device vocroz::audio_core_fakes)
