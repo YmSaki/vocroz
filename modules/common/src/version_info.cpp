@@ -9,11 +9,15 @@
 namespace vocroz::common {
 
 std::string version_line(std::string_view app_name) {
+    return version_line(app_name, kVersion);
+}
+
+std::string version_line(std::string_view app_name, std::string_view version) {
     std::string line{kProductName};
     line += ' ';
     line += app_name;
     line += ' ';
-    line += kVersion;
+    line += version;
     return line;
 }
 

@@ -78,6 +78,14 @@ CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`�
 
 ランデブーサーバーの起動方法と API は [infra/rendezvous/README.md](infra/rendezvous/README.md) にあります。
 
+### インストーラー
+
+Windows で `installer/build.ps1` を実行すると、未署名のインストーラー（`VOCROZ-Setup-<バージョン>.exe`）と更新パッケージができます。
+必要なツールと署名の差し込み方は [installer/README.md](installer/README.md) を参照してください。
+CI の Windows のジョブも同じスクリプトでインストーラーを作り、成果物（`vocroz-installer-unsigned`）として保存します。
+
+更新マニフェストの鍵の生成と署名は `tools/release/`（Go）で行います。秘密鍵はリポジトリに置かないでください。
+
 ---
 
 ## 外部ライブラリとライセンス
