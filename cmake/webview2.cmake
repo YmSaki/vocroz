@@ -6,7 +6,9 @@
 # FindWebView2.cmake が探す場所（JUCE_WEBVIEW2_PACKAGE_LOCATION）に展開する
 # （docs/adr/0020-ipc-pipe-and-webui-bridge.md）。ライセンスは BSD-3-Clause。
 # 使用してよい範囲は modules/webui（JUCE の WebBrowserComponent 経由、AGENTS.md 4.2）。
-if(NOT DEFINED JUCE_WEBVIEW2_PACKAGE_LOCATION)
+# JUCE は JUCE_WEBVIEW2_PACKAGE_LOCATION を空の option として定義するので、定義の有無ではなく値で判断する。
+# 手元のパッケージを使いたいときは、configure で -DJUCE_WEBVIEW2_PACKAGE_LOCATION=<フォルダ> を指定する。
+if(NOT JUCE_WEBVIEW2_PACKAGE_LOCATION)
   set(VOCROZ_WEBVIEW2_VERSION 1.0.3912.50)
   set(_vocroz_webview2_root "${CMAKE_BINARY_DIR}/_deps/webview2-packages")
 
