@@ -1,0 +1,51 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* 確認ダイアログ。 */
+.confirm-dialog__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgb(0 0 0 / 55%);
+}
+
+.confirm-dialog {
+    width: 420px;
+    padding: 20px;
+    color: var(--color-text);
+    background: var(--color-panel-raised);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+}
+
+.confirm-dialog h2 {
+    margin: 0 0 8px;
+    font-size: 16px;
+}
+
+.confirm-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.confirm-dialog__actions button {
+    padding: 6px 14px;
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-button);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.confirm-dialog__actions .confirm-dialog__danger {
+    background: var(--color-mute);
+    border-color: var(--color-mute);
+}
+
+.confirm-dialog__actions button:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-focus);
+}

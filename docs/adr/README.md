@@ -10,6 +10,9 @@
 | [0006](0006-invite-url-scheme.md) | 招待 URL は HTTPS のリンクとし、アプリの起動にはユーザー単位の URL スキームを使う | 採用 |
 | [0007](0007-launch-interface.md) | 起動インターフェース（コマンドライン引数、単一インスタンス、終了コード） | 採用 |
 | [0008](0008-runtime-behavior.md) | 実行時の振る舞い（電源、スケジューリング、クラッシュ、ファイアウォール、ディスプレイ） | 採用 |
+| [0009](0009-beta-module-layout.md) | Beta1〜Beta5 の機能をどのモジュールに置くか | 採用 |
+| [0010](0010-external-libraries.md) | 外部ライブラリはソースから固定バージョンで取得し、JSON には nlohmann/json を使う | 採用 |
+| [0011](0011-ui-frontend-stack.md) | UI のフロントエンドは Vite + Preact + TypeScript で作り、フェイクエンジンで単独に開発する | 採用 |
 | [0012](0012-rendezvous-protocol.md) | ランデブーサーバーのプロトコルと状態の持ち方 | 採用 |
 
 仕様書は RPC-SPEC-001（1.2-draft）。2026-11-07 にプロダクトオーナーが「UX を損なわない範囲で実装しやすい方法」を方針として承認した。

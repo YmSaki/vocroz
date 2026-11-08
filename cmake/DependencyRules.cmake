@@ -19,10 +19,13 @@ set(VOCROZ_ALLOWED_DEPS_network transport session common)
 set(VOCROZ_ALLOWED_DEPS_ipc control_protocol common)
 set(VOCROZ_ALLOWED_DEPS_webui control_protocol common)
 set(VOCROZ_ALLOWED_DEPS_persistence session common)
+set(VOCROZ_ALLOWED_DEPS_plugin_host session audio_core common)
+set(VOCROZ_ALLOWED_DEPS_media audio_core common)
 
 set(VOCROZ_MODULES
   common audio_core control_protocol transport session
-  device capture network ipc webui persistence)
+  device capture network ipc webui persistence
+  plugin_host media)
 
 # リンク先の名前（vocroz::xxx か vocroz_xxx）からモジュール名を取り出す。
 # vocroz のモジュールでなければ空文字列を返す。

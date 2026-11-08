@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* 開発中の機能のボタン。使えるボタンと見分けられるよう、破線の枠にする。 */
+.planned-button {
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--color-text-dim);
+    background: transparent;
+    border: 1px dashed var(--color-border);
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.planned-button:hover {
+    color: var(--color-text);
+}

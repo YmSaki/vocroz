@@ -52,7 +52,7 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | --- | --- | --- |
 | 共通基盤 | 横断的に使うユーティリティと、横断的関心事のポート（`Clock`、`Logger`）。Result 型 | `modules/common` |
 | ドメイン | オーディオ処理、トランスポートのプロトコル、セッション管理などのドメインロジック。OS の API を呼ばない | `modules/audio-core`、`transport`、`control-protocol`、`session` |
-| アダプター（インフラストラクチャ） | ドメインが定義したポートを、Win32、WASAPI、Winsock、JUCE などの外部ライブラリで実装する | `modules/device`、`capture`、`network`、`ipc`、`webui`、`persistence`、各アプリの `src/win/` |
+| アダプター（インフラストラクチャ） | ドメインが定義したポートを、Win32、WASAPI、Winsock、JUCE などの外部ライブラリで実装する | `modules/device`、`capture`、`network`、`ipc`、`webui`、`persistence`、`plugin-host`、`media`、各アプリの `src/win/` |
 | コンポジションルート | アダプターとドメインオブジェクトを生成し、依存性を注入し、プロセスを起動する | `apps/` |
 | プレゼンテーション | 状態の描画と、ユーザー操作のコマンド化。JUCE の `WebBrowserComponent`（Windows のバックエンドは WebView2）上で動き、`control-protocol` のメッセージだけでネイティブ側と通信する | `ui/` |
 
@@ -66,6 +66,7 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | `remote-pa`（親機モード） | `webui` で UI をホストし、名前付きパイプ（`ipc`）経由で `pa-engine` を操作する | UI の障害をオーディオ処理に波及させないため |
 | `remote-pa`（子機モード） | キャプチャ、Opus エンコード、送信と、`webui` でホストする子機の UI | 子機を単一プロセスで完結させ、配布物を 1 つにするため |
 | `pa-updater` | セッション終了後にだけ起動するアップデーター | 本番中に更新処理を実行しないため |
+| `pa-plugin-scanner` | `pa-engine` がプラグインファイル 1 つにつき 1 回起動する、VST3 のスキャン用ヘルパー。結果を標準出力の JSON で返す（`docs/adr/0009-beta-module-layout.md`） | 不良プラグインのクラッシュやハングで `pa-engine` を止めないため |
 | `infra/rendezvous` | 招待コードの解決と、NAT 越えのためのアドレス交換 | メディアを中継せず、シグナリングだけを担うため |
 
 `remote-pa` の動作モードは起動ごとに固定します。招待 URL（URL スキーム `vocroz://`、`docs/adr/0006-invite-url-scheme.md`）か `--client` で起動したら子機モード、それ以外は親機モードで、起動中には切り替えません。2 つのモードはプロセス内の構成（`pa-engine` への接続か、自前のキャプチャと送信か）がまったく違い、実行中の切り替えは後始末の漏れによる音声の出しっぱなしなどの事故につながるためです。ウィンドウのサイズと最小サイズはモードごとにコンポジションルートで決め、子機モードは親機モードより小さくします（`docs/adr/0005-ui-juce-webview.md`）。
@@ -81,6 +82,7 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | オーディオスレッド | デバイスのオーディオコールバック。ミキシングと出力、キャプチャとエンコード | 第 9 節のリアルタイム制約を満たす処理だけ |
 | ネットワーク受信スレッド | UDP 受信、パケットの検証と復号、ジッターバッファへの投入 | ブロッキング I/O を含んでよい。オーディオスレッドへは SPSC キューで渡す |
 | コントロールスレッド | IPC、セッションの状態遷移、設定の永続化、ロギング | 制約なし。オーディオスレッドへは SPSC キューかオーディオグラフのスワップで渡す |
+| ディスク I/O スレッド（Beta2 以降） | 録音の書き出し、再生ファイルの読み込みとデコード | ブロッキング I/O を含んでよい。オーディオスレッドとはロックフリーの SPSC リングバッファだけで受け渡し、溢れたら欠落として記録してオーディオスレッドを待たせない |
 
 スレッド間のデータの受け渡しは、6.1 のパターン（ロックフリー SPSC キュー、ダブルバッファリングによるグラフのスワップ）だけで行います。
 
@@ -104,6 +106,7 @@ apps/          実行ファイル（エントリポイントとコンポジシ�
   client-desktop/  子機モード（remote-pa にリンクする静的ライブラリ）
   pa-engine/       pa-engine  : 親機のオーディオエンジン
   updater/         pa-updater : アップデーター
+  plugin-scanner/  pa-plugin-scanner : VST3 のスキャン用ヘルパー（Beta4）
 modules/       ドメインとアダプターのライブラリ（3.3）
 ui/            WebBrowserComponent 上で動く TypeScript のフロントエンド（親機と子機の両方の画面）
 infra/         Go 製のランデブーサーバー
@@ -129,16 +132,18 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | モジュール | レイヤー | 責務 | 持たない責務（担当モジュール） |
 | --- | --- | --- | --- |
 | `common` | 共通基盤 | CLI 引数、文字列、時刻などのステートレスなユーティリティ。`Clock` と `Logger` のポート。Result 型 | 特定モジュールのドメイン知識 |
-| `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート | デバイス制御（`device`）、ネットワーク（`transport`） |
-| `transport` | ドメイン | ワイヤーフォーマット、Noise による鍵交換と AEAD（libsodium）、信頼制御層、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正。ソケットのポート | 参加者と承認の判断（`session`）、ソケットの実装（`network`） |
+| `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート。ルーティンググラフ、フィードバックループの検出、PDC、Minus-Me のミックス、録音タップと再生ノード、プラグインノード、MIDI の処理と Panic と、`PluginProcessor`、`AudioFileWriter`、`AudioFileReader`、`MidiInput` のポート（Beta、`docs/adr/0009-beta-module-layout.md`） | デバイス制御（`device`）、ネットワーク（`transport`） |
+| `transport` | ドメイン | ワイヤーフォーマット、Noise による鍵交換と AEAD（libsodium）、信頼制御層、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正。ソケットのポート。親機から子機への下りストリーム、ステレオと複数ストリーム、MIDI 専用チャンネル（Beta、`docs/adr/0009-beta-module-layout.md`） | 参加者と承認の判断（`session`）、ソケットの実装（`network`） |
 | `control-protocol` | ドメイン | UI とエンジン間のコマンドとイベントの DTO、JSON のシリアライズとデシリアライズ。メッセージを送受信する `MessageChannel` ポートと、2 つのチャンネルをつなぐ `ChannelRelay` | ビジネスロジック、状態（`session`） |
-| `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
-| `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知 | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
-| `capture` | アダプター | 子機のマイク入力のキャプチャ | エンコード（`transport`） |
+| `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
+| `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知。JUCE の `MidiInput` による MIDI デバイスの列挙（永続 ID）、入力、抜去の検知（Beta、`docs/adr/0009-beta-module-layout.md`） | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
+| `capture` | アダプター | 子機のマイク入力のキャプチャ。WASAPI のループバックによるアプリ音声の収集（Beta、`docs/adr/0009-beta-module-layout.md`） | エンコード（`transport`） |
 | `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | パケットのパース（`transport`） |
 | `ipc` | アダプター | 名前付きパイプのクライアントとサーバー（`MessageChannel` の実装）。ACL によるアクセス制御 | メッセージの検証とコマンドの適用（`control-protocol`、`session`） |
-| `webui` | アダプター | JUCE の `WebBrowserComponent` による UI のホスト、`ui/dist` を配信するリソースプロバイダー、ネイティブ関数とイベントのブリッジ（`MessageChannel` の実装）。モードごとのウィンドウ設定の適用 | メッセージの検証とコマンドの適用（`pa-engine` の `session`、子機ロジック） |
+| `webui` | アダプター | JUCE の `WebBrowserComponent` による UI のホスト、`ui/dist` を配信するリソースプロバイダー、ネイティブ関数とイベントのブリッジ（`MessageChannel` の実装）。モードごとのウィンドウ設定の適用。ルーティング画面などの独立したサブウィンドウのホスト（Beta、`docs/adr/0009-beta-module-layout.md`） | メッセージの検証とコマンドの適用（`pa-engine` の `session`、子機ロジック） |
 | `persistence` | アダプター | 設定のアトミックな永続化、ログファイルへの出力、DPAPI による秘密情報の保護 | 設定値の意味づけ（`session`） |
+| `plugin-host` | アダプター | JUCE による VST3 のスキャン、読み込み、処理、状態の保存と復元、エディターのウィンドウ（`PluginProcessor`、`PluginLoader`、`PluginScanner`、`PluginEditorHost` の実装）。`pa-plugin-scanner` との間のメッセージのスキーマ（Beta、`docs/adr/0009-beta-module-layout.md`） | グラフへの組み込みと PDC（`audio-core`）、挿入位置と状態の保存の判断（`session`） |
+| `media` | アダプター | JUCE による音声ファイルの書き出し（WAV、FLAC）と、読み込みとデコード（`AudioFileWriter`、`AudioFileReader` の実装）（Beta、`docs/adr/0009-beta-module-layout.md`） | リングバッファとオーディオスレッドとの受け渡し（`audio-core`）、録音の状態と失敗の扱い（`session`） |
 
 ### 3.4 クラスとファイルの粒度
 
@@ -170,6 +175,8 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `network` | `transport`、`session`、`common` |
 | `ipc`、`webui` | `control-protocol`、`common` |
 | `persistence` | `session`、`common` |
+| `plugin-host` | `session`、`audio-core`、`common` |
+| `media` | `audio-core`、`common` |
 | `apps/*`（`client-desktop` を含む） | すべてのモジュール |
 
 - 他のモジュールは公開ヘッダー（`include/vocroz/<module>/`）経由でだけ参照する。
@@ -184,6 +191,9 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/` |
+| nlohmann/json | `control-protocol`、`persistence` |
+| Preact | `ui/`（UI の実行時に読み込む唯一のライブラリ。`docs/adr/0011-ui-frontend-stack.md`） |
+| Vite、TypeScript、Vitest、jsdom、Testing Library、Prettier | `ui/` の開発時の依存（成果物に含めない） |
 
 ### 4.3 依存性の注入（C++）
 
@@ -220,6 +230,7 @@ class CompositionRoot {
 | UI とネイティブ側（`webui`）、UI とエンジン（名前付きパイプ） | `control-protocol` | `ui/src/ipc/` のメッセージ型 |
 | 子機と親機（UDP） | `transport/src/wire/` | なし（両側で同じコードを使う） |
 | エンジンとランデブーサーバー（HTTP、STUN） | `infra/rendezvous/internal/httpapi/` | `session` と `network` のクライアント実装 |
+| `pa-engine` と `pa-plugin-scanner`（標準出力の JSON） | `plugin-host` | なし（両側で同じコードを使う） |
 | エンジンとランデブーサーバー（UDP のランデブーメッセージ） | `infra/rendezvous/internal/udpapi/wire.go` | `session` と `network` のクライアント実装 |
 
 ### 4.5 モジュール内、アプリ内、UI 内の依存
@@ -248,13 +259,16 @@ main.cpp  →  composition_root  →  各モジュールの公開ヘッダーと
 **UI 内**
 
 ```text
-main.ts       →  screens/、state/、ipc/
+main.ts       →  screens/、state/、ipc/、i18n/（初期ロケールの設定）
 screens/      →  components/、state/（購読）、ipc/（コマンド送信）、i18n/、utils/
 components/   →  i18n/、utils/（state/ と ipc/ に依存しない Presentational Component）
 state/        →  ipc/（メッセージ型のみ）、utils/
 ipc/          →  utils/
 i18n/、utils/  →  なし
 ```
+
+`screens/shared/` は複数の画面で使う Container の部品（コマンドの送信、楽観的更新、トーストへの変換）で、`screens/` と同じ依存の規則に従う。
+`ipc/fake-engine/` は開発とテストのためのフェイクエンジンで、`ipc/` の `Transport` を実装する。本番では読み込まない。
 
 `components/` を Presentational Component（props だけで描画するコンポーネント）に限定するのは、親機と子機の両方の画面とテストで、props を渡すだけで再利用できるようにするためです。ストアの購読とコマンドの送信は Container の役割として `screens/` が担います。
 
@@ -288,9 +302,15 @@ i18n/、utils/  →  なし
 | UI のストア | `ui/src/state/` | エンジンのスナップショットとイベントを保持する |
 | UI の IPC クライアント | `ui/src/ipc/` | コマンドの送信と、スナップショットとイベントの受信 |
 | UI の文字列リソース | `ui/src/i18n/ja.json`、`ui/src/i18n/en.json` | キーで参照する |
+| UI の画面間で共有する Container の部品 | `ui/src/screens/shared/` | 2 つ以上の画面で同じ知識として使うフックと関数だけ |
+| UI の開発用フェイクエンジン | `ui/src/ipc/fake-engine/fake-<モード>-engine.ts` | `Transport` を実装する。JUCE の外で開いたときだけ動的に読み込む |
+| UI の配色と基本の書式 | `ui/src/theme.css` | CSS 変数で定義し、各コンポーネントの CSS が参照する |
+| UI のテストダブル | 差し替える抽象と同じディレクトリの `fake-<名前>.ts` | `Fake` プレフィックス（`FakeTimers`）。決定的に動作する |
 | ランデブーサーバーの機能 | `infra/rendezvous/internal/<機能名>/` | 5.5 の形式 |
 | 単体テスト | C++ は対象と同じモジュールの `tests/<対象>_test.cpp`。TypeScript と Go は対象と同じディレクトリ | 対象ファイル 1 つにテストファイル 1 つ |
 | ADR | `docs/adr/NNNN-<題名>.md` | コンテキスト、決定、理由、結果 |
+| 外部ライブラリの取得 | `cmake/<ライブラリ名>.cmake` | 1 ライブラリに 1 ファイル。バージョンをハッシュかコミットで固定する（`docs/adr/0010-external-libraries.md`） |
+| 外部ライブラリのリンク確認テスト | `cmake/link-tests/<ライブラリ名>_link_test.cpp` | ビルドとリンクと最小限の呼び出しだけを確かめる。使い方のテストは使うモジュールの `tests/` に書く |
 
 ### 5.2 配置の決定手順
 
