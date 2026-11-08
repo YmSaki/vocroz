@@ -31,6 +31,7 @@ include(cmake/CompilerWarnings.cmake)
 include(cmake/Testing.cmake)
 include(cmake/GitHooks.cmake)
 include(cmake/DependencyRules.cmake)
+include(cmake/EmbedUiAssets.cmake)
 
 # 外部ライブラリ（バージョンは各ファイルで固定する。ライセンスは CONTRIBUTING.md）。
 include(cmake/ExternalSources.cmake)
@@ -53,6 +54,7 @@ add_subdirectory(modules)
 add_subdirectory(apps)
 if(VOCROZ_BUILD_TESTS)
   add_subdirectory(cmake/link-tests)
+  add_subdirectory(tests)
 endif()
 
 # すべてのターゲットを定義し終えてから、モジュール間の依存を検査する。
