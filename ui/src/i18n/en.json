@@ -89,6 +89,7 @@
   "error.INVITE_INVALID": "The invite code or URL is not valid",
   "error.UNREACHABLE": "Cannot reach the host. Check the network and firewall settings",
   "error.RECONNECT_TIMEOUT": "Reconnection timed out",
+  "error.SESSION_ENDED": "The host ended the session",
   "error.REVISION_CONFLICT": "Another change happened at the same time. Please try again",
   "error.NOT_FOUND": "The target was not found",
   "error.INVALID_STATE": "This operation is not available now",

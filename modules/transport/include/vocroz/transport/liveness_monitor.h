@@ -8,6 +8,7 @@
 
 #include <atomic>
 
+#include "vocroz/audio_core/realtime.h"
 #include "vocroz/common/ports/clock.h"
 #include "vocroz/transport/ports/liveness_listener.h"
 
@@ -25,7 +26,7 @@ public:
     /// 認証前のパケットでは呼ばない（偽造パケットで途絶の判定を遅らせられないようにするため）。
     /// スレッド安全性: ネットワーク受信スレッドから呼び出し可能。ヒープを確保せず、ブロックしない。
     /// オーディオスレッドから呼び出し可能。
-    void note_packet_received() noexcept;
+    void note_packet_received() noexcept VOCROZ_NONBLOCKING;
 
     /// 途絶と再開を判定し、状態が変わったときだけ listener に知らせる。
     /// スレッド安全性: コントロールスレッドから呼ぶ（1 つのスレッドだけから呼ぶ）。

@@ -1,22 +1,27 @@
 # transport
 
-子機と親機の間の UDP パケットの形式、Noise_IK による鍵交換、AEAD による暗号化、リプレイ排除と、その上の信頼制御層（制御メッセージの再送、キープアライブ、死活監視、再接続のバックオフ）を担うドメインのモジュールです。
-ソケットの実装は持たず（`network` が `DatagramSocket` ポートを実装します）、バイト列の検証、暗号化、再送の判断だけを行います。
+子機と親機の間の UDP パケットの形式、Noise_IK による鍵交換、AEAD による暗号化、リプレイ排除と、受信したメディアを PCM に戻す処理（Opus、ジッターバッファ、クロックドリフト補正、信号状態）、信頼制御層（制御メッセージの再送、キープアライブ、死活監視、再接続のバックオフ）を担うドメインのモジュールです。
+ソケットの実装は持ちません（`network` が `DatagramSocket` ポートを実装します）。
 形式と暗号化の決定は [ADR-0001](../../docs/adr/0001-key-exchange-noise-ik.md) と [ADR-0014](../../docs/adr/0014-transport-wire-format.md)、信頼制御層の決定は [ADR-0019](../../docs/adr/0019-reliable-control-layer.md) にあります。
-
-今後、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正もこのモジュールに入ります（AGENTS.md 3.3）。
 
 ## 公開 API
 
 | ヘッダー | 内容 | 呼ぶスレッド |
 | --- | --- | --- |
-| `vocroz/transport/constants.h` | パケットの最大長（1232 バイト）、鍵の長さ | — |
+| `vocroz/transport/constants.h` | パケットの最大長（1232 バイト）、鍵の長さ、`kSampleRate`、`FrameDuration`、`frame_samples()`、`kMaxOpusPayloadBytes` | — |
 | `vocroz/transport/transport_error.h` | `TransportError`（破棄や失敗の原因） | — |
 | `vocroz/transport/packet_header.h` | `PacketType`、`PacketHeader`、`parse_packet_header()`（復号前に接続 ID で届け先を選ぶ） | どこからでも（ヒープ確保なし） |
 | `vocroz/transport/media_payload.h` | `MediaPayload`（ストリーム ID、48kHz タイムスタンプ、ミュート epoch、Opus）、`decode_media_payload()` | どこからでも（ヒープ確保なし） |
 | `vocroz/transport/static_key_pair.h` | `StaticKeyPair`（Curve25519 の静的鍵。破棄時に秘密鍵を消す） | コントロール |
 | `vocroz/transport/noise_ik_handshake.h` | `NoiseIkHandshake`、`generate_connection_id()` | コントロールかネットワーク受信 |
 | `vocroz/transport/secure_channel.h` | `PacketSealer`（送信）、`PacketOpener`（受信とリプレイ排除）、`SecureChannel` | 送信はネットワーク送信側、受信はネットワーク受信（ヒープ確保、ロック、I/O なし） |
+| `vocroz/transport/media_frame.h` | `MediaFrame`（タイムスタンプ、ミュートの世代番号、Opus のペイロード）、`make_media_frame()` | どこからでも |
+| `vocroz/transport/opus_frame_encoder.h` | `OpusFrameEncoder`。`create()` はオーディオスレッド外、`encode()` はオーディオスレッドから呼び出し可能 | 子機のオーディオスレッド |
+| `vocroz/transport/opus_frame_decoder.h` | `OpusFrameDecoder`。`decode()`、`conceal()`（PLC）、`reset()` | オーディオスレッド |
+| `vocroz/transport/playout_stream.h` | `PlayoutStream`。1 ストリームの受信から PCM までをまとめたもの | `enqueue()` はネットワーク受信スレッド、`render()` はオーディオスレッド |
+| `vocroz/transport/signal_monitor.h` | `SignalMonitor`。信号状態の判定と、古い世代のフレームの選別 | ネットワーク受信スレッド |
+| `vocroz/transport/signal_state.h` | `SignalState`、`canonical_name()` | どこからでも |
+| `vocroz/transport/send_mute_tracker.h` | `SendMuteTracker`。世代番号による送信ミュートの追跡 | 1 スレッドから |
 | `vocroz/transport/control_lane.h` | `ControlLane`（制御と MIDI のレーン）、制御メッセージの最大長 | どこからでも（定数と列挙型だけ） |
 | `vocroz/transport/reliable_control_channel.h` | `ReliableControlChannel`（連番、選択 ACK、再送、キープアライブ） | コントロール |
 | `vocroz/transport/liveness_monitor.h` | `LivenessMonitor`（5 秒の受信途絶と再開の判定） | 記録はネットワーク受信（ヒープ確保、ロックなし）、判定はコントロール |
@@ -46,6 +51,36 @@ auto media = decode_media_payload(opened.value().plaintext);
 
 失敗したパケットは状態を変えずに捨てられます。認証に成功したパケットのシーケンス番号だけをリプレイ排除の窓に記録するので、偽造パケットで正規のパケットを捨てさせることはできません。
 
+### 受信側のつなぎ方
+
+```cpp
+// ネットワーク受信スレッド: 復号した MediaPayload を make_media_frame() で MediaFrame にしてから
+if (monitor.on_media_frame(frame.mute_epoch, clock.now())) {
+    stream->enqueue(frame);
+}
+// 制御メッセージで送信ミュートの通知を受けたとき
+monitor.on_send_mute(send_muted, mute_epoch, clock.now());
+// 100ms 程度の間隔で
+monitor.poll(clock.now());
+
+// オーディオスレッド: デバイスのコールバックごとに（長さは毎回変わってよい）
+stream->render(block);
+```
+
+### 振る舞いの要点
+
+- 再生の開始は、深さが目標に達してからにする。開始時は 10ms でフェードインする。
+- 欠損は PLC で補う。フレームが途絶えたら PLC を 40ms まで続けてフェードアウトし、無音にして溜め直す。古い音を引き延ばして鳴らし続けない。
+- 再生位置より古いフレーム、重複、すでに PLC で埋めた位置のフレームは捨てる。回線の停滞のあとにまとめて届き、深さが上限を超えたら、古いほうを捨てて目標まで浅くする。
+- 枯渇したら目標を 1 フレーム深くする。10 秒間余裕が残り続けたら 1 フレーム浅くする。
+- ミュートの世代番号が新しいフレームが届いたら、新しい区間としてバッファとデコーダーを初期化する。ドリフトの推定値は区間をまたいで保持する。
+
+### ミュートの世代番号の規則
+
+子機は送信ミュートを解除するたびに世代番号を 1 増やし、その番号をフレームに載せて送ります。ミュート中は送信しません。
+送信ミュートの通知も `(send_muted, 世代番号)` を運びます。同じ世代では「解除 → ミュート」の順に起きるので、受信側は `(世代番号, ミュート中か)` の組の辞書順で新旧を比べ、到着順が逆転した通知とミュート前のフレームを捨てます。
+解除の通知より先に新しい世代のフレームが届いた場合は、解除を知ったものとして扱います。
+
 ### 信頼制御層のつなぎ方
 
 ```cpp
@@ -70,4 +105,5 @@ liveness.poll();
 
 ## 依存してよいモジュール
 
-`audio-core`、`common`（AGENTS.md 4.2）。外部ライブラリは libsodium と noise-c をこのモジュールの中だけで使い、公開ヘッダーには型を出しません。
+`audio-core`、`common`（AGENTS.md 4.2）。`audio-core` は `VOCROZ_NONBLOCKING`（`vocroz/audio_core/realtime.h`）のためだけに使います。外部ライブラリは libsodium、noise-c、libopus をこのモジュールの中だけで使い、公開ヘッダーには型を出しません。
+オーディオスレッドから呼ぶ関数（`PlayoutStream::render()` とそこから呼ばれる関数、`OpusFrameEncoder::encode()`）には、`audio-core` の `VOCROZ_NONBLOCKING` を付けています（AGENTS.md 第 9 節）。

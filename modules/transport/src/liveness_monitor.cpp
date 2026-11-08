@@ -16,7 +16,7 @@ LivenessMonitor::LivenessMonitor(const common::Clock& clock, LivenessListener& l
                   "ネットワーク受信スレッドから待たずに書けるよう、ロックフリーにする");
 }
 
-void LivenessMonitor::note_packet_received() noexcept {
+void LivenessMonitor::note_packet_received() noexcept VOCROZ_NONBLOCKING {
     last_received_ticks_.store(clock_.now().time_since_epoch().count(), std::memory_order_release);
 }
 

@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// transport の外でも使う定数。受信バッファの大きさを決める network や、
-// 公開鍵を扱う session が、ワイヤーフォーマットと同じ値を使えるようにする。
+// transport の外でも使う定数。
+// 受信バッファの大きさを決める network や、公開鍵を扱う session が、
+// ワイヤーフォーマットと同じ値を使えるようにする。
+// メディアの形式は、子機の送信側（capture と client-desktop）と親機の受信側が同じ値を使うので、
+// ここで 1 か所に定義する。
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace vocroz::transport {
 
@@ -19,5 +23,39 @@ inline constexpr std::size_t kPublicKeyBytes = 32;
 
 /// Curve25519 の秘密鍵の長さ（バイト）。
 inline constexpr std::size_t kPrivateKeyBytes = 32;
+
+/// メディアのサンプルレート（Hz）。
+/// 内部フォーマットとメディアのタイムスタンプの時計は 48kHz に固定する。
+/// 入力デバイスのレートが異なる場合は、デバイスの境界でリサンプリングしてから渡す。
+inline constexpr std::uint32_t kSampleRate = 48000;
+
+/// Opus の 1 フレームの長さ。
+/// 合奏の低遅延のため 2.5ms か 5ms だけを使う（docs/adr/0002-opus-low-delay.md）。
+enum class FrameDuration : std::uint8_t {
+    k2500Us,  ///< 2.5ms（120 サンプル）
+    k5000Us,  ///< 5ms（240 サンプル）
+};
+
+/// フレーム長に対応する 48kHz のサンプル数を返す。
+/// @param duration フレーム長
+/// @return 1 フレームのサンプル数
+/// スレッド安全性: どのスレッドからも呼び出し可能。オーディオスレッドから呼び出し可能。
+[[nodiscard]] constexpr std::size_t frame_samples(FrameDuration duration) noexcept {
+    switch (duration) {
+        case FrameDuration::k2500Us:
+            return 120;
+        case FrameDuration::k5000Us:
+            return 240;
+    }
+    return 240;  // 列挙子以外の値は来ないが、未定義の値でも 1
+                 // フレームとして扱えるよう長いほうを返す
+}
+
+/// 1 フレームの Opus ペイロードの上限（バイト）。
+/// Opus の最大ビットレート 510kbps で 5ms のフレームを作ると約 319 バイトになるので、
+/// 余裕を見て 400 にする。
+/// Opus の仕様上の上限（1275 バイト）より小さくするのは、フレームを固定長の配列で持ち、
+/// ストリームごとのキューとジッターバッファの事前確保の量を抑えるため。
+inline constexpr std::size_t kMaxOpusPayloadBytes = 400;
 
 }  // namespace vocroz::transport
