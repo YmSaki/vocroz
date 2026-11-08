@@ -5,7 +5,7 @@
 //
 // revision は entity ごとの版で、コマンドで変更できる値が変わったときだけ進む。
 // エンジンが観測して変わるだけの値（接続状態、信号状態など）の変化では進まない
-// （docs/adr/0014-control-protocol-messages.md）。
+// （docs/adr/0015-control-protocol-messages.md）。
 #pragma once
 
 #include <cstdint>

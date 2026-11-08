@@ -1,6 +1,6 @@
 # メッセージの JSON の例
 
-UI とエンジン間の全メッセージの JSON の例です（`docs/adr/0014-control-protocol-messages.md`）。
+UI とエンジン間の全メッセージの JSON の例です（`docs/adr/0015-control-protocol-messages.md`）。
 C++ の型（`modules/control-protocol`）と UI の型（`ui/src/ipc/messages.ts`）が同じ形を表していることを、両方のテストがこの例を読んで確かめます。
 
 - `ui_to_engine.json`: UI からエンジンへのメッセージ

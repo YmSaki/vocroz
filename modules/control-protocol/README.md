@@ -1,7 +1,7 @@
 # control-protocol
 
 UI とエンジンの間でやり取りするメッセージを 1 か所で定義するモジュールです。レイヤーはドメインで、依存してよいのは `common` だけです（AGENTS.md 4.2）。
-メッセージの形、revision の進め方、検証の範囲は `docs/adr/0014-control-protocol-messages.md` で決めています。
+メッセージの形、revision の進め方、検証の範囲は `docs/adr/0015-control-protocol-messages.md` で決めています。
 
 ## 責務
 

@@ -3,7 +3,7 @@
 // UI とエンジン間のメッセージの JSON のエンコードとデコード。
 // デコードは信頼境界で、JSON の構文、種別、フィールドの有無と型、未知のフィールド、
 // どの entity にも共通する値の範囲を検査し、検証済みの型だけを返す
-// （docs/adr/0014-control-protocol-messages.md）。entity ごとの範囲と状態との整合は session
+// （docs/adr/0015-control-protocol-messages.md）。entity ごとの範囲と状態との整合は session
 // が判断する。
 #pragma once
 

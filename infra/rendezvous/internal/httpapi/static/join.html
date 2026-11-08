@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- 招待 URL の着地ページ。文言の切り替えと vocroz:// リンクの組み立ては join.js が行う。 -->
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>VOCROZ への招待</title>
+  <link rel="stylesheet" href="/join/join.css">
+  <script src="/join/join.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1 data-i18n="title">VOCROZ への招待</h1>
+    <section id="with-code" hidden>
+      <p data-i18n="lead">VOCROZ のセッションに招待されています。</p>
+      <p><a id="open" class="button" href="#" data-i18n="open">VOCROZ で開く</a></p>
+      <p class="hint" data-i18n="notInstalled">VOCROZ が入っていない場合は、先にダウンロードしてください。</p>
+      <p><a id="download" href="{{.DownloadURL}}" data-i18n="download">VOCROZ をダウンロード</a></p>
+      <h2 data-i18n="codeHeading">招待コード</h2>
+      <p class="hint" data-i18n="codeHint">ボタンで開けない場合は、VOCROZ の「招待コードで参加」にこのコードを貼り付けてください。</p>
+      <p class="code-row"><code id="code"></code> <button id="copy" type="button" data-i18n="copy">コピー</button></p>
+      <p id="copied" class="hint" role="status" hidden data-i18n="copied">コピーしました</p>
+    </section>
+    <section id="without-code" hidden>
+      <p data-i18n="noCode">招待コードが見つかりません。招待した人から届いたリンクをそのまま開いてください。</p>
+      <p><a href="{{.DownloadURL}}" data-i18n="download">VOCROZ をダウンロード</a></p>
+    </section>
+  </main>
+</body>
+</html>
