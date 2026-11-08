@@ -15,7 +15,7 @@
 | `network` | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | P2 |
 | `ipc` | 名前付きパイプのクライアントとサーバー（ACL、長さ付き JSON、再接続） | P4（追加済み） |
 | `webui` | JUCE の WebBrowserComponent による UI のホストとブリッジ、`ui/dist` の配信 | P4（追加済み） |
-| `persistence` | 設定のアトミック保存とバックアップ、ログ、秘密情報の保存 | P5 |
+| `persistence` | 設定のアトミック保存とバックアップ、ログのローテーション、マスキング済みの診断レポート、DPAPI による秘密情報の保存 | P5（追加済み） |
 | `media` | 音声ファイルの書き出し（WAV / FLAC）と読み込み。JUCE の AudioFormatManager を使う | Beta2 |
 | `plugin-host` | VST3 のスキャン、読み込み、処理、エディターのウィンドウ。スキャン用ヘルパー `pa-plugin-scanner` とのメッセージ | Beta4 |
 | `update` | 更新マニフェストの検証、本番中のブロック、更新トランザクションとロールバックの判定、現行版の選択 | P5 |
