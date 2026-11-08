@@ -38,6 +38,12 @@ enum class TransportError {
     kMalformedPayload,
     /// 暗号ライブラリの初期化に失敗した。
     kCryptoUnavailable,
+    /// ソケットからデータグラムを送れなかった。
+    kSendFailed,
+    /// 信頼制御層の送信待ちのメッセージが上限に達した。相手が ACK を返していない。
+    kQueueFull,
+    /// 信頼制御層のレーンの連番を使い切った。接続を張り直すまで、そのレーンでは送れない。
+    kSequenceExhausted,
 };
 
 }  // namespace vocroz::transport

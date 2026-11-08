@@ -1,10 +1,8 @@
 # transport
 
-子機と親機の間の UDP パケットの形式、Noise_IK による鍵交換、AEAD による暗号化、リプレイ排除と、受信したメディアを PCM に戻す処理（Opus、ジッターバッファ、クロックドリフト補正、信号状態）を担うドメインのモジュールです。
-ソケットは持ちません（ソケットの実装は `network`）。
-形式と暗号化の決定は [ADR-0001](../../docs/adr/0001-key-exchange-noise-ik.md) と [ADR-0014](../../docs/adr/0014-transport-wire-format.md) にあります。
-
-今後、信頼制御層もこのモジュールに入ります（AGENTS.md 3.3）。
+子機と親機の間の UDP パケットの形式、Noise_IK による鍵交換、AEAD による暗号化、リプレイ排除と、受信したメディアを PCM に戻す処理（Opus、ジッターバッファ、クロックドリフト補正、信号状態）、信頼制御層（制御メッセージの再送、キープアライブ、死活監視、再接続のバックオフ）を担うドメインのモジュールです。
+ソケットの実装は持ちません（`network` が `DatagramSocket` ポートを実装します）。
+形式と暗号化の決定は [ADR-0001](../../docs/adr/0001-key-exchange-noise-ik.md) と [ADR-0014](../../docs/adr/0014-transport-wire-format.md)、信頼制御層の決定は [ADR-0019](../../docs/adr/0019-reliable-control-layer.md) にあります。
 
 ## 公開 API
 
@@ -24,6 +22,13 @@
 | `vocroz/transport/signal_monitor.h` | `SignalMonitor`。信号状態の判定と、古い世代のフレームの選別 | ネットワーク受信スレッド |
 | `vocroz/transport/signal_state.h` | `SignalState`、`canonical_name()` | どこからでも |
 | `vocroz/transport/send_mute_tracker.h` | `SendMuteTracker`。世代番号による送信ミュートの追跡 | 1 スレッドから |
+| `vocroz/transport/control_lane.h` | `ControlLane`（制御と MIDI のレーン）、制御メッセージの最大長 | どこからでも（定数と列挙型だけ） |
+| `vocroz/transport/reliable_control_channel.h` | `ReliableControlChannel`（連番、選択 ACK、再送、キープアライブ） | コントロール |
+| `vocroz/transport/liveness_monitor.h` | `LivenessMonitor`（5 秒の受信途絶と再開の判定） | 記録はネットワーク受信（ヒープ確保、ロックなし）、判定はコントロール |
+| `vocroz/transport/reconnect_backoff.h` | `ReconnectBackoff`、`reconnect_delay()`（1、2、4、8、15 秒、±20% のジッター） | コントロール |
+| `vocroz/transport/secure_control_packet_sink.h` | `SecureControlPacketSink`（制御パケットの平文を暗号化して `DatagramSocket` で送る） | sealer を使うスレッド |
+| `vocroz/transport/crypto_random_source.h` | `CryptoRandomSource`（libsodium による `RandomSource`） | どこからでも |
+| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | 各ヘッダーの説明のとおり |
 
 ### 使い方
 
@@ -75,6 +80,28 @@ stream->render(block);
 子機は送信ミュートを解除するたびに世代番号を 1 増やし、その番号をフレームに載せて送ります。ミュート中は送信しません。
 送信ミュートの通知も `(send_muted, 世代番号)` を運びます。同じ世代では「解除 → ミュート」の順に起きるので、受信側は `(世代番号, ミュート中か)` の組の辞書順で新旧を比べ、到着順が逆転した通知とミュート前のフレームを捨てます。
 解除の通知より先に新しい世代のフレームが届いた場合は、解除を知ったものとして扱います。
+
+### 信頼制御層のつなぎ方
+
+```cpp
+// コントロールスレッド。制御だけを送る方向なら、暗号化して送る sink をそのまま使える。
+SecureControlPacketSink sink(channel.sealer, socket);              // socket は network の DatagramSocket
+ReliableControlChannel control(clock, sink, listener);             // listener は session の ControlMessageListener
+LivenessMonitor liveness(clock, liveness_listener);                // 5 秒の途絶で on_peer_timed_out()
+
+auto sent = control.send(ControlLane::kControl, message);          // 到達と送信順を保証する
+
+// ネットワーク受信スレッド。認証に成功したパケットごとに死活監視を更新し、
+// 制御パケットの平文はコントロールスレッドへ渡す。
+liveness.note_packet_received();
+// コントロールスレッド
+auto applied = control.on_control_packet(opened.plaintext);        // ACK の適用、重複の排除、整列
+// next_deadline() の時刻に呼ぶ
+control.tick();                                                    // 再送とキープアライブ
+liveness.poll();
+```
+
+再接続を始めたら、`ReconnectBackoff::next_delay()` の時間だけ待って試行し、成功したら `reset()` します。
 
 ## 依存してよいモジュール
 
