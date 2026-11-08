@@ -2,7 +2,8 @@
 //
 // 招待コードの値型と、招待コード・招待 URL・vocroz:// の引数のパース。
 // 出演者が貼り付けた文字列や、ブラウザから渡された URL は信頼できない外部入力なので、
-// ここで形式を検証し、内側には正規化済みの InviteCode だけを渡す（docs/adr/0006-invite-url-scheme.md）。
+// ここで形式を検証し、内側には正規化済みの InviteCode
+// だけを渡す（docs/adr/0006-invite-url-scheme.md）。
 #pragma once
 
 #include <cstddef>

@@ -33,7 +33,8 @@ public:
     /// チャンネルのフェーダーを反映する。5〜20 ms のゲインランプで適用する。
     /// @param strip_id チャンネルストリップの entity_id
     /// @param gain_db  ゲイン。std::nullopt は -∞ dB
-    virtual void set_channel_gain(const std::string& strip_id, control_protocol::GainDb gain_db) = 0;
+    virtual void set_channel_gain(const std::string& strip_id,
+                                  control_protocol::GainDb gain_db) = 0;
 
     /// Master のミュートを反映する。ミュートはランプでフェードアウトし、ポップノイズを防ぐ。
     /// @param muted ミュートするなら true

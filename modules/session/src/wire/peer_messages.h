@@ -92,7 +92,6 @@ using ClientToHostMessage =
     std::variant<JoinRequest, ReconnectRequest, SendMuteReport, InputReport, LeaveNotice>;
 
 /// 親機から子機へのメッセージ。
-using HostToClientMessage =
-    std::variant<JoinPending, JoinApproved, JoinDenied, SessionEndedNotice>;
+using HostToClientMessage = std::variant<JoinPending, JoinApproved, JoinDenied, SessionEndedNotice>;
 
 }  // namespace vocroz::session::wire

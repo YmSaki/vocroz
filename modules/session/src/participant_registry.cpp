@@ -5,7 +5,7 @@
 #include "participant_registry.h"
 
 #include <algorithm>
-#include <cstdio>
+#include <string>
 
 #include "detail/token_utils.h"
 
@@ -14,9 +14,11 @@ namespace {
 
 // 短い識別 ID（例: "#08"）。2 桁にそろえ、100 人目からは桁を増やす。
 std::string make_short_id(std::uint64_t number) {
-    char buffer[24];
-    std::snprintf(buffer, sizeof buffer, "#%02llu", static_cast<unsigned long long>(number));
-    return buffer;
+    auto digits = std::to_string(number);
+    if (digits.size() < 2) {
+        digits.insert(0, "0");
+    }
+    return "#" + digits;
 }
 
 }  // namespace
@@ -39,7 +41,8 @@ PendingJoin* ParticipantRegistry::find_pending(std::string_view entity_id) noexc
 }
 
 PendingJoin* ParticipantRegistry::find_pending_by_peer(PeerHandle peer) noexcept {
-    const auto it = std::ranges::find_if(pending_, [&](const PendingJoin& p) { return p.peer == peer; });
+    const auto it =
+        std::ranges::find_if(pending_, [&](const PendingJoin& p) { return p.peer == peer; });
     return it == pending_.end() ? nullptr : &*it;
 }
 

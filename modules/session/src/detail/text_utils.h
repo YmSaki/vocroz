@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // 子機から届く表示名など、外部から来る文字列の検査。
-// UI へは JSON で送るので、不正な UTF-8 を内側に入れない（エンコーダーが置換や失敗をしないように）。
+// UI へは JSON で送るので、不正な UTF-8
+// を内側に入れない（エンコーダーが置換や失敗をしないように）。
 #pragma once
 
 #include <cstddef>

@@ -6,10 +6,9 @@
 // HostSession::on_invite_registered() か ClientSession::on_invite_resolved() に渡す。
 #pragma once
 
-
-#include "vocroz/session/ports/host_link.h"
 #include "vocroz/session/identifiers.h"
 #include "vocroz/session/invite_code.h"
+#include "vocroz/session/ports/host_link.h"
 
 namespace vocroz::session {
 

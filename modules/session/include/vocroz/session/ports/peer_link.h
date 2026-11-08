@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 親機から子機との接続を操作するポート。transport の信頼制御層と受信の組み立て（network、E1）が実装する。
-// 子機との制御メッセージの形式は session が決め（docs/adr/0019-reliable-control-layer.md）、
+// 親機から子機との接続を操作するポート。transport
+// の信頼制御層と受信の組み立て（network、E1）が実装する。 子機との制御メッセージの形式は session
+// が決め（docs/adr/0019-reliable-control-layer.md）、
 // このポートはエンコード済みのバイト列を運ぶだけにする。
 #pragma once
 

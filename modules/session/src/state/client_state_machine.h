@@ -14,10 +14,10 @@ namespace vocroz::session::state {
 
 /// 子機の接続状態を進めるイベント。
 enum class ClientEvent : std::uint8_t {
-    kJoin,              ///< 出演者が招待で参加を指示した
-    kResolved,          ///< 招待コードを解決し、親機への接続と申請を始めた
-    kJoinPending,       ///< 親機が参加の申請を受け付けた（承認待ち）
-    kApproved,          ///< 親機が承認した（再接続トークンによる復帰を含む）
+    kJoin,         ///< 出演者が招待で参加を指示した
+    kResolved,     ///< 招待コードを解決し、親機への接続と申請を始めた
+    kJoinPending,  ///< 親機が参加の申請を受け付けた（承認待ち）
+    kApproved,     ///< 親機が承認した（再接続トークンによる復帰を含む）
     kMediaEstablished,  ///< 承認後の経路の確立が終わり、送信を始められる
     kLinkLost,          ///< 承認後に親機からの受信が 5 秒途絶えた
     kReconnected,       ///< 途絶の後、同じストリップへ戻れた

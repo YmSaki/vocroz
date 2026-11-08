@@ -14,14 +14,14 @@ namespace vocroz::session::state {
 
 /// セッション状態を進めるイベント。
 enum class SessionEvent : std::uint8_t {
-    kCreate,                ///< オペレーターがセッションの作成を指示した
-    kCreated,               ///< 招待の登録が終わった
-    kParticipantActive,     ///< CONNECTED か RECONNECTING の参加者が 1 人以上になった
-    kNoParticipantActive,   ///< CONNECTED と RECONNECTING の参加者がいなくなった（全員 LOST など）
-    kEnd,                   ///< オペレーターがセッションの終了を指示した
-    kEnded,                 ///< 終了処理（招待の失効、切断、フェードアウト、保存）が終わった
-    kFault,                 ///< 致命的なエラー（招待を登録できない、エンジンの異常）
-    kRecover,               ///< オペレーターがエラーを確認した
+    kCreate,             ///< オペレーターがセッションの作成を指示した
+    kCreated,            ///< 招待の登録が終わった
+    kParticipantActive,  ///< CONNECTED か RECONNECTING の参加者が 1 人以上になった
+    kNoParticipantActive,  ///< CONNECTED と RECONNECTING の参加者がいなくなった（全員 LOST など）
+    kEnd,                  ///< オペレーターがセッションの終了を指示した
+    kEnded,  ///< 終了処理（招待の失効、切断、フェードアウト、保存）が終わった
+    kFault,    ///< 致命的なエラー（招待を登録できない、エンジンの異常）
+    kRecover,  ///< オペレーターがエラーを確認した
 };
 
 /// 状態 current でイベント event が起きたときの次の状態を返す。

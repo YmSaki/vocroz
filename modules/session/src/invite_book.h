@@ -29,7 +29,7 @@ public:
     struct Active {
         InviteToken token{};
         RegisteredInvite registered;
-        TimePoint expires_at{};
+        TimePoint expires_at;
     };
 
     /// 新しい招待の登録を始めたことを記録する。登録が終わるまで、このトークンでは参加できない。
@@ -75,7 +75,7 @@ public:
     /// @return 有効なら成功。期限切れは kInviteExpired、取り消し済みは kInviteRevoked、
     ///         知らないトークンは kInviteInvalid
     [[nodiscard]] common::Result<void, control_protocol::ErrorCode> verify(const InviteToken& token,
-                                                                          TimePoint now) const;
+                                                                           TimePoint now) const;
 
     /// すべての記録を消す（セッションの終了）。
     void clear() noexcept;

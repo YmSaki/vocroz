@@ -21,7 +21,8 @@ public:
     virtual void select_input(const std::optional<std::string>& device_id) = 0;
 
     /// 送信ミュートを反映する。ミュート中はフレームを送らない（出演者の音声を PC の外へ出さない）。
-    /// 解除後に送るフレームには epoch を載せ、親機がミュート前の古いフレームを見分けられるようにする。
+    /// 解除後に送るフレームには epoch
+    /// を載せ、親機がミュート前の古いフレームを見分けられるようにする。
     /// @param muted ミュートするなら true
     /// @param epoch ミュートの世代番号。解除のたびに 1 増える
     virtual void set_send_muted(bool muted, std::uint32_t epoch) = 0;
