@@ -6,8 +6,11 @@
 
 #include <string>
 
-#include <dpapi.h>
+// dpapi.h は windows.h の型を前提にするので、並べ替えさせずに windows.h を先に読む。
+// clang-format off
 #include <windows.h>
+#include <dpapi.h>
+// clang-format on
 
 namespace vocroz::persistence {
 namespace {
