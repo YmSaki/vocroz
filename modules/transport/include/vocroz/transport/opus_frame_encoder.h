@@ -11,6 +11,7 @@
 #include <memory>
 #include <span>
 
+#include "vocroz/audio_core/realtime.h"
 #include "vocroz/common/result.h"
 #include "vocroz/transport/codec_error.h"
 #include "vocroz/transport/constants.h"
@@ -57,7 +58,7 @@ public:
     /// エンコードに失敗したら kEncodeFailed
     /// スレッド安全性: オーディオスレッドから呼び出し可能（ヒープを確保せず、ブロックしない）。
     [[nodiscard]] common::Result<std::size_t, CodecError> encode(
-        std::span<const float> pcm, std::span<std::uint8_t> out) noexcept;
+        std::span<const float> pcm, std::span<std::uint8_t> out) noexcept VOCROZ_NONBLOCKING;
 
     /// 1 フレームのサンプル数を返す。
     [[nodiscard]] std::size_t frame_samples() const noexcept {

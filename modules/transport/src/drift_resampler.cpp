@@ -8,6 +8,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "vocroz/audio_core/realtime.h"
+
 namespace vocroz::transport {
 
 namespace {
@@ -76,7 +78,7 @@ std::array<DriftResampler::Kernel, DriftResampler::kPhases + 1> DriftResampler::
     return kernels;
 }
 
-bool DriftResampler::push(std::span<const float> input) noexcept {
+bool DriftResampler::push(std::span<const float> input) noexcept VOCROZ_NONBLOCKING {
     if (size_ + input.size() > fifo_.size()) {
         compact();
         if (size_ + input.size() > fifo_.size()) {
@@ -88,7 +90,7 @@ bool DriftResampler::push(std::span<const float> input) noexcept {
     return true;
 }
 
-std::size_t DriftResampler::pull(std::span<float> out, double ratio) noexcept {
+std::size_t DriftResampler::pull(std::span<float> out, double ratio) noexcept VOCROZ_NONBLOCKING {
     std::size_t written = 0;
     while (written < out.size() && index_ + kHalfTaps < size_) {
         const double position = fraction_ * static_cast<double>(kPhases);
@@ -111,14 +113,14 @@ std::size_t DriftResampler::pull(std::span<float> out, double ratio) noexcept {
     return written;
 }
 
-double DriftResampler::buffered_samples() const noexcept {
+double DriftResampler::buffered_samples() const noexcept VOCROZ_NONBLOCKING {
     if (index_ >= size_) {
         return 0.0;
     }
     return static_cast<double>(size_ - index_) - fraction_;
 }
 
-void DriftResampler::reset() noexcept {
+void DriftResampler::reset() noexcept VOCROZ_NONBLOCKING {
     // 過去の入力を無音とみなし、最初の出力に必要な片側ぶんの履歴を 0 で埋める。
     std::fill_n(fifo_.begin(), kHalfTaps - 1, 0.0F);
     size_ = kHalfTaps - 1;
@@ -126,7 +128,7 @@ void DriftResampler::reset() noexcept {
     fraction_ = 0.0;
 }
 
-void DriftResampler::compact() noexcept {
+void DriftResampler::compact() noexcept VOCROZ_NONBLOCKING {
     // 次の出力に必要な最も古い入力を先頭に移す。
     const std::size_t start = index_ - (kHalfTaps - 1);
     if (start == 0) {

@@ -7,6 +7,8 @@
 
 #include <cstddef>
 
+#include "vocroz/audio_core/realtime.h"
+
 namespace vocroz::transport {
 
 /// 深さの誤差から変換比（出力 1 サンプルあたりに消費する入力のサンプル数）を決める。
@@ -21,21 +23,21 @@ public:
     /// @return 次のブロックで使う変換比。1 ± kMaxRateDeviation の範囲
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
     double update(double depth_samples, double target_samples,
-                  std::size_t elapsed_samples) noexcept;
+                  std::size_t elapsed_samples) noexcept VOCROZ_NONBLOCKING;
 
     /// 平滑化した深さを捨てる。
     /// ドリフトの推定値（積分項）は残す。
     /// 新しい区間の始まりで、前の区間の深さを引きずらないために呼ぶ。
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
-    void restart() noexcept;
+    void restart() noexcept VOCROZ_NONBLOCKING;
 
     /// 現在の変換比を返す。
-    [[nodiscard]] double ratio() const noexcept {
+    [[nodiscard]] double ratio() const noexcept VOCROZ_NONBLOCKING {
         return ratio_;
     }
 
     /// 推定したドリフト（変換比の 1 からのずれ）を返す。
-    [[nodiscard]] double drift_estimate() const noexcept {
+    [[nodiscard]] double drift_estimate() const noexcept VOCROZ_NONBLOCKING {
         return integral_;
     }
 

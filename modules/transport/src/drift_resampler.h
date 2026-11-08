@@ -13,6 +13,8 @@
 #include <span>
 #include <vector>
 
+#include "vocroz/audio_core/realtime.h"
+
 namespace vocroz::transport {
 
 /// 入力を内部の FIFO に積み、変換比に従って出力を取り出す可変レートのリサンプラー。
@@ -32,7 +34,7 @@ public:
     /// @param input 積むサンプル
     /// @return 積めたら true。領域が足りなければ何もせず false
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
-    [[nodiscard]] bool push(std::span<const float> input) noexcept;
+    [[nodiscard]] bool push(std::span<const float> input) noexcept VOCROZ_NONBLOCKING;
 
     /// 出力を取り出す。
     /// @param out   書き込み先。入力が足りる範囲で先頭から埋める
@@ -40,15 +42,15 @@ public:
     /// 1.0 より大きいと入力を速く消費する
     /// @return 書き込んだサンプル数。入力が足りなければ out.size() より少ない
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
-    [[nodiscard]] std::size_t pull(std::span<float> out, double ratio) noexcept;
+    [[nodiscard]] std::size_t pull(std::span<float> out, double ratio) noexcept VOCROZ_NONBLOCKING;
 
     /// まだ出力に使い終えていない入力のサンプル数を返す。
     /// 深さの計測に使う。
-    [[nodiscard]] double buffered_samples() const noexcept;
+    [[nodiscard]] double buffered_samples() const noexcept VOCROZ_NONBLOCKING;
 
     /// FIFO を空にし、過去の入力を無音として扱う初期状態に戻す。
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
-    void reset() noexcept;
+    void reset() noexcept VOCROZ_NONBLOCKING;
 
 private:
     // 小数位相の分割数。
@@ -59,7 +61,7 @@ private:
 
     // 小数位相 0〜kPhases（両端を含む）の係数表を作る。
     static std::array<Kernel, kPhases + 1> make_kernels();
-    void compact() noexcept;
+    void compact() noexcept VOCROZ_NONBLOCKING;
 
     std::array<Kernel, kPhases + 1> kernels_;
     std::vector<float> fifo_;

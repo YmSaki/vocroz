@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <span>
 
+#include "vocroz/audio_core/realtime.h"
 #include "vocroz/common/result.h"
 #include "vocroz/transport/constants.h"
 
@@ -43,7 +44,7 @@ struct MediaFrame {
     /// 有効なペイロードを返す。
     /// @return 先頭 payload_size バイトを指す span。フレームの寿命の間だけ有効
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
-    [[nodiscard]] std::span<const std::uint8_t> payload_bytes() const noexcept {
+    [[nodiscard]] std::span<const std::uint8_t> payload_bytes() const noexcept VOCROZ_NONBLOCKING {
         return std::span<const std::uint8_t>{payload}.first(payload_size);
     }
 };

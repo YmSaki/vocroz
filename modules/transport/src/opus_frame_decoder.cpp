@@ -6,6 +6,7 @@
 
 #include <opus.h>
 
+#include "vocroz/audio_core/realtime.h"
 #include "vocroz/transport/constants.h"
 
 namespace vocroz::transport {
@@ -39,7 +40,7 @@ OpusFrameDecoder& OpusFrameDecoder::operator=(OpusFrameDecoder&&) noexcept = def
 OpusFrameDecoder::~OpusFrameDecoder() = default;
 
 common::Result<std::size_t, CodecError> OpusFrameDecoder::decode(
-    std::span<const std::uint8_t> payload, std::span<float> out) noexcept {
+    std::span<const std::uint8_t> payload, std::span<float> out) noexcept VOCROZ_NONBLOCKING {
     if (payload.empty()) {
         // 空のペイロードを渡すと libopus は PLC として扱う。
         // 受信したパケットの欠陥として区別する。
@@ -54,7 +55,8 @@ common::Result<std::size_t, CodecError> OpusFrameDecoder::decode(
     return static_cast<std::size_t>(samples);
 }
 
-common::Result<std::size_t, CodecError> OpusFrameDecoder::conceal(std::span<float> out) noexcept {
+common::Result<std::size_t, CodecError> OpusFrameDecoder::conceal(std::span<float> out) noexcept
+    VOCROZ_NONBLOCKING {
     if (out.empty() || out.size() % kPlcGranularitySamples != 0) {
         return common::make_unexpected(CodecError::kInvalidFrameSize);
     }
@@ -66,7 +68,7 @@ common::Result<std::size_t, CodecError> OpusFrameDecoder::conceal(std::span<floa
     return static_cast<std::size_t>(samples);
 }
 
-void OpusFrameDecoder::reset() noexcept {
+void OpusFrameDecoder::reset() noexcept VOCROZ_NONBLOCKING {
     // OPUS_RESET_STATE は確保済みの状態を初期化するだけで、失敗しない。
     static_cast<void>(opus_decoder_ctl(decoder_.get(), OPUS_RESET_STATE));
 }

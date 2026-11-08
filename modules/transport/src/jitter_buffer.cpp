@@ -10,6 +10,8 @@
 
 #include <algorithm>
 
+#include "vocroz/audio_core/realtime.h"
+
 namespace vocroz::transport {
 
 JitterBuffer::JitterBuffer(std::size_t frame_samples, std::size_t capacity_frames)
@@ -17,7 +19,7 @@ JitterBuffer::JitterBuffer(std::size_t frame_samples, std::size_t capacity_frame
       slots_(std::max<std::size_t>(capacity_frames, 1)),
       window_samples_(static_cast<std::uint64_t>(slots_.size()) * frame_samples_) {}
 
-InsertResult JitterBuffer::insert(const MediaFrame& frame) noexcept {
+InsertResult JitterBuffer::insert(const MediaFrame& frame) noexcept VOCROZ_NONBLOCKING {
     const std::uint64_t ts = frame.timestamp;
     if (has_floor_ && !started_ && ts < floor_) {
         return InsertResult::kLate;
@@ -66,14 +68,14 @@ InsertResult JitterBuffer::insert(const MediaFrame& frame) noexcept {
     return InsertResult::kAccepted;
 }
 
-void JitterBuffer::start() noexcept {
+void JitterBuffer::start() noexcept VOCROZ_NONBLOCKING {
     if (stored_ > 0) {
         started_ = true;
         has_floor_ = false;
     }
 }
 
-PopResult JitterBuffer::pop() noexcept {
+PopResult JitterBuffer::pop() noexcept VOCROZ_NONBLOCKING {
     const std::uint64_t position = head_;
     head_ += frame_samples_;
     if (stored_ == 0) {
@@ -88,14 +90,14 @@ PopResult JitterBuffer::pop() noexcept {
     return {PopKind::kFrame, &slot.frame};
 }
 
-std::size_t JitterBuffer::depth_samples() const noexcept {
+std::size_t JitterBuffer::depth_samples() const noexcept VOCROZ_NONBLOCKING {
     if (stored_ == 0 || newest_ + frame_samples_ <= head_) {
         return 0;
     }
     return static_cast<std::size_t>(newest_ + frame_samples_ - head_);
 }
 
-std::size_t JitterBuffer::drop_until(std::size_t max_samples) noexcept {
+std::size_t JitterBuffer::drop_until(std::size_t max_samples) noexcept VOCROZ_NONBLOCKING {
     std::size_t dropped = 0;
     while (stored_ > 0 && depth_samples() > max_samples) {
         static_cast<void>(pop());
@@ -104,7 +106,7 @@ std::size_t JitterBuffer::drop_until(std::size_t max_samples) noexcept {
     return dropped;
 }
 
-void JitterBuffer::reset() noexcept {
+void JitterBuffer::reset() noexcept VOCROZ_NONBLOCKING {
     for (Slot& slot : slots_) {
         slot.occupied = false;
     }
@@ -113,7 +115,7 @@ void JitterBuffer::reset() noexcept {
     has_floor_ = false;
 }
 
-void JitterBuffer::rebuffer() noexcept {
+void JitterBuffer::rebuffer() noexcept VOCROZ_NONBLOCKING {
     // 格納済みのフレームは再生位置より新しいので残し、最も古いものから溜め直す。
     started_ = false;
     has_floor_ = true;
@@ -121,13 +123,13 @@ void JitterBuffer::rebuffer() noexcept {
     seek_oldest();
 }
 
-void JitterBuffer::advance_floor(std::size_t samples) noexcept {
+void JitterBuffer::advance_floor(std::size_t samples) noexcept VOCROZ_NONBLOCKING {
     if (has_floor_ && stored_ == 0) {
         floor_ += samples;
     }
 }
 
-JitterBuffer::Slot& JitterBuffer::slot_for(std::uint64_t timestamp) noexcept {
+JitterBuffer::Slot& JitterBuffer::slot_for(std::uint64_t timestamp) noexcept VOCROZ_NONBLOCKING {
     // 先頭より前の位置（再生前に順序が逆転して届いたフレーム）も引けるよう、
     // 符号付きの差で剰余を取る。
     const auto offset = static_cast<std::int64_t>(timestamp - origin_);
@@ -137,19 +139,19 @@ JitterBuffer::Slot& JitterBuffer::slot_for(std::uint64_t timestamp) noexcept {
     return slots_[static_cast<std::size_t>(index)];
 }
 
-bool JitterBuffer::aligned(std::uint64_t timestamp) const noexcept {
+bool JitterBuffer::aligned(std::uint64_t timestamp) const noexcept VOCROZ_NONBLOCKING {
     const auto offset = static_cast<std::int64_t>(timestamp - origin_);
     return offset % static_cast<std::int64_t>(frame_samples_) == 0;
 }
 
-void JitterBuffer::store(Slot& slot, const MediaFrame& frame) noexcept {
+void JitterBuffer::store(Slot& slot, const MediaFrame& frame) noexcept VOCROZ_NONBLOCKING {
     slot.occupied = true;
     slot.frame = frame;
     newest_ = stored_ == 0 ? frame.timestamp : std::max(newest_, frame.timestamp);
     ++stored_;
 }
 
-void JitterBuffer::discard_before(std::uint64_t timestamp) noexcept {
+void JitterBuffer::discard_before(std::uint64_t timestamp) noexcept VOCROZ_NONBLOCKING {
     if (timestamp - head_ >= window_samples_) {
         // 範囲全体より先なので、すべてのスロットが対象になる。
         for (Slot& slot : slots_) {
@@ -170,7 +172,7 @@ void JitterBuffer::discard_before(std::uint64_t timestamp) noexcept {
     seek_oldest();
 }
 
-void JitterBuffer::seek_oldest() noexcept {
+void JitterBuffer::seek_oldest() noexcept VOCROZ_NONBLOCKING {
     // 再生前の head_ は格納済みの最も古いフレームの位置なので、
     // 空きを飛ばして次のフレームまで進める。
     // 格納済みのフレームは head_ から容量の範囲にあるので、ループは容量の回数で終わる。

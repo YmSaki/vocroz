@@ -12,6 +12,7 @@
 #include <memory>
 #include <span>
 
+#include "vocroz/audio_core/realtime.h"
 #include "vocroz/common/result.h"
 #include "vocroz/transport/codec_error.h"
 
@@ -43,18 +44,19 @@ public:
     /// @return 書き込んだサンプル数。壊れたパケットや out に収まらないフレームは kInvalidPacket
     /// スレッド安全性: オーディオスレッドから呼び出し可能（ヒープを確保せず、ブロックしない）。
     [[nodiscard]] common::Result<std::size_t, CodecError> decode(
-        std::span<const std::uint8_t> payload, std::span<float> out) noexcept;
+        std::span<const std::uint8_t> payload, std::span<float> out) noexcept VOCROZ_NONBLOCKING;
 
     /// 欠損した 1 フレームを PLC で補間する。
     /// @param out 補間した PCM の書き込み先。長さが補間するサンプル数になる（2.5ms の整数倍）
     /// @return 書き込んだサンプル数。長さが 2.5ms の整数倍でなければ kInvalidFrameSize
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
-    [[nodiscard]] common::Result<std::size_t, CodecError> conceal(std::span<float> out) noexcept;
+    [[nodiscard]] common::Result<std::size_t, CodecError> conceal(std::span<float> out) noexcept
+        VOCROZ_NONBLOCKING;
 
     /// 内部状態を初期化する。
     /// 前の区間の音を次の区間に持ち込まないために、区間の切れ目で呼ぶ。
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
-    void reset() noexcept;
+    void reset() noexcept VOCROZ_NONBLOCKING;
 
 private:
     // libopus のデコーダーを破棄する。

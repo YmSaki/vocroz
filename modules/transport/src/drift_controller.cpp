@@ -7,12 +7,14 @@
 #include <algorithm>
 #include <cmath>
 
+#include "vocroz/audio_core/realtime.h"
+
 #include "transport_constants.h"
 
 namespace vocroz::transport {
 
 double DriftController::update(double depth_samples, double target_samples,
-                               std::size_t elapsed_samples) noexcept {
+                               std::size_t elapsed_samples) noexcept VOCROZ_NONBLOCKING {
     const double dt = static_cast<double>(elapsed_samples) / static_cast<double>(kSampleRate);
     if (!has_depth_) {
         smoothed_depth_ = depth_samples;
@@ -34,7 +36,7 @@ double DriftController::update(double depth_samples, double target_samples,
     return ratio_;
 }
 
-void DriftController::restart() noexcept {
+void DriftController::restart() noexcept VOCROZ_NONBLOCKING {
     has_depth_ = false;
     smoothed_depth_ = 0.0;
     ratio_ = 1.0 + integral_;

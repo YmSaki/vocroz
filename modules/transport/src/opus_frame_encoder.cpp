@@ -9,6 +9,8 @@
 
 #include <opus.h>
 
+#include "vocroz/audio_core/realtime.h"
+
 namespace vocroz::transport {
 
 void OpusFrameEncoder::Deleter::operator()(::OpusEncoder* encoder) const noexcept {
@@ -62,7 +64,7 @@ OpusFrameEncoder& OpusFrameEncoder::operator=(OpusFrameEncoder&&) noexcept = def
 OpusFrameEncoder::~OpusFrameEncoder() = default;
 
 common::Result<std::size_t, CodecError> OpusFrameEncoder::encode(
-    std::span<const float> pcm, std::span<std::uint8_t> out) noexcept {
+    std::span<const float> pcm, std::span<std::uint8_t> out) noexcept VOCROZ_NONBLOCKING {
     if (pcm.size() != frame_samples_) {
         return common::make_unexpected(CodecError::kInvalidFrameSize);
     }

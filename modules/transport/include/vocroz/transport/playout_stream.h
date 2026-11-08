@@ -15,6 +15,7 @@
 #include <memory>
 #include <span>
 
+#include "vocroz/audio_core/realtime.h"
 #include "vocroz/common/result.h"
 #include "vocroz/transport/constants.h"
 #include "vocroz/transport/media_frame.h"
@@ -97,7 +98,7 @@ public:
     /// @param out 書き込み先。長さはデバイスのコールバック長（64〜512 サンプルなど）でよく、
     /// 毎回変わってもよい
     /// スレッド安全性: オーディオスレッドから呼び出し可能（ヒープを確保せず、ブロックしない）。
-    void render(std::span<float> out) noexcept;
+    void render(std::span<float> out) noexcept VOCROZ_NONBLOCKING;
 
     /// 統計を返す。
     /// スレッド安全性: render() と同じスレッドから呼ぶ。
