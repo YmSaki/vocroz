@@ -49,13 +49,13 @@ using Prologue = std::array<std::uint8_t, kPrologueBytes>;
 // これは Noise 仕様の REKEY と同じ考え方（ChaCha20 を鍵に対する擬似乱数関数として使う）で、
 // 導出に使った CipherState はこの 1 回だけ使って破棄する。
 // そのため、同じ鍵と nonce の組が二度使われることはない。
+// 関連データは渡さない。関連データは認証タグにしか影響せず、捨てる側のタグには意味がないため。
+// 送信鍵と受信鍵が別の値になるのは、Split() が方向ごとに別の鍵を返すことによる。
 [[nodiscard]] bool derive_transport_key(NoiseCipherState* cipher, TransportKey& key) noexcept {
     std::array<std::uint8_t, kTransportKeyBytes + kAeadTagBytes> block{};
     NoiseBuffer buffer;
     noise_buffer_set_inout(buffer, block.data(), kTransportKeyBytes, block.size());
-    const int status = noise_cipherstate_encrypt_with_ad(
-        cipher, reinterpret_cast<const std::uint8_t*>(kTransportKeyLabel.data()),
-        kTransportKeyLabel.size(), &buffer);
+    const int status = noise_cipherstate_encrypt_with_ad(cipher, nullptr, 0, &buffer);
     if (status == NOISE_ERROR_NONE) {
         std::copy_n(block.begin(), kTransportKeyBytes, key.begin());
     }

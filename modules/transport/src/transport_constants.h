@@ -20,10 +20,6 @@ inline constexpr const char* kNoiseProtocolName = "Noise_IK_25519_ChaChaPoly_BLA
 /// 平文のヘッダーにある接続 ID の書き換えを、ハンドシェイクの失敗として検出できる。
 inline constexpr std::string_view kPrologueLabel = "VOCROZ transport";
 
-/// Noise の Split() で得た鍵から、明示的な nonce で使う送受信の鍵を導出するときの関連データ。
-/// 用途の異なる鍵と取り違えないよう、ラベルで導出を区別する。
-inline constexpr std::string_view kTransportKeyLabel = "VOCROZ transport key v1";
-
 /// ChaCha20-Poly1305（IETF）の nonce の長さ（バイト）。
 inline constexpr std::size_t kAeadNonceBytes = 12;
 
