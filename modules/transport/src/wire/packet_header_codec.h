@@ -13,7 +13,7 @@ namespace vocroz::transport::wire {
 
 /// header を out の先頭 kPacketHeaderBytes バイトに書く。
 /// 前提条件: out.size() >= kPacketHeaderBytes。呼び出し側で長さを確かめてから呼ぶ。
-/// スレッド安全性: 純粋関数で、オーディオスレッドから呼び出し可能。
+/// スレッド安全性: 純粋関数で、どのスレッドからも呼び出し可能。ヒープを確保しない。
 void write_packet_header(const PacketHeader& header, std::span<std::uint8_t> out) noexcept;
 
 }  // namespace vocroz::transport::wire

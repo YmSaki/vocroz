@@ -8,22 +8,22 @@
 
 ## 公開 API
 
-| ヘッダー | 内容 | オーディオスレッド |
+| ヘッダー | 内容 | 呼ぶスレッド |
 | --- | --- | --- |
 | `vocroz/transport/constants.h` | パケットの最大長（1232 バイト）、鍵の長さ | — |
 | `vocroz/transport/transport_error.h` | `TransportError`（破棄や失敗の原因） | — |
-| `vocroz/transport/packet_header.h` | `PacketType`、`PacketHeader`、`parse_packet_header()`（復号前に接続 ID で届け先を選ぶ） | 呼び出し可能 |
-| `vocroz/transport/media_payload.h` | `MediaPayload`（ストリーム ID、48kHz タイムスタンプ、ミュート epoch、Opus）、`decode_media_payload()` | 呼び出し可能 |
-| `vocroz/transport/static_key_pair.h` | `StaticKeyPair`（Curve25519 の静的鍵。破棄時に秘密鍵を消す） | 呼び出さない |
-| `vocroz/transport/noise_ik_handshake.h` | `NoiseIkHandshake`、`generate_connection_id()` | 呼び出さない |
-| `vocroz/transport/secure_channel.h` | `PacketSealer`（送信）、`PacketOpener`（受信とリプレイ排除）、`SecureChannel` | 呼び出し可能 |
-| `vocroz/transport/control_lane.h` | `ControlLane`（制御と MIDI のレーン）、制御メッセージの最大長 | — |
-| `vocroz/transport/reliable_control_channel.h` | `ReliableControlChannel`（連番、選択 ACK、再送、キープアライブ）。コントロールスレッドで使う | 呼び出さない |
-| `vocroz/transport/liveness_monitor.h` | `LivenessMonitor`（5 秒の受信途絶と再開の判定） | `note_packet_received()` だけ呼び出し可能 |
-| `vocroz/transport/reconnect_backoff.h` | `ReconnectBackoff`、`reconnect_delay()`（1、2、4、8、15 秒、±20% のジッター） | 呼び出さない |
-| `vocroz/transport/secure_control_packet_sink.h` | `SecureControlPacketSink`（制御パケットの平文を暗号化して `DatagramSocket` で送る） | 呼び出さない |
-| `vocroz/transport/crypto_random_source.h` | `CryptoRandomSource`（libsodium による `RandomSource`） | 呼び出さない |
-| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | — |
+| `vocroz/transport/packet_header.h` | `PacketType`、`PacketHeader`、`parse_packet_header()`（復号前に接続 ID で届け先を選ぶ） | どこからでも（ヒープ確保なし） |
+| `vocroz/transport/media_payload.h` | `MediaPayload`（ストリーム ID、48kHz タイムスタンプ、ミュート epoch、Opus）、`decode_media_payload()` | どこからでも（ヒープ確保なし） |
+| `vocroz/transport/static_key_pair.h` | `StaticKeyPair`（Curve25519 の静的鍵。破棄時に秘密鍵を消す） | コントロール |
+| `vocroz/transport/noise_ik_handshake.h` | `NoiseIkHandshake`、`generate_connection_id()` | コントロールかネットワーク受信 |
+| `vocroz/transport/secure_channel.h` | `PacketSealer`（送信）、`PacketOpener`（受信とリプレイ排除）、`SecureChannel` | 送信はネットワーク送信側、受信はネットワーク受信（ヒープ確保、ロック、I/O なし） |
+| `vocroz/transport/control_lane.h` | `ControlLane`（制御と MIDI のレーン）、制御メッセージの最大長 | どこからでも（定数と列挙型だけ） |
+| `vocroz/transport/reliable_control_channel.h` | `ReliableControlChannel`（連番、選択 ACK、再送、キープアライブ） | コントロール |
+| `vocroz/transport/liveness_monitor.h` | `LivenessMonitor`（5 秒の受信途絶と再開の判定） | 記録はネットワーク受信（ヒープ確保、ロックなし）、判定はコントロール |
+| `vocroz/transport/reconnect_backoff.h` | `ReconnectBackoff`、`reconnect_delay()`（1、2、4、8、15 秒、±20% のジッター） | コントロール |
+| `vocroz/transport/secure_control_packet_sink.h` | `SecureControlPacketSink`（制御パケットの平文を暗号化して `DatagramSocket` で送る） | sealer を使うスレッド |
+| `vocroz/transport/crypto_random_source.h` | `CryptoRandomSource`（libsodium による `RandomSource`） | どこからでも |
+| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | 各ヘッダーの説明のとおり |
 
 ### 使い方
 

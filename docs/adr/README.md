@@ -14,6 +14,7 @@
 | [0010](0010-external-libraries.md) | 外部ライブラリはソースから固定バージョンで取得し、JSON には nlohmann/json を使う | 採用 |
 | [0011](0011-ui-frontend-stack.md) | UI のフロントエンドは Vite + Preact + TypeScript で作り、フェイクエンジンで単独に開発する | 採用 |
 | [0012](0012-rendezvous-protocol.md) | ランデブーサーバーのプロトコルと状態の持ち方 | 採用 |
+| [0013](0013-installer-and-updater.md) | インストーラー、pa-updater、起動スタブの構成 | 採用 |
 | [0014](0014-transport-wire-format.md) | 子機と親機の間の UDP パケットの形式と、ハンドシェイク後の暗号化 | 採用 |
 | [0019](0019-reliable-control-layer.md) | 信頼制御層（制御メッセージの再送、キープアライブ、死活監視、再接続のバックオフ） | 採用 |
 
