@@ -18,5 +18,6 @@
 | [0014](0014-transport-wire-format.md) | 子機と親機の間の UDP パケットの形式と、ハンドシェイク後の暗号化 | 採用 |
 | [0015](0015-control-protocol-messages.md) | UI とエンジン間のメッセージの形、revision の進め方、検証の範囲 | 採用 |
 | [0019](0019-reliable-control-layer.md) | 信頼制御層（制御メッセージの再送、キープアライブ、死活監視、再接続のバックオフ） | 採用 |
+| [0021](0021-udp-socket-and-nat-traversal.md) | UDP ソケット、NAT 越えの手順、自動ポート開放 | 採用 |
 
 仕様書は RPC-SPEC-001（1.2-draft）。2026-11-07 にプロダクトオーナーが「UX を損なわない範囲で実装しやすい方法」を方針として承認した。

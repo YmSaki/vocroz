@@ -12,7 +12,7 @@
 | `capture` | 子機のマイク入力キャプチャ | P2 |
 | `session` | 招待、承認、再接続、接続と信号の状態モデル | P3 |
 | `control-protocol` | UI とエンジン間のコマンド / イベント定義（名前付きパイプ + JSON） | P4（追加済み） |
-| `network` | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信 | P2 |
+| `network` | Winsock の UDP ソケット、ランデブーサーバーとの通信、UDP ホールパンチ、自動ポート開放（PCP、NAT-PMP、UPnP-IGD） | P2（UDP、ランデブーの UDP、ポート開放は追加済み。招待の HTTPS は session の後） |
 | `ipc` | 名前付きパイプのクライアントとサーバー | P4 |
 | `webui` | JUCE の WebBrowserComponent による UI のホストとブリッジ | P4 |
 | `persistence` | 設定のアトミック保存とバックアップ、ログ、秘密情報の保存 | P5 |

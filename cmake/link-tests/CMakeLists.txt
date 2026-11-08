@@ -16,6 +16,11 @@ target_link_libraries(noise_c_link_test PRIVATE noise::protocol)
 vocroz_add_unit_test(nlohmann_json_link_test nlohmann_json_link_test.cpp)
 target_link_libraries(nlohmann_json_link_test PRIVATE nlohmann_json::nlohmann_json)
 
+if(WIN32)
+  vocroz_add_unit_test(miniupnpc_link_test miniupnpc_link_test.cpp)
+  target_link_libraries(miniupnpc_link_test PRIVATE miniupnpc::miniupnpc)
+endif()
+
 if(VOCROZ_WITH_JUCE)
   vocroz_add_unit_test(juce_link_test juce_link_test.cpp)
   target_link_libraries(juce_link_test PRIVATE juce::juce_core)
