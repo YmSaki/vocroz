@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "vocroz/audio_core/ports/audio_source.h"
+#include "vocroz/audio_core/ports/plugin_processor.h"
 
 namespace vocroz::audio_core {
 
@@ -47,6 +48,9 @@ enum class NodeKind {
     kDelay,  ///< ステレオの遅延ノード。フィードバック経路（ループ）を通してよい唯一のノード
     kLimiter,  ///< ステレオの安全リミッター
     kOutput,  ///< 出力デバイスへの書き出し（ステレオ）。メーターは最終出力を測る
+    /// プラグイン（VST3 のエフェクトと VSTi）。チャンネル数は PluginBusLayout で決まり、
+    /// 報告された遅延はプラグイン遅延補正（PDC）の対象になる
+    kPlugin,
 };
 
 /// ノードの記述。各種類のファクトリー関数で作る。
@@ -62,6 +66,13 @@ struct NodeSpec {
     /// kOutput: 書き込む出力デバイスのチャンネルの組の先頭（0 始まり）。L をこのチャンネル、
     /// R を次のチャンネルに書く。kMaxOutputChannels - 1 未満。それ以外は使わない。
     std::size_t device_channel = 0;
+    /// kPlugin のときの処理の呼び出し先。
+    std::shared_ptr<PluginProcessor> plugin;
+    /// kPlugin: 入出力のチャンネル数。make_plugin() が PluginProcessor::layout() から写す。
+    PluginBusLayout plugin_layout;
+    /// kPlugin: 処理の遅延（0〜kMaxLatencyCompensationSamples）。make_plugin() が
+    /// PluginProcessor::latency_samples() から写す。PDC はこの値で計算する。
+    std::size_t latency_samples = 0;
 
     /// ソースノードを作る。
     /// @param id ノードの識別子
@@ -98,6 +109,15 @@ struct NodeSpec {
     /// @param device_channel 書き込む出力デバイスのチャンネルの組の先頭
     [[nodiscard]] static NodeSpec make_output(NodeId id, std::optional<MeterId> meter,
                                               std::size_t device_channel = 0);
+
+    /// プラグインノードを作る。チャンネル数と遅延は、この時点の plugin の値を写す。
+    /// 挿入位置の結線の間に置く。挿入の判断は session が持つ。
+    /// チャンネルストリップへの挿入は「ソース → プラグイン → ストリップ」。
+    /// バスへの挿入は「バス → プラグイン → 後段」。
+    /// @param id ノードの識別子
+    /// @param plugin 処理の呼び出し先（null にしない）
+    /// スレッド安全性: コントロールスレッドから呼ぶ（PluginProcessor の取得関数を呼ぶため）。
+    [[nodiscard]] static NodeSpec make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin);
 };
 
 /// 結線が送り元のどの位置から信号を取り出すか。
@@ -157,6 +177,10 @@ enum class GraphError {
     kDelayOutOfRange,          ///< 手動ディレイか遅延ノードの遅延が範囲外
     kOutputChannelOutOfRange,  ///< 出力ノードのチャンネルが kMaxOutputChannels を超える
     kOverlappingOutputs,  ///< 複数の出力ノードが同じ出力デバイスのチャンネルに書く
+    kMissingPlugin,  ///< プラグインノードに PluginProcessor がない
+    kInvalidPluginLayout,  ///< プラグインのチャンネル数が範囲外（入力 0〜2、出力 1〜2）
+    /// プラグインの遅延か、合流する経路の遅延の差が kMaxLatencyCompensationSamples を超える
+    kLatencyOutOfRange,
 };
 
 }  // namespace vocroz::audio_core
