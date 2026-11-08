@@ -10,6 +10,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 - ルーティング（Beta1、`docs/adr/0018-routing-graph.md`）: プリフェーダー / ポストフェーダーのセンドとセンドレベル、キュー / モニターバス、入力ごとの手動ディレイ、遅延ノードを通るフィードバック経路（承認があるときだけ）、1 台の出力デバイスの複数のチャンネルの組への出力
 - グラフのスワップ（オーディオスレッド外で構築し、アトミックなポインター交換で差し替え、古いグラフはオーディオスレッド外で破棄）
 - ミキサー（Alpha はモノラル 8 チャンネル以上 + Master の固定構成を、グラフの 1 構成として記述する）
+- プラグインノードとプラグイン遅延補正（PDC、Beta4、`docs/adr/0024-plugin-node-and-pdc.md`）: `PluginProcessor` ポートを呼ぶノード（入力 0〜2、出力 1〜2。入力 0 は VSTi）、合流する経路にだけ遅延を足す補正、処理の失敗や NaN でそのノードを無音にする扱い
 - 5〜20ms のゲインランプ、安全リミッター、ピークと RMS のメーター算出
 - 初期ミュート（すべてのフェーダーはミュートで始まる）と、安全ミュート（SAFETY MUTE）の受け口
 - オーディオ入出力のポート（`AudioOutput`、`AudioInput`、デバイスの一覧の `AudioDeviceCatalog`）と、グラフのソースのポート（`AudioSource`）
@@ -24,6 +25,8 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/mixer.h` | `Mixer`、`MixerConfig`、`MixerError` | `render()` だけ呼び出し可能 |
 | `vocroz/audio_core/graph_description.h` | `GraphDescription`、`NodeSpec`、`Connection`、`SendTap`、`NodeId`、`FaderId`、`MeterId`、`GraphError` | 対象外（コントロールスレッドで記述する） |
 | `vocroz/audio_core/feedback_analysis.h` | `analyze_feedback()`、`FeedbackReport`（ループに含まれるノードと、遅延のないループ） | 対象外 |
+| `vocroz/audio_core/latency_compensation.h` | `analyze_latency()`、`LatencyReport`（ノードごとの遅延と結線ごとの補正） | 対象外 |
+| `vocroz/audio_core/midi_event.h` | `MidiEvent`（ブロック内の MIDI メッセージ。B5 で使う） | 呼び出し可能 |
 | `vocroz/audio_core/fixed_mixer_layout.h` | `FixedMixerLayout`（Alpha の固定ミキサーの記述と識別子の割り当て） | 対象外 |
 | `vocroz/audio_core/gain_ramp.h` | `GainRamp` | 呼び出し可能 |
 | `vocroz/audio_core/gain.h` | `fader_db_to_linear()`、`linear_to_db()` | 呼び出し可能 |
@@ -39,6 +42,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/ports/audio_device_catalog.h` | `AudioDeviceCatalog`（デバイスの一覧。`device` が実装） | 対象外 |
 | `vocroz/audio_core/audio_device_info.h` | `AudioDeviceInfo`、`AudioDeviceDirection` | 対象外 |
 | `vocroz/audio_core/ports/audio_source.h` | `AudioSource`（`transport` のジッターバッファが実装） | 呼び出し可能 |
+| `vocroz/audio_core/ports/plugin_processor.h` | `PluginProcessor`、`PluginBusLayout`、`PluginProcessContext`（`plugin-host` が実装） | `process()` だけ呼び出し可能 |
 
 ### 使い方（親機の固定ミキサー）
 
@@ -95,6 +99,31 @@ if (auto valid = mixer.validate_graph(graph); !valid) { /* GraphError を UI へ
 
 `Mixer` は `AudioRenderCallback` を実装しているので、`AudioOutput::start(mixer, listener)` でデバイスのコールバックにつなぎます。
 
+### 使い方（プラグインの挿入）
+
+```cpp
+using namespace vocroz::audio_core;
+
+// チャンネルへの挿入: ソース → プラグイン → ストリップ。バスへの挿入: バス → プラグイン → 後段。
+std::shared_ptr<PluginProcessor> eq = ...;  // plugin-host が準備済みのものを返す
+GraphDescription graph;
+graph.nodes = {NodeSpec::make_source(NodeId{1}, source),
+               NodeSpec::make_plugin(NodeId{2}, eq),  // この時点の遅延とチャンネル数を写す
+               NodeSpec::make_strip(NodeId{3}, FaderId{0}, MeterId{0}),
+               NodeSpec::make_source(NodeId{4}, other_source),
+               NodeSpec::make_strip(NodeId{5}, FaderId{1}, MeterId{1}),
+               NodeSpec::make_bus(NodeId{6}, FaderId{2}, MeterId{2}),
+               NodeSpec::make_output(NodeId{7}, MeterId{3})};
+graph.connections = {{NodeId{1}, NodeId{2}}, {NodeId{2}, NodeId{3}}, {NodeId{3}, NodeId{6}},
+                     {NodeId{4}, NodeId{5}}, {NodeId{5}, NodeId{6}}, {NodeId{6}, NodeId{7}}};
+
+// PDC: 5 → 6 の結線にだけ eq の遅延ぶんの補正が入る。出力ノードの値が聞こえる音の遅延。
+if (auto latency = analyze_latency(graph)) { /* latency.value().node_latency_samples[6] */ }
+(void)mixer.apply_graph(graph);
+```
+
+プラグインの遅延が変わったら、記述し直して適用します。処理が失敗したプラグインノードは、そのグラフの間は無音になります。
+
 ### グラフとフェーダーの関係
 
 フェーダーとメーターの状態はグラフの外（`Mixer`）にあり、`FaderId` と `MeterId` で参照します。
@@ -106,7 +135,7 @@ if (auto valid = mixer.validate_graph(graph); !valid) { /* GraphError を UI へ
 
 ## テストダブル
 
-`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog` は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
+`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog`、`FakePluginProcessor`（報告した遅延のぶん実際に遅らせる）は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
 
 ```cmake
 target_link_libraries(device_tests PRIVATE vocroz::device vocroz::audio_core_fakes)
