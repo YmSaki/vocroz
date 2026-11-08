@@ -27,7 +27,8 @@ FrameVerdict SendMuteTracker::classify(std::uint32_t epoch) noexcept {
     if (epoch == epoch_ && !muted_) {
         return FrameVerdict::kAccept;
     }
-    // ミュートの通知より後に届いた、ミュート前のフレーム。ミュート中に届いたデータは受信側で破棄する。
+    // ミュートの通知より後に届いた、ミュート前のフレーム。
+    // ミュート中に届いたデータは受信側で破棄する。
     return FrameVerdict::kDrop;
 }
 

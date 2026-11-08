@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 参加者の接続が CONNECTED のときの信号状態。正規名は仕様書の状態モデルの名前に合わせる。
+// 参加者の接続が CONNECTED のときの信号状態。
+// 正規名は仕様書の状態モデルの名前に合わせる。
 // 接続状態（session）やミュートフラグとは別の軸として持つ。
 #pragma once
 
@@ -9,7 +10,8 @@
 
 namespace vocroz::transport {
 
-/// 信号状態。接続状態が CONNECTED 以外のときは意味を持たない。
+/// 信号状態。
+/// 接続状態が CONNECTED 以外のときは意味を持たない。
 enum class SignalState : std::uint8_t {
     kReceiving,  ///< RECEIVING: 有効な音声フレームを受信中（親機の channel_muted 中も含む）
     kPaused,  ///< PAUSED: 子機の送信ミュートにより意図的に停止中
@@ -17,7 +19,8 @@ enum class SignalState : std::uint8_t {
     kNoSignal,  ///< NO_SIGNAL: 送信中のはずがフレームが届かない。無音化済み
 };
 
-/// 信号状態の正規名（プロトコル、ログ、テストで使う名前）を返す。UI には表示しない。
+/// 信号状態の正規名（プロトコル、ログ、テストで使う名前）を返す。
+/// UI には表示しない。
 /// @param state 信号状態
 /// @return "RECEIVING" などの正規名
 /// スレッド安全性: どのスレッドからも呼び出し可能。

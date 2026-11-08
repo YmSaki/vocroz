@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // transport のメディアの形式に関する定数のうち、他モジュールも使うもの。
-// 子機の送信側（capture と client-desktop）と親機の受信側が同じ値を使うので、ここで 1
-// か所に定義する。
+// 子機の送信側（capture と client-desktop）と親機の受信側が同じ値を使うので、
+// ここで 1 か所に定義する。
 #pragma once
 
 #include <cstddef>
@@ -10,12 +10,13 @@
 
 namespace vocroz::transport {
 
-/// メディアのサンプルレート（Hz）。内部フォーマットとメディアのタイムスタンプの時計は 48kHz
-/// に固定する。 入力デバイスのレートが異なる場合は、デバイスの境界でリサンプリングしてから渡す。
+/// メディアのサンプルレート（Hz）。
+/// 内部フォーマットとメディアのタイムスタンプの時計は 48kHz に固定する。
+/// 入力デバイスのレートが異なる場合は、デバイスの境界でリサンプリングしてから渡す。
 inline constexpr std::uint32_t kSampleRate = 48000;
 
-/// Opus の 1 フレームの長さ。合奏の低遅延のため 2.5ms か 5ms
-/// だけを使う（docs/adr/0002-opus-low-delay.md）。
+/// Opus の 1 フレームの長さ。
+/// 合奏の低遅延のため 2.5ms か 5ms だけを使う（docs/adr/0002-opus-low-delay.md）。
 enum class FrameDuration : std::uint8_t {
     k2500Us,  ///< 2.5ms（120 サンプル）
     k5000Us,  ///< 5ms（240 サンプル）
@@ -37,8 +38,9 @@ enum class FrameDuration : std::uint8_t {
 }
 
 /// 1 フレームの Opus ペイロードの上限（バイト）。
-/// Opus の最大ビットレート 510kbps で 5ms のフレームを作ると約 319 バイトになるので、余裕を見て 400
-/// にする。 Opus の仕様上の上限（1275 バイト）より小さくするのは、フレームを固定長の配列で持ち、
+/// Opus の最大ビットレート 510kbps で 5ms のフレームを作ると約 319 バイトになるので、
+/// 余裕を見て 400 にする。
+/// Opus の仕様上の上限（1275 バイト）より小さくするのは、フレームを固定長の配列で持ち、
 /// ストリームごとのキューとジッターバッファの事前確保の量を抑えるため。
 inline constexpr std::size_t kMaxOpusPayloadBytes = 400;
 

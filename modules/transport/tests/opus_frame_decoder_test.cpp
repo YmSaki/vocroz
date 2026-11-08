@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// OpusFrameDecoder の単体テスト。エンコーダーと組み合わせた往復、PLC、入力の検証を確かめる。
+// OpusFrameDecoder の単体テスト。
+// エンコーダーと組み合わせた往復、PLC、入力の検証を確かめる。
 
 #include "vocroz/transport/opus_frame_decoder.h"
 
@@ -26,8 +27,8 @@ double rms(const std::vector<float>& samples) {
     return std::sqrt(sum / static_cast<double>(samples.size()));
 }
 
-// 1kHz、振幅 0.5 の正弦波を frames
-// フレームぶんエンコードしてデコードし、デコード結果をつなげて返す。
+// 1kHz、振幅 0.5 の正弦波を frames フレームぶんエンコードしてデコードし、
+// デコード結果をつなげて返す。
 std::vector<float> round_trip_sine(OpusFrameDecoder& decoder, std::size_t frames) {
     auto encoder = OpusFrameEncoder::create({});
     EXPECT_TRUE(encoder);

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// JitterBuffer の単体テスト。欠損、順序逆転、重複、遅着を与えても、
-// タイムスタンプの順にだけ取り出し、再生位置より古いフレームを取り出さないことを確かめる。
+// JitterBuffer の単体テスト。
+// 欠損、順序逆転、重複、遅着を与えても、タイムスタンプの順にだけ取り出し、
+// 再生位置より古いフレームを取り出さないことを確かめる。
 
 #include "jitter_buffer.h"
 
@@ -175,8 +176,8 @@ TEST(JitterBufferTest, ResetClearsEverything) {
 }
 
 TEST(JitterBufferTest, NeverPopsOlderOrRepeatedFramesUnderRandomImpairment) {
-    // 欠損、順序逆転、重複、ジッターを乱数で与え、取り出したフレームのタイムスタンプが
-    // 狭義単調増加であること（古い音も同じ音も再生しない）を確かめる。
+    // 欠損、順序逆転、重複、ジッターを乱数で与え、取り出したフレームのタイムスタンプが狭義単調増加
+    // であること（古い音も同じ音も再生しない）を確かめる。
     std::mt19937 rng(12345);  // 決定的にするため種を固定する
     std::uniform_real_distribution<double> unit(0.0, 1.0);
     JitterBuffer buffer(kFrame, kCapacity);
@@ -187,7 +188,8 @@ TEST(JitterBufferTest, NeverPopsOlderOrRepeatedFramesUnderRandomImpairment) {
     std::uint64_t last = 0;
     std::size_t popped_frames = 0;
     for (int step = 0; step < 20000; ++step) {
-        // 送信側: 1 周期に 1 フレーム。10% を欠損させ、5% を重複させる。
+        // 送信側: 1 周期に 1 フレーム。
+        // 10% を欠損させ、5% を重複させる。
         if (unit(rng) >= 0.1) {
             pending.push_back(next);
             if (unit(rng) < 0.05) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 信号状態の遷移表の単体テスト。表の全セルを期待値と照合する。
+// 信号状態の遷移表の単体テスト。
+// 表の全セルを期待値と照合する。
 
 #include "state/signal_state_machine.h"
 

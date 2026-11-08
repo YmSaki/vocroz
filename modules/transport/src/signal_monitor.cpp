@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// signal_monitor.h の実装。世代番号の比較は SendMuteTracker、遷移規則は遷移表に任せ、
-// ここでは両者をつなぎ、タイムアウトの起点の時刻を管理する。
+// signal_monitor.h の実装。
+// 世代番号の比較は SendMuteTracker、遷移規則は遷移表に任せ、ここでは両者をつなぎ、
+// タイムアウトの起点の時刻を管理する。
 
 #include "vocroz/transport/signal_monitor.h"
 
@@ -17,7 +18,8 @@ bool SignalMonitor::on_media_frame(std::uint32_t mute_epoch, TimePoint now) noex
         case FrameVerdict::kAccept:
             break;
         case FrameVerdict::kAcceptNewSegment:
-            // 解除の通知より先に新しい世代のフレームが届いた。解除を知ったものとして扱う。
+            // 解除の通知より先に新しい世代のフレームが届いた。
+            // 解除を知ったものとして扱う。
             state_ = next_signal_state(state_, SignalEvent::kSendUnmuted);
             resume_started_ = now;
             break;

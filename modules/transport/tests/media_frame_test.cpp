@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// make_media_frame() の単体テスト。ペイロードの長さの検証とコピーを確かめる。
+// make_media_frame() の単体テスト。
+// ペイロードの長さの検証とコピーを確かめる。
 
 #include "vocroz/transport/media_frame.h"
 

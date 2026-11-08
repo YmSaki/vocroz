@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// SignalMonitor の単体テスト。タイムアウトによる NO_SIGNAL の判定と、
-// ミュートと解除を繰り返しても（通知とフレームの到着順が逆転しても）NO_SIGNAL
-// を誤判定しないことを確かめる。
+// SignalMonitor の単体テスト。
+// タイムアウトによる NO_SIGNAL の判定と、
+// ミュートと解除を繰り返しても（通知とフレームの到着順が逆転しても）
+// NO_SIGNAL を誤判定しないことを確かめる。
 
 #include "vocroz/transport/signal_monitor.h"
 
@@ -91,14 +92,15 @@ TEST_F(SignalMonitorTest, StaleFrameAfterMuteDoesNotLeavePaused) {
 
 TEST_F(SignalMonitorTest, RepeatedMuteToggleWithReorderingNeverReportsNoSignal) {
     // 子機がミュートと解除を繰り返し、制御メッセージとフレームの到着が数 ms
-    // ずつ前後する状況を作る。 送信中のフレームは 5ms ごとに届き、途絶はないので、NO_SIGNAL
-    // になってはならない。
+    // ずつ前後する状況を作る。
+    // 送信中のフレームは 5ms ごとに届き、途絶はないので、NO_SIGNAL になってはならない。
     std::mt19937 rng(7);  // 決定的にするため種を固定する
     std::uniform_int_distribution<int> length_ms(30, 800);
     std::uniform_int_distribution<int> lag_ms(0, 30);
     std::uint32_t epoch = 0;
     for (int toggle = 0; toggle < 200; ++toggle) {
-        // 解除。通知とフレームのどちらが先に届くかを交互に変える。
+        // 解除。
+        // 通知とフレームのどちらが先に届くかを交互に変える。
         ++epoch;
         const int notify_lag = lag_ms(rng);
         const int run = length_ms(rng);
@@ -116,7 +118,8 @@ TEST_F(SignalMonitorTest, RepeatedMuteToggleWithReorderingNeverReportsNoSignal) 
         if (!notified) {
             monitor_.on_send_mute(false, epoch, clock_.now());
         }
-        // ミュート。通知のあとにも、ミュート前のフレームが少し遅れて届く。
+        // ミュート。
+        // 通知のあとにも、ミュート前のフレームが少し遅れて届く。
         monitor_.on_send_mute(true, epoch, clock_.now());
         for (int i = 0; i < 3; ++i) {
             EXPECT_FALSE(monitor_.on_media_frame(epoch, clock_.now()));

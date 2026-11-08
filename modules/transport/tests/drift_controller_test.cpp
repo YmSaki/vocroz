@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// DriftController
-// の単体テスト。深さの誤差に対する変換比の向き、上限、ドリフトの推定と保持を確かめる。
+// DriftController の単体テスト。
+// 深さの誤差に対する変換比の向き、上限、ドリフトの推定と保持を確かめる。
 
 #include "drift_controller.h"
 

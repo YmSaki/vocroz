@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // 親機の受信側で、1 ストリームのメディアフレームを途切れない PCM に戻す。
-// ネットワーク受信スレッドが enqueue() でフレームを渡し、オーディオスレッドが render() で PCM
-// を取り出す。 内部では、適応型ジッターバッファでタイムスタンプ順に整列し、Opus
-// でデコードし（欠損は PLC で補い）、 クロックドリフト補正のリサンプラーで深さを目標に保つ。
-// 新しいミュートの世代のフレームが届いたら新しい区間として初期化し、停止前の古いデータを再生しない。
+// ネットワーク受信スレッドが enqueue() でフレームを渡し、
+// オーディオスレッドが render() で PCM を取り出す。
+// 内部では、適応型ジッターバッファでタイムスタンプ順に整列し、
+// Opus でデコードし（欠損は PLC で補い）、クロックドリフト補正のリサンプラーで深さを目標に保つ。
+// 新しいミュートの世代のフレームが届いたら新しい区間として初期化し、
+// 停止前の古いデータを再生しない。
 #pragma once
 
 #include <chrono>
@@ -19,14 +21,18 @@
 
 namespace vocroz::transport {
 
-/// 再生ストリームの設定。既定値は合奏向けの低遅延プロファイル（docs/adr/0002-opus-low-delay.md）。
+/// 再生ストリームの設定。
+/// 既定値は合奏向けの低遅延プロファイル（docs/adr/0002-opus-low-delay.md）。
 struct PlayoutConfig {
     /// 送信側のフレーム長。
     FrameDuration frame_duration = FrameDuration::k5000Us;
-    /// ジッターバッファの目標の深さの下限。目標は下限から始め、枯渇が起きたら深くする。
+    /// ジッターバッファの目標の深さの下限。
+    /// 目標は下限から始め、枯渇が起きたら深くする。
     std::chrono::microseconds min_delay{10'000};
-    /// ジッターバッファの目標の深さの上限。オペレーターが回線の状態に応じて広げる。
-    /// 深さがこれを超えたら（回線の停滞のあとにまとめて届いたなど）、古いフレームを捨てて目標まで浅くする。
+    /// ジッターバッファの目標の深さの上限。
+    /// オペレーターが回線の状態に応じて広げる。
+    /// 深さがこれを超えたら（回線の停滞のあとにまとめて届いたなど）、
+    /// 古いフレームを捨てて目標まで浅くする。
     std::chrono::microseconds max_delay{20'000};
 };
 
@@ -37,7 +43,8 @@ enum class PlayoutError : std::uint8_t {
     kCodecFailed,    ///< デコーダーを生成できなかった
 };
 
-/// 再生ストリームの統計。テストと、将来の回線品質の表示に使う。
+/// 再生ストリームの統計。
+/// テストと、将来の回線品質の表示に使う。
 struct PlayoutStats {
     std::uint64_t frames_decoded = 0;    ///< デコードしたフレーム
     std::uint64_t frames_concealed = 0;  ///< PLC で補間したフレーム
@@ -57,15 +64,17 @@ struct PlayoutStats {
     bool playing = false;  ///< 再生中なら true。溜めている間と無音の間は false
 };
 
-/// 1 ストリームの再生。生成はオーディオスレッド外で行い、以降の操作はヒープを確保しない。
+/// 1 ストリームの再生。
+/// 生成はオーディオスレッド外で行い、以降の操作はヒープを確保しない。
 /// スレッド安全性: enqueue() は 1 つの生産者スレッド（ネットワーク受信スレッド）だけが、
 /// render() と stats() は 1 つの消費者スレッド（オーディオスレッド）だけが呼ぶ。
 class PlayoutStream {
 public:
     /// 再生ストリームを生成する。
     /// @param config 設定
-    /// @return 生成したストリーム。設定が不正なら kInvalidConfig、デコーダーを作れなければ
-    /// kCodecFailed スレッド安全性: オーディオスレッド外で呼ぶ（ヒープを確保する）。
+    /// @return 生成したストリーム。設定が不正なら kInvalidConfig、
+    /// デコーダーを作れなければ kCodecFailed
+    /// スレッド安全性: オーディオスレッド外で呼ぶ（ヒープを確保する）。
     [[nodiscard]] static common::Result<std::unique_ptr<PlayoutStream>, PlayoutError> create(
         const PlayoutConfig& config);
 
@@ -75,35 +84,38 @@ public:
     PlayoutStream& operator=(PlayoutStream&&) = delete;
     ~PlayoutStream();
 
-    /// 受信したフレームをオーディオスレッドへ渡す。SignalMonitor::on_media_frame()
-    /// が受け付けたフレームだけを渡す。
+    /// 受信したフレームをオーディオスレッドへ渡す。
+    /// SignalMonitor::on_media_frame() が受け付けたフレームだけを渡す。
     /// @param frame 渡すフレーム。内容はコピーする
     /// @return 渡せたら true。キューが満杯なら捨てて false
     /// スレッド安全性: 生産者スレッドだけが呼ぶ。ブロックしない。
     bool enqueue(const MediaFrame& frame) noexcept;
 
-    /// 再生する PCM を書き込む。届いたフレームを取り込んでから、out の長さぶんを埋める。
+    /// 再生する PCM を書き込む。
+    /// 届いたフレームを取り込んでから、out の長さぶんを埋める。
     /// 再生できる音がない間（溜めている間、途絶が続いたあと）は無音を書き込む。
-    /// @param out 書き込み先。長さはデバイスのコールバック長（64〜512
-    /// サンプルなど）でよく、毎回変わってもよい スレッド安全性:
-    /// オーディオスレッドから呼び出し可能（ヒープを確保せず、ブロックしない）。
+    /// @param out 書き込み先。長さはデバイスのコールバック長（64〜512 サンプルなど）でよく、
+    /// 毎回変わってもよい
+    /// スレッド安全性: オーディオスレッドから呼び出し可能（ヒープを確保せず、ブロックしない）。
     void render(std::span<float> out) noexcept;
 
     /// 統計を返す。
     /// スレッド安全性: render() と同じスレッドから呼ぶ。
     [[nodiscard]] PlayoutStats stats() const noexcept;
 
-    /// 実装の詳細。定義は .cpp にだけあり、外からは使えない。
+    /// 実装の詳細。
+    /// 定義は .cpp にだけあり、外からは使えない。
     struct Impl;
-    /// create() の中からだけ構築できるようにするための型。コンストラクターが private
-    /// なので外からは作れない。 std::make_unique で構築するために、コンストラクター自体は public
-    /// にしている。
+    /// create() の中からだけ構築できるようにするための型。
+    /// コンストラクターが private なので外からは作れない。
+    /// std::make_unique で構築するために、コンストラクター自体は public にしている。
     class ConstructionKey {
         friend class PlayoutStream;
         ConstructionKey() = default;
     };
 
-    /// create() が使う。外からは ConstructionKey を作れないので呼べない。
+    /// create() が使う。
+    /// 外からは ConstructionKey を作れないので呼べない。
     PlayoutStream(ConstructionKey key, std::unique_ptr<Impl> impl) noexcept;
 
 private:

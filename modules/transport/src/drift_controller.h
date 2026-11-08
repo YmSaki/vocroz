@@ -23,7 +23,8 @@ public:
     double update(double depth_samples, double target_samples,
                   std::size_t elapsed_samples) noexcept;
 
-    /// 平滑化した深さを捨てる。ドリフトの推定値（積分項）は残す。
+    /// 平滑化した深さを捨てる。
+    /// ドリフトの推定値（積分項）は残す。
     /// 新しい区間の始まりで、前の区間の深さを引きずらないために呼ぶ。
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
     void restart() noexcept;

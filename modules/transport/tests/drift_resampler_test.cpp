@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// DriftResampler の単体テスト。合成した正弦波を可変レートで変換し、
-// 理論上の波形との差（SNR）と、入力の消費量が変換比どおりであることを数値で確かめる。
+// DriftResampler の単体テスト。
+// 合成した正弦波を可変レートで変換し、理論上の波形との差（SNR）と、
+// 入力の消費量が変換比どおりであることを数値で確かめる。
 
 #include "drift_resampler.h"
 
@@ -32,8 +33,8 @@ double resampled_sine_snr_db(double frequency, double ratio) {
         const std::size_t n = resampler.pull(out, ratio);
         for (std::size_t i = 0; i < n; ++i) {
             const std::size_t k = produced + i;
-            // 出力 k は入力の位置 k * ratio
-            // に対応する。先頭は過去を無音とみなすので、フィルターの長さぶん除く。
+            // 出力 k は入力の位置 k * ratio に対応する。
+            // 先頭は過去を無音とみなすので、フィルターの長さぶん除く。
             if (k >= 256) {
                 const double expected = 0.5 * std::sin(omega * static_cast<double>(k) * ratio);
                 signal += expected * expected;
@@ -55,7 +56,8 @@ double resampled_sine_snr_db(double frequency, double ratio) {
 
 TEST(DriftResamplerTest, UnityRatioKeepsTimingOfInput) {
     // 変換比 1 では、出力 k は入力 k と同じ時刻になる（片側タップぶんの遅延は FIFO
-    // の先読みとして現れ、 出力の時刻はずれない）。帯域内の正弦波は誤差 -70dB 未満で一致する。
+    // の先読みとして現れ、出力の時刻はずれない）。
+    // 帯域内の正弦波は誤差 -70dB 未満で一致する。
     DriftResampler resampler(kChunk);
     std::vector<float> input(kChunk);
     const double omega = 2.0 * std::numbers::pi * 1000.0 / kSampleRate;

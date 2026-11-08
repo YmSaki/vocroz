@@ -17,8 +17,8 @@ void OpusFrameDecoder::Deleter::operator()(::OpusDecoder* decoder) const noexcep
 namespace {
 
 constexpr int kChannels = 1;
-// PLC で補間できる長さの単位。Opus のフレーム長の最小値（2.5ms）の整数倍でなければ libopus
-// が拒否する。
+// PLC で補間できる長さの単位。
+// Opus のフレーム長の最小値（2.5ms）の整数倍でなければ libopus が拒否する。
 constexpr std::size_t kPlcGranularitySamples = 120;
 
 }  // namespace
@@ -41,7 +41,8 @@ OpusFrameDecoder::~OpusFrameDecoder() = default;
 common::Result<std::size_t, CodecError> OpusFrameDecoder::decode(
     std::span<const std::uint8_t> payload, std::span<float> out) noexcept {
     if (payload.empty()) {
-        // 空のペイロードを渡すと libopus は PLC として扱う。受信したパケットの欠陥として区別する。
+        // 空のペイロードを渡すと libopus は PLC として扱う。
+        // 受信したパケットの欠陥として区別する。
         return common::make_unexpected(CodecError::kInvalidPacket);
     }
     const int samples =

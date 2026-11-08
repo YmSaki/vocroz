@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// opus_frame_encoder.h の実装。libopus を直接呼ぶのはこのファイルと opus_frame_decoder.cpp
-// だけにする。
+// opus_frame_encoder.h の実装。
+// libopus を直接呼ぶのはこのファイルと opus_frame_decoder.cpp だけにする。
 
 #include "vocroz/transport/opus_frame_encoder.h"
 
@@ -19,12 +19,12 @@ namespace {
 
 constexpr int kChannels = 1;
 
-// 低遅延モードの設定を適用する。どれか 1
-// つでも拒否されたら、意図しない設定で動かさないよう生成を失敗させる。
+// 低遅延モードの設定を適用する。
+// どれか 1 つでも拒否されたら、意図しない設定で動かさないよう生成を失敗させる。
 bool configure(::OpusEncoder* encoder, const OpusEncoderConfig& config) noexcept {
-    // DTX
-    // は使わない。無音でもフレームを送り続け、ミュートによる停止（PAUSED）と回線の途絶（NO_SIGNAL）を
-    // フレームの有無で区別できるようにするため。
+    // DTX は使わない。
+    // 無音でもフレームを送り続け、ミュートによる停止（PAUSED）と回線の途絶（NO_SIGNAL）
+    // をフレームの有無で区別できるようにするため。
     // インバンド FEC は低遅延モードの CELT では効かないので明示的に切る。
     return opus_encoder_ctl(encoder, OPUS_SET_BITRATE(config.bitrate_bps)) == OPUS_OK &&
            opus_encoder_ctl(encoder, OPUS_SET_DTX(0)) == OPUS_OK &&

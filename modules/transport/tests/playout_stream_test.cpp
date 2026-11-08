@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// PlayoutStream の単体テスト。合成信号を Opus でエンコードして送り、受信側の出力を数値で確かめる。
+// PlayoutStream の単体テスト。
+// 合成信号を Opus でエンコードして送り、受信側の出力を数値で確かめる。
 // - 溜めている間は無音で、目標の深さに達したら音が出る
-// -
-// 欠損、順序逆転、重複、ジッターを与えても破綻せず、途絶が続けば無音になり、古い音を遅れて鳴らし続けない
+// - 欠損、順序逆転、重複、ジッターを与えても破綻せず、
+//   途絶が続けば無音になり、古い音を遅れて鳴らし続けない
 // - ±100ppm のクロックドリフトがあっても、長時間にわたってバッファが溢れも枯渇もしない
 // - ミュート解除後の新しい区間では、停止前のフレームを再生しない
 
@@ -123,8 +124,8 @@ TEST(PlayoutStreamTest, OutputsSilenceUntilTargetDepthThenPlays) {
 }
 
 TEST(PlayoutStreamTest, GoesSilentDuringOutageAndSkipsDelayedBacklog) {
-    // 600ms
-    // の途絶のあと、途絶中のフレームがまとめて届いても、それを順に鳴らして遅れたままにならない。
+    // 600ms の途絶のあと、途絶中のフレームがまとめて届いても、
+    // それを順に鳴らして遅れたままにならない。
     const SineSender sender;
     auto stream = make_stream();
     std::vector<float> out(kBlock);
@@ -143,7 +144,8 @@ TEST(PlayoutStreamTest, GoesSilentDuringOutageAndSkipsDelayedBacklog) {
     }
     ASSERT_TRUE(stream->stats().playing);
 
-    // 途絶: 600ms の間フレームが届かない。送信側の時計は進み続ける。
+    // 途絶: 600ms の間フレームが届かない。
+    // 送信側の時計は進み続ける。
     const std::uint64_t outage_end = now + kSampleRate * 6 / 10;
     double tail_energy = 0.0;
     while (now < outage_end) {
@@ -260,8 +262,8 @@ PlayoutStats run_with_clock_drift(double ppm, int seconds, PlayoutStats* after_w
 }
 
 TEST(PlayoutStreamTest, CompensatesSenderClockFasterBy100ppm) {
-    // 5 分間で 30ms
-    // 分（目標の深さより大きい）のずれが溜まる条件で、溢れも枯渇もしないことを確かめる。
+    // 5 分間で 30ms 分（目標の深さより大きい）のずれが溜まる条件で、
+    // 溢れも枯渇もしないことを確かめる。
     PlayoutStats warm;
     const PlayoutStats end = run_with_clock_drift(100.0, 300, &warm);
     EXPECT_TRUE(end.playing);

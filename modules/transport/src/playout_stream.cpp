@@ -3,8 +3,8 @@
 // playout_stream.h の実装。
 // 再生は「溜める（kBuffering）」と「再生する（kPlaying）」の 2 つの状態を行き来する。
 // 溜めている間は無音を出し、深さが目標に達したら最も古いフレームから再生を始めてフェードインする。
-// 再生中にフレームが途絶えたら PLC
-// で補い、上限（40ms）を超えたらフェードアウトして無音にし、溜め直す。
+// 再生中にフレームが途絶えたら PLC で補い、上限（40ms）を超えたらフェードアウトして無音にし、
+// 溜め直す。
 
 #include "vocroz/transport/playout_stream.h"
 
@@ -25,9 +25,11 @@ namespace vocroz::transport {
 
 namespace {
 
-// 目標の深さの上限として受け付ける最大値。仕様の可変範囲の上限（250ms）に合わせる。
+// 目標の深さの上限として受け付ける最大値。
+// 仕様の可変範囲の上限（250ms）に合わせる。
 constexpr std::chrono::microseconds kLongestMaxDelay{250'000};
-// ジッターバッファの容量（上限の深さに対する倍数）。上限を超えてまとめて届いたフレームも、
+// ジッターバッファの容量（上限の深さに対する倍数）。
+// 上限を超えてまとめて届いたフレームも、
 // 古いものを捨てる判断をするまでは並べ直しにせず格納できるようにする。
 constexpr std::size_t kCapacityPerMaxDelay = 4;
 // 目標を浅くしてよいと判断する、ジッターバッファに常に残っていた深さ（フレーム数）。
@@ -64,7 +66,8 @@ struct PlayoutStream::Impl {
     void begin_segment(std::uint32_t epoch) noexcept;
     void start_playout() noexcept;
     void enter_rebuffer() noexcept;
-    // 次の 1 フレームを PCM にしてリサンプラーに積む。無音に切り替えたら false。
+    // 次の 1 フレームを PCM にしてリサンプラーに積む。
+    // 無音に切り替えたら false。
     bool decode_next() noexcept;
     bool conceal_next() noexcept;
     void apply_fade_in(std::span<float> block) noexcept;
@@ -85,7 +88,8 @@ struct PlayoutStream::Impl {
     std::vector<float> frame_buffer;
 
     Mode mode = Mode::kBuffering;
-    // 現在の区間のミュートの世代番号。0 は「まだ区間がない」（初期状態は送信ミュート）。
+    // 現在の区間のミュートの世代番号。
+    // 0 は「まだ区間がない」（初期状態は送信ミュート）。
     std::uint32_t segment_epoch = 0;
     // 連続して PLC で補間したサンプル数。
     std::size_t concealed = 0;
@@ -96,7 +100,8 @@ struct PlayoutStream::Impl {
     std::size_t min_depth_since_adjust = std::numeric_limits<std::size_t>::max();
 
     PlayoutStats stats;
-    // 生産者スレッドだけが増やす。stats() で読む。
+    // 生産者スレッドだけが増やす。
+    // stats() で読む。
     std::atomic<std::uint64_t> queue_full{0};
 };
 
@@ -105,7 +110,8 @@ void PlayoutStream::Impl::drain() noexcept {
         accept(*frame);
     }
     if (mode == Mode::kPlaying && jitter.depth_samples() > max_delay) {
-        // 回線の停滞のあとにまとめて届いたフレームを順に再生すると、遅れたままの古い音が鳴り続ける。
+        // 回線の停滞のあとにまとめて届いたフレームを順に再生すると、
+        // 遅れたままの古い音が鳴り続ける。
         // 目標の深さまで古いほうを捨てて、遅延を戻す。
         stats.frames_dropped_overflow += jitter.drop_until(target);
     }
@@ -140,7 +146,8 @@ void PlayoutStream::Impl::accept(const MediaFrame& frame) noexcept {
 }
 
 void PlayoutStream::Impl::begin_segment(std::uint32_t epoch) noexcept {
-    // ミュート解除後の新しい区間。停止前のデータを再生しないよう、バッファとデコーダーを初期化する。
+    // ミュート解除後の新しい区間。
+    // 停止前のデータを再生しないよう、バッファとデコーダーを初期化する。
     // ドリフトの推定値は同じ送信側の時計のものなので保持する（DriftController::restart()）。
     segment_epoch = epoch;
     jitter.reset();
@@ -203,8 +210,8 @@ bool PlayoutStream::Impl::conceal_next() noexcept {
     if (!decoder.conceal(frame_buffer)) {
         std::ranges::fill(frame_buffer, 0.0F);
     }
-    // PLC
-    // の上限の手前で無音までフェードアウトする。単発の欠損（上限よりずっと短い）には影響しない。
+    // PLC の上限の手前で無音までフェードアウトする。
+    // 単発の欠損（上限よりずっと短い）には影響しない。
     const std::size_t fade_start = kMaxConcealmentSamples - kConcealmentFadeSamples;
     for (std::size_t i = 0; i < frame_buffer.size(); ++i) {
         const std::size_t position = concealed + i;

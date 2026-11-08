@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// OpusFrameEncoder の単体テスト。低遅延モードの設定と、フレーム長の検証を確かめる。
+// OpusFrameEncoder の単体テスト。
+// 低遅延モードの設定と、フレーム長の検証を確かめる。
 
 #include "vocroz/transport/opus_frame_encoder.h"
 
@@ -34,8 +35,8 @@ TEST(OpusFrameEncoderTest, EncodesOneFrameOf2500Us) {
 }
 
 TEST(OpusFrameEncoderTest, LookaheadIsThatOfRestrictedLowDelayMode) {
-    // RESTRICTED_LOWDELAY は SILK の先読みを使わないので、先読みは CELT の 2.5ms（120
-    // サンプル）だけになる。
+    // RESTRICTED_LOWDELAY は SILK の先読みを使わないので、先読みは CELT の 2.5ms（120 サンプル）
+    // だけになる。
     auto encoder = OpusFrameEncoder::create({});
     ASSERT_TRUE(encoder);
     EXPECT_EQ(encoder.value().lookahead_samples(), 120U);

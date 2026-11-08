@@ -2,8 +2,9 @@
 //
 // jitter_buffer.h の実装。
 // スロットはタイムスタンプをフレーム長で割った位置の剰余で引く固定長のリングにし、
-// 格納するフレームは常に「先頭の位置から容量ぶんの範囲」に収める。範囲内では位置とスロットが 1 対 1
-// になるので、 スロットに残っているフレームのタイムスタンプを比べるだけで重複と空きを判定できる。
+// 格納するフレームは常に「先頭の位置から容量ぶんの範囲」に収める。
+// 範囲内では位置とスロットが 1 対 1 になるので、
+// スロットに残っているフレームのタイムスタンプを比べるだけで重複と空きを判定できる。
 
 #include "jitter_buffer.h"
 
@@ -35,7 +36,8 @@ InsertResult JitterBuffer::insert(const MediaFrame& frame) noexcept {
             return InsertResult::kLate;
         }
         if (ts - head_ >= window_samples_) {
-            // 再生位置から容量以上先のフレームは、送信側の時計の飛びか、受信側の大きな遅れを意味する。
+            // 再生位置から容量以上先のフレームは、送信側の時計の飛びか、
+            // 受信側の大きな遅れを意味する。
             // どちらでも、その間にあるはずのフレームは再生する前に古くなるので、並べ直す。
             reset();
             origin_ = ts;
@@ -126,7 +128,8 @@ void JitterBuffer::advance_floor(std::size_t samples) noexcept {
 }
 
 JitterBuffer::Slot& JitterBuffer::slot_for(std::uint64_t timestamp) noexcept {
-    // 先頭より前の位置（再生前に順序が逆転して届いたフレーム）も引けるよう、符号付きの差で剰余を取る。
+    // 先頭より前の位置（再生前に順序が逆転して届いたフレーム）も引けるよう、
+    // 符号付きの差で剰余を取る。
     const auto offset = static_cast<std::int64_t>(timestamp - origin_);
     const auto frames = offset / static_cast<std::int64_t>(frame_samples_);
     const auto count = static_cast<std::int64_t>(slots_.size());
@@ -168,8 +171,8 @@ void JitterBuffer::discard_before(std::uint64_t timestamp) noexcept {
 }
 
 void JitterBuffer::seek_oldest() noexcept {
-    // 再生前の head_
-    // は格納済みの最も古いフレームの位置なので、空きを飛ばして次のフレームまで進める。
+    // 再生前の head_ は格納済みの最も古いフレームの位置なので、
+    // 空きを飛ばして次のフレームまで進める。
     // 格納済みのフレームは head_ から容量の範囲にあるので、ループは容量の回数で終わる。
     while (stored_ > 0) {
         const Slot& slot = slot_for(head_);

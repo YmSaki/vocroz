@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// SendMuteTracker
-// の単体テスト。世代番号の比較で、到着順が逆転した通知と古いフレームを正しく扱うことを確かめる。
+// SendMuteTracker の単体テスト。
+// 世代番号の比較で、到着順が逆転した通知と古いフレームを正しく扱うことを確かめる。
 
 #include "vocroz/transport/send_mute_tracker.h"
 
