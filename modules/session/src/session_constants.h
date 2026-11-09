@@ -68,6 +68,11 @@ inline constexpr const char* kOutputIdPrefix = "out-";
 inline constexpr const char* kSendIdPrefix = "send-";
 inline constexpr const char* kDelayIdPrefix = "delay-";
 
+/// 子機の MIDI の時刻を写すときに、「受信時刻 − 子機の時刻」の最小値を取り直す窓の長さ。
+/// 1 つ前の窓と合わせて 2〜4 秒の最小値を使う。演奏中のネットワークの揺れ（数十 ms 程度の山）を
+/// 見逃さない長さで、時計の進み方のずれ（100 ppm で 4 秒あたり 0.4ms）が溜まらない短さにする。
+inline constexpr std::chrono::seconds kMidiTimelineWindow{2};
+
 // UI とスナップショットで使う固定の entity_id（kSessionEntityId など）は、ミキサーの組み立て
 // （pa-engine）もルーティングの送り元と送り先を引くのに使うので、公開ヘッダーに置いている。
 
