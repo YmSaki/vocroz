@@ -24,6 +24,9 @@ struct GraphPlan {
     std::vector<std::size_t> from_of;
     /// ノードごとの、プリフェーダーのセンドの送り元になっているか。
     std::vector<bool> has_pre_fader_send;
+    /// ノードごとの、そのノードへ MIDI を送る MIDI ソースの位置（GraphDescription::midi_sources
+    /// の添字、 midi_connections に書かれた順）。プラグインノード以外は空。
+    std::vector<std::vector<std::size_t>> midi_sources_of;
     /// プラグイン遅延補正（latency_compensation.h）。
     LatencyReport latency;
 };

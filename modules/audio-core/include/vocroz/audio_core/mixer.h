@@ -16,6 +16,7 @@
 #include "vocroz/audio_core/meter_reading.h"
 #include "vocroz/audio_core/ports/audio_render_callback.h"
 #include "vocroz/audio_core/realtime.h"
+#include "vocroz/common/ports/clock.h"
 #include "vocroz/common/result.h"
 
 namespace vocroz::audio_core {
@@ -48,6 +49,12 @@ public:
     /// フェーダー、メーター、キューを確保し、空のグラフ（無音）で始める。
     /// @param config 構成
     explicit Mixer(const MixerConfig& config = {});
+    /// MIDI のタイムスタンプを使う構成。コールバックの先頭で clock の時刻を読み、MIDI ソースが
+    /// タイムスタンプをブロック内のサンプル位置に変換できるようにする（docs/adr/0029-midi-and-vsti.md）。
+    /// 時計を渡さない構成では、MIDI のイベントはすべてブロックの先頭に置かれる。
+    /// @param config 構成
+    /// @param midi_clock MIDI のタイムスタンプと同じ基準の時計。Mixer より長く生存させる
+    Mixer(const MixerConfig& config, const common::Clock& midi_clock);
     Mixer(const Mixer&) = delete;
     Mixer& operator=(const Mixer&) = delete;
     Mixer(Mixer&&) = delete;

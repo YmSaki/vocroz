@@ -2,7 +2,9 @@
 //
 // テスト用の PluginProcessor。報告した遅延のぶんだけ入力を実際に遅らせ、ゲインを掛けて返す。
 // 遅延補正（PDC）のテストで、補正の有無が出力のサンプルの並びとして確かめられるようにする。
-// バッファは構築時に確保するので、RealtimeSanitizer を有効にしたテストでもそのまま使える。
+// VSTi のテストのために、受け取った MIDI イベントを、何回目の process()
+// で受け取ったかと合わせて記録する。 バッファは構築時に確保するので、RealtimeSanitizer
+// を有効にしたテストでもそのまま使える。
 #pragma once
 
 #include <array>
@@ -14,6 +16,12 @@
 #include "vocroz/audio_core/ports/plugin_processor.h"
 
 namespace vocroz::audio_core {
+
+/// FakePluginProcessor が受け取った MIDI イベント 1 件。
+struct ReceivedMidiEvent {
+    std::size_t call = 0;  ///< 何回目（0 始まり）の process() で受け取ったか
+    MidiEvent event;       ///< 受け取ったイベント
+};
 
 /// 決定的に動作するプラグイン。
 /// スレッド安全性: 設定の変更はグラフに渡す前に行う。process() はオーディオスレッド（テストの
@@ -29,6 +37,12 @@ public:
         for (auto& delay : delays_) {
             delay.assign(latency_samples, 0.0F);
         }
+        received_midi_.reserve(kMidiRecordCapacity);
+    }
+
+    /// 受け取った MIDI イベントを、受け取った順に返す（最大 kMidiRecordCapacity 件）。
+    [[nodiscard]] const std::vector<ReceivedMidiEvent>& received_midi() const noexcept {
+        return received_midi_;
     }
 
     /// 処理を n 回成功させた後、kFailed を返すようにする。
@@ -63,6 +77,12 @@ public:
         VOCROZ_NONBLOCKING override {
         const std::size_t call = process_count_++;
         last_channel_count_ = context.channels.size();
+        for (const MidiEvent& event : context.midi) {
+            // 確保済みの容量の中だけで記録し、オーディオスレッドで再確保しない。
+            if (received_midi_.size() < kMidiRecordCapacity) {
+                received_midi_.push_back({call, event});
+            }
+        }
         if (call >= fail_after_) {
             return PluginProcessStatus::kFailed;
         }
@@ -87,6 +107,8 @@ public:
     }
 
 private:
+    static constexpr std::size_t kMidiRecordCapacity = 8192;
+
     PluginBusLayout layout_;
     std::size_t latency_;
     float gain_;
@@ -96,6 +118,7 @@ private:
     std::size_t nan_after_ = std::numeric_limits<std::size_t>::max();
     std::size_t process_count_ = 0;
     std::size_t last_channel_count_ = 0;
+    std::vector<ReceivedMidiEvent> received_midi_;
 };
 
 }  // namespace vocroz::audio_core

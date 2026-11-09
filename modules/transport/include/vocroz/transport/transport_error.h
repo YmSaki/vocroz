@@ -44,6 +44,8 @@ enum class TransportError {
     kQueueFull,
     /// 信頼制御層のレーンの連番を使い切った。接続を張り直すまで、そのレーンでは送れない。
     kSequenceExhausted,
+    /// 保存しておいた鍵の長さか値が不正（StaticKeyPair::from_private_key()）。
+    kInvalidKey,
 };
 
 }  // namespace vocroz::transport

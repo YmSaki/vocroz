@@ -54,4 +54,9 @@ inline constexpr std::size_t kPlaybackSegmentQueueCapacity = 16;
 /// 5〜20ms の範囲でランプを掛ける。
 inline constexpr std::size_t kPlaybackFadeSamples = 480;
 
+/// MIDI ソース 1 つから 1 ブロック（kBlockSize）に取り出すイベントの上限。
+/// 1 ブロック（約 2.7ms）に MIDI 1.0 の DIN の帯域（約 1 件/ms）の 100 倍近くを受けられる。
+/// 超えたぶんはソースに残り、次のブロックで送る（落とさない）。
+inline constexpr std::size_t kMaxMidiEventsPerBlock = 256;
+
 }  // namespace vocroz::audio_core

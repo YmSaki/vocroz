@@ -128,6 +128,37 @@ std::optional<GraphError> validate_connection(const Connection& connection, cons
     return std::nullopt;
 }
 
+// MIDI ソースと MIDI の経路を検証し、ノードごとの MIDI の送り元を plan に書く。
+std::optional<GraphError> plan_midi(const GraphDescription& description,
+                                    const std::map<NodeId, std::size_t>& index_of,
+                                    GraphPlan& plan) {
+    std::map<MidiSourceId, std::size_t> source_index_of;
+    for (std::size_t i = 0; i < description.midi_sources.size(); ++i) {
+        const MidiSourceSpec& spec = description.midi_sources[i];
+        if (!source_index_of.emplace(spec.id, i).second) {
+            return GraphError::kDuplicateMidiSource;
+        }
+        if (!spec.source) {
+            return GraphError::kMissingMidiSource;
+        }
+    }
+    plan.midi_sources_of.resize(description.nodes.size());
+    std::set<std::pair<std::size_t, std::size_t>> seen;
+    for (const MidiConnection& connection : description.midi_connections) {
+        const auto from = source_index_of.find(connection.from);
+        const auto to = index_of.find(connection.to);
+        // MIDI を受け取れるのはプラグインだけ。重複した経路は同じイベントを 2 回送り、
+        // 1 回目の Note Off で止まった音を 2 回目の Note On で鳴らし直すことがある。
+        if (from == source_index_of.end() || to == index_of.end() ||
+            description.nodes[to->second].kind != NodeKind::kPlugin ||
+            !seen.emplace(from->second, to->second).second) {
+            return GraphError::kInvalidMidiConnection;
+        }
+        plan.midi_sources_of[to->second].push_back(from->second);
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 std::size_t output_channels_of(const NodeSpec& spec) noexcept {
@@ -203,8 +234,12 @@ common::Result<GraphPlan, GraphError> plan_graph(const GraphDescription& descrip
         }
     }
 
-    // 結線の検証。
     GraphPlan plan;
+    if (const auto error = plan_midi(description, index_of, plan)) {
+        return make_unexpected(*error);
+    }
+
+    // 結線の検証。
     plan.inputs_of.resize(specs.size());
     plan.has_pre_fader_send.assign(specs.size(), false);
     plan.from_of.reserve(description.connections.size());

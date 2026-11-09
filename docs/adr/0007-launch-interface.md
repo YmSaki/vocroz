@@ -23,6 +23,7 @@
 | `--lang=ja` / `--lang=en` | 表示言語を上書きする（既定は OS の表示言語） |
 | `--log-level=error\|warn\|info\|debug` | ログの詳細度（既定は `info`）。ログに秘密情報を出さない規則は詳細度によらない |
 | `--no-update-check` | 起動時の更新確認をしない（オフラインの会場や検証用） |
+| `--rendezvous-url=<URL>` | ランデブーサーバーのベース URL を変える（検証用。既定はビルド時の値。`docs/adr/0030-remote-pa-assembly.md`） |
 | `--version` | バージョンを表示して終了する |
 | `--help` | 引数の一覧を表示して終了する |
 
