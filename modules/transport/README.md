@@ -1,6 +1,7 @@
 # transport
 
 子機と親機の間の UDP パケットの形式、Noise_IK による鍵交換、AEAD による暗号化、リプレイ排除と、受信したメディアを PCM に戻す処理（Opus、ジッターバッファ、クロックドリフト補正、信号状態）、信頼制御層（制御メッセージの再送、キープアライブ、死活監視、再接続のバックオフ）を担うドメインのモジュールです。
+外部の受信機へ送る SRTP 外部出力の RTP の組み立てと SRTP の暗号化も担います（子機と親機の間の形式とは別の部品）。
 ソケットの実装は持ちません（`network` が `DatagramSocket` ポートを実装します）。
 形式と暗号化の決定は [ADR-0001](../../docs/adr/0001-key-exchange-noise-ik.md) と [ADR-0014](../../docs/adr/0014-transport-wire-format.md)、信頼制御層の決定は [ADR-0019](../../docs/adr/0019-reliable-control-layer.md) にあります。
 
@@ -29,6 +30,8 @@
 | `vocroz/transport/liveness_monitor.h` | `LivenessMonitor`（5 秒の受信途絶と再開の判定） | 記録はネットワーク受信（ヒープ確保、ロックなし）、判定はコントロール |
 | `vocroz/transport/reconnect_backoff.h` | `ReconnectBackoff`、`reconnect_delay()`（1、2、4、8、15 秒、±20% のジッター） | コントロール |
 | `vocroz/transport/secure_control_packet_sink.h` | `SecureControlPacketSink`（制御パケットの平文を暗号化して `DatagramSocket` で送る） | sealer を使うスレッド |
+| `vocroz/transport/srtp_master_key.h` | `SrtpMasterKey`（SRTP 外部出力のマスターキーとソルト。破棄時に消去）、`parse_srtp_master_key()`（SDES の `inline:` 形式のパース。信頼境界）、`format_srtp_master_key()`、`generate_srtp_master_key()` | どこからでも |
+| `vocroz/transport/external_stream_sender.h` | `ExternalStreamSender`（RTP の組み立てと SRTP の暗号化と送信。平文は送らない）、`SrtpCryptoSuite`、`RtpStreamParams`、`make_rtp_stream_params()`、`ExternalStreamError` | `create()` はコントロール、`send()` は送信スレッド（オーディオスレッドからは呼ばない） |
 | `vocroz/transport/peer_packet_sender.h` | `PeerPacketSender`（1 つの接続の送信方向。制御パケットの平文とエンコード済みのフレームを SPSC キューで受け取り、`pump()` で暗号化して送る） | 積むのはコントロールとオーディオスレッド、`pump()` は送信スレッド |
 | `vocroz/transport/send_wakeup.h` | `SendWakeup`（`SendNotifier` の実装。送信スレッドを合図で起こす） | `notify()` はどこからでも、`wait()` は送信スレッド |
 | `vocroz/transport/crypto_random_source.h` | `CryptoRandomSource`（libsodium による `RandomSource`） | どこからでも |
@@ -123,7 +126,23 @@ liveness.poll();
 
 再接続を始めたら、`ReconnectBackoff::next_delay()` の時間だけ待って試行し、成功したら `reset()` します。
 
+### SRTP 外部出力のつなぎ方
+
+外部の放送機器やサーバーへ、標準の RTP / SRTP（RFC 3550、RFC 3711、RFC 7587）で送ります。子機と親機の間の形式（`PacketHeader`、`SecureChannel`）とは部品も鍵も共有しません（[ADR-0040](../../docs/adr/0040-srtp-external-output.md)）。
+
+```cpp
+// コントロールスレッド: 鍵は受信機の設定から貼り付けた inline: の文字列か、generate_srtp_master_key() で作る。
+auto key = parse_srtp_master_key(text);                            // 不正な鍵、すべて 0、寿命や MKI の指定は失敗
+CryptoRandomSource random;
+auto params = make_rtp_stream_params(random, kDefaultOpusPayloadType, FrameDuration::k5000Us);
+auto sender = ExternalStreamSender::create(SrtpCryptoSuite::kAesCm128HmacSha1_80, key.value(), params, socket);
+// 送信スレッド: オーディオスレッドでエンコードしたフレームを SPSC キューから取り出して送る。
+auto sent = sender.value().send(frame);                            // 暗号化に失敗したら送らずに捨てる
+```
+
+鍵がなければ `ExternalStreamSender` を作れないので、平文の RTP を送る経路はありません。マーカービットは最初のパケットと、タイムスタンプが 1 フレームより先へ飛んだ後（送信の再開）に立てます。
+
 ## 依存してよいモジュール
 
-`audio-core`、`common`（AGENTS.md 4.2）。`audio-core` は `VOCROZ_NONBLOCKING`（`vocroz/audio_core/realtime.h`）と、`MediaStreamEncoder` が実装する `AudioSink` ポートとゲインランプに使います。外部ライブラリは libsodium、noise-c、libopus をこのモジュールの中だけで使い、公開ヘッダーには型を出しません。
+`audio-core`、`common`（AGENTS.md 4.2）。`audio-core` は `VOCROZ_NONBLOCKING`（`vocroz/audio_core/realtime.h`）と、`MediaStreamEncoder` が実装する `AudioSink` ポートとゲインランプに使います。外部ライブラリは libsodium、noise-c、libopus、libsrtp をこのモジュールの中だけで使い、公開ヘッダーには型を出しません。
 オーディオスレッドから呼ぶ関数（`PlayoutStream::render()` とそこから呼ばれる関数、`OpusFrameEncoder::encode()`、`MediaStreamEncoder::push()`）には、`audio-core` の `VOCROZ_NONBLOCKING` を付けています（AGENTS.md 第 9 節）。

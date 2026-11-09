@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.25)
 project(vocroz
   VERSION 0.0.1
   DESCRIPTION "Remote PA console for low-latency ensemble playing over the internet"
-  LANGUAGES C CXX)  # C は外部ライブラリ（libopus、libsodium、noise-c）のビルドに使う
+  LANGUAGES C CXX)  # C は外部ライブラリ（libopus、libsodium、noise-c、libsrtp）のビルドに使う
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -39,6 +39,7 @@ include(cmake/opus.cmake)
 include(cmake/libsodium.cmake)
 include(cmake/noise-c.cmake)
 include(cmake/nlohmann_json.cmake)
+include(cmake/libsrtp.cmake)
 if(VOCROZ_WITH_JUCE)
   include(cmake/juce.cmake)
 endif()
