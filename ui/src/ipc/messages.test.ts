@@ -77,6 +77,7 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
   join: keysOf<UiMessageOf<"join">>({ ...kDiscreteKeys, invite: true }),
   leave: keysOf<UiMessageOf<"leave">>(kDiscreteKeys),
   select_input: keysOf<UiMessageOf<"select_input">>({ ...kDiscreteKeys, device_id: true }),
+  select_output: keysOf<UiMessageOf<"select_output">>({ ...kDiscreteKeys, device_id: true }),
   set_send_mute: keysOf<UiMessageOf<"set_send_mute">>({ ...kDiscreteKeys, muted: true }),
   stage_routing: keysOf<UiMessageOf<"stage_routing">>({ ...kDiscreteKeys, config: true }),
   commit_routing: keysOf<UiMessageOf<"commit_routing">>({
@@ -126,6 +127,8 @@ const kSessionKeys = keysOf<SessionInfo>({
   invite_url: true,
   output_device_state: true,
   output_device_name: true,
+  output_device_id: true,
+  output_devices: true,
   update_available: true,
 });
 const kChannelKeys = keysOf<ChannelStrip>({
@@ -260,6 +263,7 @@ const kErrorCodes: Record<ErrorCode, true> = {
   NOT_FOUND: true,
   INVALID_STATE: true,
   ENGINE_ERROR: true,
+  DEVICE_UNAVAILABLE: true,
 };
 
 const kBusKinds: Record<BusKind, true> = { USER: true, CUE: true };

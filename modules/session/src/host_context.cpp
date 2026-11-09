@@ -171,6 +171,37 @@ bool HostContext::advance_output(state::OutputDeviceEvent event) {
     return true;
 }
 
+// --- 出力デバイス ---
+
+void HostContext::close_output() {
+    ports.outputs.close_output();
+    // NONE ならすでに閉じている。LOST から閉じるのは、抜けたデバイスの選択をやめるとき。
+    advance_output(state::OutputDeviceEvent::kClosed);
+    session.output_device_name.reset();
+    session.output_device_id.reset();
+}
+
+bool HostContext::open_output(const std::string& device_id) {
+    // 2 つのデバイスから同時にミキサーを呼ばないよう、必ず閉じてから開く。
+    close_output();
+    auto opened = ports.outputs.open_output(device_id);
+    if (!opened) {
+        return false;
+    }
+    advance_output(state::OutputDeviceEvent::kOpened);
+    session.output_device_name = std::move(opened).value();
+    session.output_device_id = device_id;
+    if (settings.output_device_id != device_id) {
+        settings.output_device_id = device_id;
+        save_settings();
+    }
+    return true;
+}
+
+void HostContext::refresh_output_devices() {
+    session.output_devices = ports.outputs.list_outputs();
+}
+
 // 接続状態を進め、それに伴う値（信号状態、猶予の起点、原因）をそろえる。
 bool HostContext::advance_connection(Participant& p, ConnectionEvent event) {
     const auto next = state::next_state(p.strip.connection_state, event);

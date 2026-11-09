@@ -131,12 +131,14 @@ SimulatedHost::SimulatedHost(const common::Clock& clock, netsim::SimulatedNetwor
     session::HostSession::Config config;
     std::copy(keys_.public_key().begin(), keys_.public_key().end(), config.host_public_key.begin());
     config.invite_base_url = "https://vocroz.test";
-    session_ = std::make_unique<session::HostSession>(
-        std::move(config), session::HostSession::Ports{ui_, mixer_, *this, rendezvous_, settings_,
-                                                       random_, clock_, logger_});
-    session_->start();
     // 出力デバイスは常に開いているものとする（デバイスの抜去は session の単体テストで確かめる）。
-    session_->on_output_device_opened("harness-output", "Harness output");
+    // 保存した出力デバイスとして渡し、start() で開かせる。
+    outputs_.add("harness-output", "Harness output");
+    settings_.host() = session::HostSettings{.output_device_id = "harness-output"};
+    session_ = std::make_unique<session::HostSession>(
+        std::move(config), session::HostSession::Ports{ui_, mixer_, outputs_, *this, rendezvous_,
+                                                       settings_, random_, clock_, logger_});
+    session_->start();
     network_.attach(
         address_, [this](const netsim::NodeAddress& from, std::span<const std::uint8_t> datagram) {
             on_datagram(from, datagram);

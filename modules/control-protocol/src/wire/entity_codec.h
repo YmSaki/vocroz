@@ -11,6 +11,7 @@
 
 namespace vocroz::control_protocol::wire {
 
+[[nodiscard]] nlohmann::json write_json(const OutputDevice& device);
 [[nodiscard]] nlohmann::json write_json(const SessionInfo& session);
 [[nodiscard]] nlohmann::json write_json(const ChannelStrip& channel);
 [[nodiscard]] nlohmann::json write_json(const MasterStrip& master);
@@ -22,6 +23,8 @@ namespace vocroz::control_protocol::wire {
 [[nodiscard]] nlohmann::json write_json(const InputDevice& device);
 [[nodiscard]] nlohmann::json write_json(const ClientSnapshot& snapshot);
 
+[[nodiscard]] common::Result<OutputDevice, DecodeError> read_output_device(
+    const nlohmann::json& value);
 [[nodiscard]] common::Result<SessionInfo, DecodeError> read_session_info(
     const nlohmann::json& value);
 [[nodiscard]] common::Result<ChannelStrip, DecodeError> read_channel_strip(
