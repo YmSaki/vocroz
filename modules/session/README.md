@@ -73,9 +73,12 @@ host_session_.on_peer_message(peer, body);
 
 ```cpp
 // PeerLink の実装（コンポジションルート）: 承認と切断を MIDI の受け口にも伝える。
-void admit(PeerHandle peer, const std::string& strip_id) override {
-    media_.admit(peer, strip_id);
-    midi_inbox_.admit(peer, strip_id);  // ストリップのキューを返す。グラフの MIDI ソースに使う
+// routes は子機の入力ごとの流し込み先で、ストリップの並び順（先頭が子機のいちばん古いストリップ）。
+void admit(PeerHandle peer, const std::vector<StreamRoute>& routes) override {
+    media_.admit(peer, routes);
+    // MIDI は子機ごとに 1 系統なので、先頭のストリップへ流す。ストリップのキューを返す。
+    // グラフの MIDI ソースに使う
+    midi_inbox_.admit(peer, routes.front().strip_id);
 }
 void close(PeerHandle peer) override { media_.close(peer); midi_inbox_.close(peer); }
 // MixerControl::remove_channel() では midi_inbox_.remove_strip(strip_id)。
