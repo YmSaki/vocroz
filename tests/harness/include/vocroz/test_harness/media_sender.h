@@ -45,6 +45,12 @@ public:
     /// @param block キャプチャのブロック（長さは任意）
     void capture(std::span<const float> block);
 
+    /// 送信ミュートの世代番号を変える（送信ミュートを解除したとき）。
+    /// @param mute_epoch 新しい世代番号
+    void set_mute_epoch(std::uint32_t mute_epoch) noexcept {
+        mute_epoch_ = mute_epoch;
+    }
+
     /// エンコーダーの先読みのサンプル数を返す。遅延の見積もりに使う。
     [[nodiscard]] std::size_t lookahead_samples() const noexcept {
         return encoder_.lookahead_samples();
