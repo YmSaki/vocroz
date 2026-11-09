@@ -38,9 +38,12 @@ ClientRuntime::ClientRuntime(ConstructionKey /*key*/, Ports ports, const Config&
                                     .logger = ports.logger},
                config.encoder, std::move(encoder)),
       ui_(ports.ui_channel, ports.logger),
+      player_(ports.returns),
+      return_outputs_(ports.devices, ports.outputs, player_, ports.logger),
       connection_(HostConnection::Ports{.endpoint = ports.endpoint,
                                         .router = ports.router,
                                         .inbox = ports.inbox,
+                                        .path = ports.path,
                                         .sender = sender_,
                                         .environment = ports.environment,
                                         .random = ports.random,
@@ -52,6 +55,7 @@ ClientRuntime::ClientRuntime(ConstructionKey /*key*/, Ports ports, const Config&
       session_(session::ClientSession::Ports{.ui = ui_,
                                              .capture = capture_,
                                              .link = connection_,
+                                             .outputs = return_outputs_,
                                              .rendezvous = ports.rendezvous,
                                              .settings = ports.settings,
                                              .clock = ports.clock,
@@ -79,6 +83,9 @@ void ClientRuntime::poll() {
     capture_.flush_params();
     if (capture_.take_device_lost()) {
         refresh_input_devices();
+    }
+    if (player_.take_device_lost()) {
+        session_.on_output_device_lost();
     }
     if (connection_.linked() && session_.snapshot().client_state == cp::ClientState::kConnecting) {
         // 承認を受けたら送信を始められる。キャプチャと送信スレッドは常に動いていて、

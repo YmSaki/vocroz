@@ -26,6 +26,7 @@ import type {
   BusKind,
   InputSourceKind,
   MixerSnapshot,
+  OutputDevice,
   OutputDeviceState,
   PendingParticipant,
   RouteLevel,
@@ -232,8 +233,12 @@ const kClientKeys = keysOf<ClientSnapshot>({
   return_muted: true,
   input_channels: true,
   app_audio: true,
+  output_devices: true,
+  selected_output_id: true,
+  output_missing: true,
 });
 const kInputDeviceKeys = keysOf<InputDevice>({ id: true, name: true });
+const kOutputDeviceKeys = keysOf<OutputDevice>({ id: true, name: true });
 const kLinkStatKeys = keysOf<LinkStat>({ jitter_ms: true, buffer_ms: true });
 
 // 状態の正規名。Record<型, true> なので、型に値を足したのに一覧を直し忘れると型検査で止まる。
@@ -381,6 +386,7 @@ function checkRouting(routing: RoutingInfo, seen: Seen): void {
 function checkClient(client: ClientSnapshot, seen: Seen): void {
   expectKeys(client, kClientKeys);
   for (const device of client.input_devices) expectKeys(device, kInputDeviceKeys);
+  for (const device of client.output_devices) expectKeys(device, kOutputDeviceKeys);
   seen.add(kClientStates, client.client_state);
   seen.add(kErrorCodes, client.failure_code);
 }

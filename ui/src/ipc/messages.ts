@@ -287,6 +287,12 @@ export interface ClientSnapshot {
   input_channels: 1 | 2;
   /** アプリ音声（再生デバイスのループバック）を送るか。 */
   app_audio: boolean;
+  /** 返送を鳴らせる出力デバイス。 */
+  output_devices: OutputDevice[];
+  /** 返送を鳴らす出力デバイス。null は「出力なし」。抜去されたときも ID を残す。 */
+  selected_output_id: string | null;
+  /** 選択中の出力デバイスが抜去されて、返送を鳴らしていない状態。 */
+  output_missing: boolean;
 }
 
 // ---------------------------------------------------------------------------

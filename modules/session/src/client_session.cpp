@@ -2,7 +2,8 @@
 //
 // 子機のセッション管理の実装。
 // 状態の遷移は src/state/client_state_machine の遷移表に従い、ここでは遷移に伴う副作用だけを行う。
-// revision はコマンドで変えた値（参加、退出、入力の選択と構成、送信ミュート）でだけ進め、
+// revision
+// はコマンドで変えた値（参加、退出、入力の選択と構成、送信ミュート、返送の出力の選択）でだけ進め、
 // 接続の進行や入力の欠落のような観測値では進めない（docs/adr/0015-control-protocol-messages.md）。
 
 #include "vocroz/session/client_session.h"
@@ -76,6 +77,11 @@ public:
         ports_.capture.set_streams(streams());
         ports_.capture.set_send_muted(true, epoch_);
         ports_.capture.set_send_level(snapshot_.send_level_db);
+        snapshot_.output_devices = ports_.outputs.list_outputs();
+        if (settings_.output_device_id) {
+            // 起動時に開けなくても、ほかのデバイスへは切り替えず、選び直すのを待つ。
+            open_return_output(*settings_.output_device_id);
+        }
     }
 
     // --- UI からのメッセージ ---
@@ -237,6 +243,20 @@ public:
         }
     }
 
+    void on_output_device_lost() {
+        // 抜けたデバイスの後始末。閉じるのは冪等なので、状態にかかわらず閉じておく。
+        ports_.outputs.close_output();
+        snapshot_.output_devices = ports_.outputs.list_outputs();
+        if (!snapshot_.selected_output_id || snapshot_.output_missing) {
+            publish();
+            return;
+        }
+        // ID は残し、挿し直したデバイスを選び直しやすくする。観測値なので revision は進めない。
+        snapshot_.output_missing = true;
+        publish();
+        notice(cp::NoticeSeverity::kWarning, "return_output_lost");
+    }
+
     void tick() {
         if (snapshot_.client_state == ClientState::kReconnecting && reconnecting_since_ &&
             ports_.clock.now() - *reconnecting_since_ >= kReconnectGrace) {
@@ -297,6 +317,8 @@ private:
                     return set_input_channels(body.channels);
                 } else if constexpr (std::is_same_v<B, cp::SetAppAudio>) {
                     return set_app_audio(body.enabled);
+                } else if constexpr (std::is_same_v<B, cp::SelectOutput>) {
+                    return select_output(body.device_id);
                 } else {
                     return common::make_unexpected(ErrorCode::kInvalidState);
                 }
@@ -362,6 +384,46 @@ private:
         }
         save_settings();
         return snapshot_.revision;
+    }
+
+    CommandResult select_output(const std::optional<std::string>& device_id) {
+        snapshot_.output_devices = ports_.outputs.list_outputs();
+        if (snapshot_.selected_output_id == device_id && !snapshot_.output_missing) {
+            // 開き直すと返送が途切れるので何もしない。一覧だけは新しくなっているので知らせる。
+            publish();
+            return snapshot_.revision;
+        }
+        bool opened = true;
+        if (device_id) {
+            opened = open_return_output(*device_id);
+        } else {
+            ports_.outputs.close_output();
+            snapshot_.selected_output_id.reset();
+            snapshot_.output_missing = false;
+        }
+        if (opened) {
+            settings_.output_device_id = device_id;
+            save_settings();
+        }
+        // 開けなかったときも、前のデバイスは閉じて状態が変わっているので revision
+        // を進めて知らせる。
+        detail::bump_revision(snapshot_.revision);
+        publish();
+        if (!opened) {
+            log(common::LogLevel::kWarning, "返送の出力デバイスを開けませんでした");
+            return common::make_unexpected(ErrorCode::kDeviceUnavailable);
+        }
+        return snapshot_.revision;
+    }
+
+    // 返送の出力デバイスを開く。2 つのデバイスから同時に返送を鳴らさないよう、必ず閉じてから開く。
+    // 開けなければ、選んだ ID を残して「出力なし」の表示にする（ほかのデバイスへは切り替えない）。
+    bool open_return_output(const std::string& device_id) {
+        ports_.outputs.close_output();
+        snapshot_.selected_output_id = device_id;
+        const bool opened = ports_.outputs.open_output(device_id).has_value();
+        snapshot_.output_missing = !opened;
+        return opened;
     }
 
     CommandResult set_send_mute(bool muted) {
@@ -666,6 +728,10 @@ void ClientSession::on_media_established() {
 
 void ClientSession::on_input_devices_changed(std::vector<control_protocol::InputDevice> devices) {
     impl_->on_input_devices_changed(std::move(devices));
+}
+
+void ClientSession::on_output_device_lost() {
+    impl_->on_output_device_lost();
 }
 
 void ClientSession::tick() {

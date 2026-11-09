@@ -94,9 +94,12 @@ struct SetAppAudio {
     friend bool operator==(const SetAppAudio&, const SetAppAudio&) = default;
 };
 
-/// 出力デバイスを選ぶ（親機）。対象はセッションの entity。
-/// 選んでも Master のミュートは変わらない（音を出すかはオペレーターが Master で決める）。
-/// デバイスを開けなければ DEVICE_UNAVAILABLE で拒否し、ほかのデバイスへは切り替えない。
+/// 出力デバイスを選ぶ。
+/// 親機では対象はセッションの entity で、Master を鳴らすデバイスを選ぶ。選んでも Master の
+/// ミュートは変わらない（音を出すかはオペレーターが Master で決める）。
+/// 子機では対象は子機の entity で、返送モニターを鳴らすデバイスを選ぶ。返送のミュートは親機が
+/// 決めるので、選んでも変わらない（docs/adr/0036-return-monitor.md）。
+/// どちらも、デバイスを開けなければ DEVICE_UNAVAILABLE で拒否し、ほかのデバイスへは切り替えない。
 struct SelectOutput {
     /// デバイスの永続 ID。std::nullopt は「出力なし」（出力を止める）。
     std::optional<std::string> device_id;

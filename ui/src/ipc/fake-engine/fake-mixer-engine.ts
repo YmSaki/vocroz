@@ -248,6 +248,7 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "discard_routing":
       case "set_route_mute":
       case "set_latency_target":
+      case "set_return_mute":
         this.applyCommand(message);
         return;
       case "join":

@@ -31,7 +31,7 @@
 | `vocroz/session/routing_delay.h` | `delay_samples()`（ルーティングの遅延の ms からサンプル数への換算） |
 | `vocroz/session/settings.h` | `HostSettings`、`ClientSettings`、`SettingsError` |
 | `vocroz/session/ports/mixer_control.h` | `MixerControl`（親機のミキサーへの反映。ルーティングの適用を含む） |
-| `vocroz/session/ports/output_device_control.h` | `OutputDeviceControl`（親機の出力デバイスの一覧、開く、閉じる） |
+| `vocroz/session/ports/output_device_control.h` | `OutputDeviceControl`（出力デバイスの一覧、開く、閉じる。親機は Master の出力、子機は返送モニターの出力） |
 | `vocroz/session/ports/peer_link.h` | `PeerLink`（親機から子機との接続の操作。返送のミュートの反映を含む） |
 | `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作。返送のミュートの受信側への反映を含む） |
 | `vocroz/session/ports/capture_control.h` | `CaptureControl`（子機のキャプチャと送信への反映） |

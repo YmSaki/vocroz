@@ -175,6 +175,12 @@ export function MixerScreen({
                     muted: !channel.channel_muted,
                   })
                 }
+                onToggleReturn={() =>
+                  command.send(channel.entity_id, channel.revision, {
+                    type: "set_return_mute",
+                    muted: !channel.return_muted,
+                  })
+                }
                 onSelect={() =>
                   setSelected((current) =>
                     current === channel.entity_id ? null : channel.entity_id,

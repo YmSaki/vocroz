@@ -28,6 +28,7 @@
 #include "vocroz/transport/static_key_pair.h"
 
 #include "fakes/fake_logger.h"
+#include "fakes/fake_output_device_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_settings_store.h"
 #include "fakes/fake_ui_event_sink.h"
@@ -158,6 +159,8 @@ private:
     transport::StaticKeyPair keys_;
     session::FakeUiEventSink ui_;
     session::FakeRendezvousClient rendezvous_;
+    // 試験の子機は返送を鳴らさないので、出力デバイスのない一覧を返す。
+    session::FakeOutputDeviceControl outputs_;
     session::FakeSettingsStore settings_;
     common::FakeLogger logger_;
     std::unique_ptr<session::ClientSession> session_;

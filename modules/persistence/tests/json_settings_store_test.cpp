@@ -196,7 +196,9 @@ TEST_F(SettingsCorruptionStartupTest, ClientStartsWithSendMutedWhenSettingsAreCo
     session::FakeCaptureControl capture;
     session::FakeHostLink link;
     session::FakeRendezvousClient rendezvous;
-    session::ClientSession client{{ui_, capture, link, rendezvous, store_, clock_, logger_}};
+    session::FakeOutputDeviceControl client_outputs;
+    session::ClientSession client{
+        {ui_, capture, link, client_outputs, rendezvous, store_, clock_, logger_}};
     client.start();
 
     EXPECT_TRUE(capture.send_muted());

@@ -2,7 +2,7 @@
 //
 // 子機のセッション管理のテスト。
 // 初期ミュート、招待の解決から接続まで、再接続トークンによる同じストリップへの復帰、
-// 入力デバイスの欠落を、ポートのフェイクで OS なしに確かめる。
+// 入力デバイスの欠落、返送の出力デバイスの選択と抜去を、ポートのフェイクで OS なしに確かめる。
 
 #include "vocroz/session/client_session.h"
 
@@ -18,6 +18,7 @@
 #include "fakes/fake_clock.h"
 #include "fakes/fake_host_link.h"
 #include "fakes/fake_logger.h"
+#include "fakes/fake_output_device_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_settings_store.h"
 #include "fakes/fake_ui_event_sink.h"
@@ -41,8 +42,8 @@ protected:
 
     ClientSession& session() {
         if (!session_) {
-            session_.emplace(ClientSession::Ports{ui_, capture_, link_, rendezvous_, settings_,
-                                                  clock_, logger_});
+            session_.emplace(ClientSession::Ports{ui_, capture_, link_, outputs_, rendezvous_,
+                                                  settings_, clock_, logger_});
             session_->start();
         }
         return *session_;
@@ -120,6 +121,7 @@ protected:
     FakeUiEventSink ui_;
     FakeCaptureControl capture_;
     FakeHostLink link_;
+    FakeOutputDeviceControl outputs_;
     FakeRendezvousClient rendezvous_;
     FakeSettingsStore settings_;
     common::FakeClock clock_;
@@ -565,6 +567,107 @@ TEST_F(ClientSessionTest, IgnoresReturnMuteOutsideASession) {
     receive(wire::ReturnMuteNotice{false, 1});
     EXPECT_TRUE(session().snapshot().return_muted);
     EXPECT_FALSE(link_.return_mute());
+}
+
+// --- 返送の出力デバイス ---
+
+TEST_F(ClientSessionTest, StartsWithoutReturnOutputByDefault) {
+    outputs_.add("spk-1", "Headphones");
+    session();
+    EXPECT_FALSE(outputs_.opened());
+    EXPECT_EQ(session().snapshot().output_devices.size(), 1U);
+    EXPECT_FALSE(session().snapshot().selected_output_id);
+    EXPECT_FALSE(session().snapshot().output_missing);
+}
+
+TEST_F(ClientSessionTest, OpensTheSavedReturnOutputAtStart) {
+    outputs_.add("spk-1", "Headphones");
+    settings_.client() = ClientSettings{};
+    settings_.client()->output_device_id = "spk-1";
+    session();
+    EXPECT_EQ(outputs_.opened(), "spk-1");
+    EXPECT_EQ(session().snapshot().selected_output_id, "spk-1");
+    EXPECT_FALSE(session().snapshot().output_missing);
+}
+
+TEST_F(ClientSessionTest, SavedReturnOutputThatIsGoneStaysSelectedAsMissing) {
+    outputs_.add("spk-2", "Speakers");
+    settings_.client() = ClientSettings{};
+    settings_.client()->output_device_id = "spk-1";
+    session();
+    // ほかのデバイスへは切り替えない。
+    EXPECT_FALSE(outputs_.opened());
+    EXPECT_EQ(session().snapshot().selected_output_id, "spk-1");
+    EXPECT_TRUE(session().snapshot().output_missing);
+}
+
+TEST_F(ClientSessionTest, SelectOutputOpensTheDeviceAndSavesIt) {
+    outputs_.add("spk-1", "Headphones");
+    outputs_.add("spk-2", "Speakers");
+    const auto before = session().snapshot().revision;
+    ASSERT_TRUE(command(cp::SelectOutput{"spk-1"}));
+    ASSERT_TRUE(command(cp::SelectOutput{"spk-2"}));
+    EXPECT_EQ(outputs_.opened(), "spk-2");
+    EXPECT_FALSE(outputs_.opened_while_open());
+    EXPECT_EQ(session().snapshot().selected_output_id, "spk-2");
+    EXPECT_GT(session().snapshot().revision, before);
+    EXPECT_EQ(settings_.client()->output_device_id, "spk-2");
+    // 返送のミュートは親機が決めるので、出力を選んでも変わらない。
+    EXPECT_TRUE(session().snapshot().return_muted);
+}
+
+TEST_F(ClientSessionTest, SelectOutputNoneClosesTheDevice) {
+    outputs_.add("spk-1", "Headphones");
+    ASSERT_TRUE(command(cp::SelectOutput{"spk-1"}));
+    ASSERT_TRUE(command(cp::SelectOutput{std::nullopt}));
+    EXPECT_FALSE(outputs_.opened());
+    EXPECT_FALSE(session().snapshot().selected_output_id);
+    EXPECT_FALSE(settings_.client()->output_device_id);
+}
+
+TEST_F(ClientSessionTest, SelectOutputThatCannotOpenIsRejectedWithoutFallback) {
+    outputs_.add("spk-1", "Headphones");
+    outputs_.add("spk-2", "Speakers");
+    ASSERT_TRUE(command(cp::SelectOutput{"spk-1"}));
+    outputs_.fail_opens();
+    EXPECT_FALSE(command(cp::SelectOutput{"spk-2"}));
+    EXPECT_EQ(last_reject_, ErrorCode::kDeviceUnavailable);
+    EXPECT_FALSE(outputs_.opened());
+    EXPECT_EQ(session().snapshot().selected_output_id, "spk-2");
+    EXPECT_TRUE(session().snapshot().output_missing);
+    // 保存した選択は、開けたデバイスのまま残す。
+    EXPECT_EQ(settings_.client()->output_device_id, "spk-1");
+}
+
+TEST_F(ClientSessionTest, LostReturnOutputKeepsTheIdAndWarnsOnce) {
+    outputs_.add("spk-1", "Headphones");
+    ASSERT_TRUE(command(cp::SelectOutput{"spk-1"}));
+    const auto revision = session().snapshot().revision;
+    outputs_.remove("spk-1");
+    session().on_output_device_lost();
+    session().on_output_device_lost();
+    EXPECT_FALSE(outputs_.opened());
+    EXPECT_EQ(session().snapshot().selected_output_id, "spk-1");
+    EXPECT_TRUE(session().snapshot().output_missing);
+    EXPECT_TRUE(session().snapshot().output_devices.empty());
+    // 観測値なので revision は進めない。
+    EXPECT_EQ(session().snapshot().revision, revision);
+    int warnings = 0;
+    for (const auto& m : ui_.messages()) {
+        if (const auto* n = std::get_if<cp::Notice>(&m); n && n->code == "return_output_lost") {
+            ++warnings;
+        }
+    }
+    EXPECT_EQ(warnings, 1);
+}
+
+TEST_F(ClientSessionTest, ReselectingTheLostReturnOutputOpensItAgain) {
+    outputs_.add("spk-1", "Headphones");
+    ASSERT_TRUE(command(cp::SelectOutput{"spk-1"}));
+    session().on_output_device_lost();
+    ASSERT_TRUE(command(cp::SelectOutput{"spk-1"}));
+    EXPECT_EQ(outputs_.opened(), "spk-1");
+    EXPECT_FALSE(session().snapshot().output_missing);
 }
 
 }  // namespace

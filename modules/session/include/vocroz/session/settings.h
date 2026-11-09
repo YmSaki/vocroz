@@ -62,6 +62,8 @@ struct ClientSettings {
     /// アプリ音声を送るかは保存しない。起動するたびに送らない状態から始め、出演者が選び直す
     /// （PC の通知音などを意図せず送らないため）。
     std::uint8_t input_channels = 1;
+    /// 最後に選んだ返送モニターの出力デバイスの永続 ID。std::nullopt は「出力なし」。
+    std::optional<std::string> output_device_id;
 
     friend bool operator==(const ClientSettings&, const ClientSettings&) = default;
 };

@@ -106,8 +106,8 @@ SimulatedClient::SimulatedClient(const common::Clock& clock, netsim::SimulatedNe
       config_(std::move(config)),
       keys_(generate_keys()) {
     settings_.client() = session::ClientSettings{config_.display_name, "harness-mic", 0.0};
-    session_ = std::make_unique<session::ClientSession>(
-        session::ClientSession::Ports{ui_, *this, *this, rendezvous_, settings_, clock_, logger_});
+    session_ = std::make_unique<session::ClientSession>(session::ClientSession::Ports{
+        ui_, *this, *this, outputs_, rendezvous_, settings_, clock_, logger_});
     session_->start();
     session_->on_input_devices_changed(
         {control_protocol::InputDevice{.id = "harness-mic", .name = "Harness mic"}});
