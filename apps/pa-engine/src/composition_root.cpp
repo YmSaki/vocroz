@@ -11,6 +11,7 @@
 #include "vocroz/device/factories.h"
 #include "vocroz/ipc/factories.h"
 #include "vocroz/network/factories.h"
+#include "vocroz/network/rendezvous_url.h"
 #include "vocroz/persistence/factories.h"
 #include "vocroz/update/session_lock.h"
 
@@ -98,6 +99,9 @@ CompositionRoot::CompositionRoot(const LaunchOptions& options)
                                           "出力デバイスが抜かれたため、Master をミュートしました");
                              session_->on_output_device_lost();
                          }),
+      peer_relay_(loop_),
+      peer_receive_(peer_relay_, clock_),
+      router_(peer_receive_),
       idle_timer_(kIdleShutdownTimeout) {}
 
 CompositionRoot::~CompositionRoot() {
@@ -152,6 +156,11 @@ std::optional<int> CompositionRoot::start() {
     }
     host_keys_.emplace(std::move(keys).value());
     create_rendezvous_client();
+    if (!create_peer_network()) {
+        // 子機を 1 台も受け付けられないエンジンは役に立たないので、起動しない。
+        logger_->log(common::LogLevel::kError, "子機との通信に使う UDP のソケットを開けません");
+        return kExitFatal;
+    }
 
     auto channel = ipc::make_pipe_server(pipe_name.value(), *logger_);
     if (!channel) {
@@ -171,8 +180,9 @@ std::optional<int> CompositionRoot::start() {
     config.invite_base_url = kInviteBaseUrl;
     session_ = std::make_unique<session::HostSession>(
         std::move(config),
-        session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, peers_, *rendezvous_,
-                                    *settings_, random_, clock_, *logger_});
+        session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, *peer_links_,
+                                    *rendezvous_tap_, *settings_, random_, clock_, *logger_});
+    peer_events_.bind(session_.get());
     const auto on_registered =
         [this](
             const session::InviteToken& token,
@@ -216,8 +226,39 @@ void CompositionRoot::create_rendezvous_client() {
     rendezvous_ = https_rendezvous_.get();
 }
 
+bool CompositionRoot::create_peer_network() {
+    // ポートは OS に選ばせる。子機はランデブーサーバーから親機の候補を受け取るので、
+    // 決まったポートを開けておく必要はない（docs/adr/0021-udp-socket-and-nat-traversal.md）。
+    auto endpoint = network::make_winsock_udp_endpoint(0, router_);
+    if (!endpoint) {
+        return false;
+    }
+    endpoint_ = std::move(endpoint).value();
+    network_environment_ = network::make_win_network_environment();
+    // 招待の HTTPS と UDP のランデブーは、同じホストのサーバーを使う（子機と同じ）。
+    const auto url = network::parse_rendezvous_url(kInviteBaseUrl);
+    rendezvous_driver_ = std::make_unique<HostRendezvousDriver>(
+        HostRendezvousDriver::Ports{*endpoint_, router_, *network_environment_, network_random_,
+                                    clock_, *logger_},
+        url ? url.value().host : std::string{}, kRendezvousUdpPort);
+    rendezvous_tap_ = std::make_unique<RendezvousIdTap>(
+        *rendezvous_, [this](const session::RendezvousId& id) { rendezvous_driver_->start(id); });
+    peer_links_ = std::make_unique<HostPeerLinks>(
+        HostPeerLinks::Ports{*endpoint_, peer_receive_, engine_mixer_,
+                             rendezvous_driver_->rendezvous(), peer_events_, *host_keys_, clock_,
+                             *logger_},
+        transport::PlayoutConfig{});
+    peer_relay_.set_target(peer_links_.get());
+    logger_->log(common::LogLevel::kInfo, "子機の受け付けを UDP のポート " +
+                                              std::to_string(endpoint_->local_port()) +
+                                              " で始めました");
+    return true;
+}
+
 void CompositionRoot::on_tick() {
     engine_mixer_.collect();
+    rendezvous_driver_->poll();
+    peer_links_->poll();
     const auto now = clock_.now();
     if (now >= next_session_tick_) {
         next_session_tick_ = now + kSessionTickInterval;
@@ -236,6 +277,10 @@ void CompositionRoot::on_tick() {
 
 void CompositionRoot::apply_activity() {
     const auto activity = activity_for(session_->snapshot().session.state);
+    if (session_exists_ && !activity.session_exists) {
+        // セッションが終わった。次のセッションは新しいランデブー ID で登録し直す。
+        rendezvous_driver_->stop();
+    }
     session_exists_ = activity.session_exists;
     sleep_inhibitor_.set_inhibited(activity.prevent_sleep);
     if (activity.session_exists && !session_lock_) {
@@ -259,6 +304,9 @@ void CompositionRoot::shutdown() {
     }
     if (outputs_) {
         outputs_->close_output();
+    }
+    if (rendezvous_driver_) {
+        rendezvous_driver_->stop();
     }
     sleep_inhibitor_.set_inhibited(false);
     session_lock_.reset();
