@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// device のアダプター（WASAPI）のファクトリー関数。具象クラスは公開せず、
+// device のアダプター（WASAPI、JUCE）のファクトリー関数。具象クラスは公開せず、
 // コンポジションルートはここから audio-core のポートとして受け取る（AGENTS.md 5.1）。
-// Windows でだけ定義する。
+// WASAPI のものは Windows でだけ、JUCE のもの（MIDI）は VOCROZ_WITH_JUCE が ON のときだけ定義する。
 #pragma once
 
 #include <memory>
@@ -12,6 +12,9 @@
 #include "vocroz/audio_core/ports/audio_device_catalog.h"
 #include "vocroz/audio_core/ports/audio_input.h"
 #include "vocroz/audio_core/ports/audio_output.h"
+#include "vocroz/audio_core/ports/midi_device_catalog.h"
+#include "vocroz/audio_core/ports/midi_input.h"
+#include "vocroz/common/ports/clock.h"
 #include "vocroz/common/ports/logger.h"
 #include "vocroz/common/result.h"
 
@@ -46,5 +49,27 @@ make_wasapi_audio_output(std::string_view endpoint_id, common::Logger& logger);
 /// スレッド安全性: コントロールスレッドから呼ぶ。
 [[nodiscard]] common::Result<std::unique_ptr<audio_core::AudioInput>, audio_core::AudioDeviceError>
 make_wasapi_audio_input(std::string_view endpoint_id, common::Logger& logger);
+
+/// JUCE の MidiInput による MIDI 入力ポートの一覧を作る（docs/adr/0029-midi-and-vsti.md）。
+/// JUCE の MIDI はメッセージスレッドで動くので、ScopedJuceInitialiser_GUI を作り、
+/// メッセージループを回すプロセスでだけ使う。
+/// @return 一覧。list() は JUCE のメッセージスレッドから呼ぶ
+/// スレッド安全性: JUCE のメッセージスレッドから呼ぶ。
+[[nodiscard]] std::unique_ptr<audio_core::MidiDeviceCatalog> make_juce_midi_device_catalog();
+
+/// ID で指定した MIDI 入力ポートを作る。ポートは start() で開き、ID のポートがなければ
+/// start() が kDeviceNotFound を返す。別のポートへは切り替えない。
+/// 受け取ったチャンネルメッセージは clock の時刻を付けてコールバックへ渡し、SysEx と
+/// システムメッセージは捨てる。抜去は JUCE の切断の通知で検知し、
+/// AudioDeviceListener::on_device_lost() で 1 回だけ（メッセージスレッドから）知らせる。
+/// Panic の判断はしない。start() と stop() は JUCE のメッセージスレッドから呼ぶ。
+/// @param identifier ポートの ID（MidiDeviceInfo::id）
+/// @param clock      タイムスタンプの時計。Mixer
+/// に注入するものと同じにする。戻り値より長く生存させる
+/// @param logger     開始の失敗と抜去の出力先。戻り値より長く生存させる
+/// @return MIDI 入力ポート
+/// スレッド安全性: JUCE のメッセージスレッドから呼ぶ。
+[[nodiscard]] std::unique_ptr<audio_core::MidiInput> make_juce_midi_input(
+    std::string_view identifier, const common::Clock& clock, common::Logger& logger);
 
 }  // namespace vocroz::device
