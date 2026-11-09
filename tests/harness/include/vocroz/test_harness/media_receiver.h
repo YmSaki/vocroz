@@ -74,6 +74,16 @@ public:
     /// @param out 書き込み先
     void render(std::span<float> out);
 
+    /// ステレオの再生の PCM を書き込む。
+    /// @param left  左の書き込み先
+    /// @param right 右の書き込み先。left と同じ長さ
+    void render(std::span<float> left, std::span<float> right);
+
+    /// 再生のチャンネル数（1 か 2）。
+    [[nodiscard]] std::size_t channels() const noexcept {
+        return playout_->channels();
+    }
+
     /// 信号状態を返す。
     [[nodiscard]] transport::SignalState signal_state() const noexcept {
         return monitor_.state();

@@ -53,7 +53,8 @@ struct EnsembleConfig {
 class EnsembleSimulation {
 public:
     /// 子機 index の 1 ブロック分の入力を書き込む関数。first_sample
-    /// はブロックの先頭のサンプル時刻。
+    /// はブロックの先頭のサンプル時刻。マイクをステレオにした子機と、アプリ音声には、L、R の
+    /// インターリーブで 2 倍の長さのブロックを渡す。
     using Source =
         std::function<void(std::size_t client, std::uint64_t first_sample, std::span<float> block)>;
     /// 親機の Master の 1 ブロック分の出力を受け取る関数。first_sample は鳴らし始めるサンプル時刻。
@@ -73,7 +74,9 @@ public:
     /// @param samples 進めるサンプル数
     /// @param source  子機の入力。空なら無音
     /// @param sink    親機の出力。空なら捨てる
-    void run(std::uint64_t samples, const Source& source = {}, const Sink& sink = {});
+    /// @param app_audio 子機のアプリ音声の入力（ステレオ）。空ならアプリ音声は送らない
+    void run(std::uint64_t samples, const Source& source = {}, const Sink& sink = {},
+             const Source& app_audio = {});
 
     /// 時間を進める（入力は無音、出力は捨てる）。
     /// @param duration 進める時間

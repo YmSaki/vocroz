@@ -8,6 +8,7 @@
 // SetGain は revision を進めず、expected_revision による競合の検出の対象外とする。
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -78,6 +79,21 @@ struct SetSendMute {
     friend bool operator==(const SetSendMute&, const SetSendMute&) = default;
 };
 
+/// マイク入力のチャンネル数を切り替える（子機）。対象は子機の entity。
+/// 親機では別の入力として扱われ、ストリップが作り直される（docs/adr/0035-client-input-expansion.md）。
+struct SetInputChannels {
+    /// 1（モノラル）か 2（ステレオ）。範囲の検証はデコーダーが行う。
+    std::uint8_t channels = 1;
+    friend bool operator==(const SetInputChannels&, const SetInputChannels&) = default;
+};
+
+/// アプリ音声を送るかを切り替える（子機）。対象は子機の entity。
+/// 送信ミュートはマイクと共通で、切り替えても変わらない。
+struct SetAppAudio {
+    bool enabled = false;
+    friend bool operator==(const SetAppAudio&, const SetAppAudio&) = default;
+};
+
 /// 出力デバイスを選ぶ（親機）。対象はセッションの entity。
 /// 選んでも Master のミュートは変わらない（音を出すかはオペレーターが Master で決める）。
 /// デバイスを開けなければ DEVICE_UNAVAILABLE で拒否し、ほかのデバイスへは切り替えない。
@@ -118,7 +134,8 @@ struct SetRouteMute {
 using DiscreteCommandBody =
     std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
                  RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
-                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput>;
+                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput,
+                 SetInputChannels, SetAppAudio>;
 
 /// 離散コマンド。
 struct DiscreteCommand {

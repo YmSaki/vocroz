@@ -12,6 +12,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "vocroz/control_protocol/constants.h"
+
 #include "persistence_constants.h"
 
 namespace vocroz::persistence {
@@ -335,6 +337,7 @@ std::string encode_client_settings(const session::ClientSettings& settings) {
     root["display_name"] = settings.display_name;
     root["selected_input_id"] = optional_to_json(settings.selected_input_id);
     root["send_level_db"] = settings.send_level_db;
+    root["input_channels"] = settings.input_channels;
     return dump(root);
 }
 
@@ -353,6 +356,12 @@ std::optional<session::ClientSettings> decode_client_settings(std::string_view t
     settings.display_name = std::move(*display_name);
     settings.selected_input_id = std::move(*selected_input_id);
     settings.send_level_db = *send_level_db;
+    // 子機の入力拡張の前のバージョンのファイルには input_channels がない。読めない値も含め、
+    // これまでと同じモノラルとして読み、ほかの設定は引き継ぐ。
+    if (const auto channels = read_unsigned(*root, "input_channels");
+        channels && *channels >= 1 && *channels <= control_protocol::kMaxInputChannels) {
+        settings.input_channels = static_cast<std::uint8_t>(*channels);
+    }
     return settings;
 }
 

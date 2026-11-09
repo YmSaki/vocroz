@@ -38,6 +38,9 @@ function initialSnapshot(): ClientSnapshot {
     // 起動時は必ず送信ミュートから始める。
     send_muted: true,
     send_level_db: 0,
+    input_channels: 1,
+    // アプリ音声は既定で送らない。
+    app_audio: false,
   };
 }
 
@@ -94,6 +97,8 @@ export class FakeClientEngine extends FakeEngineBase {
       case "leave":
       case "select_input":
       case "set_send_mute":
+      case "set_input_channels":
+      case "set_app_audio":
       case "create_session":
       case "end_session":
       case "set_channel_mute":
@@ -145,6 +150,12 @@ export class FakeClientEngine extends FakeEngineBase {
         return;
       case "set_send_mute":
         this.ack(command, this.update({ send_muted: command.muted }));
+        return;
+      case "set_input_channels":
+        this.ack(command, this.update({ input_channels: command.channels }));
+        return;
+      case "set_app_audio":
+        this.ack(command, this.update({ app_audio: command.enabled }));
         return;
       case "create_session":
       case "end_session":

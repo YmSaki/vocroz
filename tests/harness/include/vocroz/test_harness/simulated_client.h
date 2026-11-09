@@ -97,8 +97,13 @@ public:
 
     /// キャプチャのコールバック（1 ブロック分のマイクの PCM）。
     /// 接続があり、送信ミュートが解けていればエンコードして送る。
-    /// @param block キャプチャのブロック
+    /// @param block キャプチャのブロック。マイクをステレオにしていれば L、R のインターリーブ
     void capture(std::span<const float> block);
+
+    /// アプリ音声のキャプチャのコールバック（1 ブロック分のステレオの PCM、インターリーブ）。
+    /// アプリ音声を送る構成で、接続があり、送信ミュートが解けていればエンコードして送る。
+    /// @param block キャプチャのブロック
+    void capture_app_audio(std::span<const float> block);
 
     /// 時間を進めたあとの処理（ハンドシェイクの再送、信頼制御層の再送とキープアライブ、死活監視、
     /// 接続の張り直し、session の tick）。ネットワークの配送のあとに呼ぶ。
@@ -116,6 +121,9 @@ private:
     void select_input(const std::optional<std::string>& device_id) override;
     void set_send_muted(bool muted, std::uint32_t epoch) override;
     void set_send_level(double level_db) override;
+    void set_streams(const std::vector<session::InputStream>& streams) override;
+
+    void capture_input(control_protocol::InputSourceKind kind, std::span<const float> block);
 
     // session::HostLink
     void connect(const session::HostEndpoint& endpoint) override;
@@ -160,6 +168,8 @@ private:
     std::unique_ptr<Link> link_;
     LinkRequest link_request_ = LinkRequest::kNone;
     bool send_muted_ = true;
+    // session が反映した入力の構成。session の start() で上書きされる。
+    std::vector<session::InputStream> streams_{session::InputStream{}};
     std::uint32_t mute_epoch_ = 0;
     std::vector<std::function<void()>> deferred_;
     common::Clock::TimePoint next_tick_{};

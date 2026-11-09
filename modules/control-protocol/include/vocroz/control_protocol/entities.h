@@ -266,6 +266,10 @@ struct ClientSnapshot {
     bool send_muted = true;
     /// 送信レベル（-60〜+12 dB）。
     double send_level_db = 0.0;
+    /// マイク入力のチャンネル数（1 か 2）。ステレオはオーディオインターフェースのライン入力など。
+    std::uint8_t input_channels = 1;
+    /// アプリ音声（PC で再生している音）も送る。出演者が選んだときだけ送るので、既定値は false。
+    bool app_audio = false;
 
     friend bool operator==(const ClientSnapshot&, const ClientSnapshot&) = default;
 };

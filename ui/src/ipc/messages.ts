@@ -277,6 +277,10 @@ export interface ClientSnapshot {
   send_muted: boolean;
   /** 送信レベル（-60〜+12 dB）。 */
   send_level_db: number;
+  /** マイクのチャンネル数（1: モノラル、2: ステレオ）。 */
+  input_channels: 1 | 2;
+  /** アプリ音声（再生デバイスのループバック）を送るか。 */
+  app_audio: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +308,8 @@ export type DiscreteCommandBody =
   | { type: "leave" }
   | { type: "select_input"; device_id: string | null }
   | { type: "set_send_mute"; muted: boolean }
+  | { type: "set_input_channels"; channels: 1 | 2 }
+  | { type: "set_app_audio"; enabled: boolean }
   | { type: "stage_routing"; config: RoutingConfig }
   | { type: "commit_routing"; approve_feedback: boolean }
   | { type: "discard_routing" }

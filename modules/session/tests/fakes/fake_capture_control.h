@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "vocroz/session/ports/capture_control.h"
 
@@ -26,6 +27,14 @@ public:
 
     void set_send_level(double level_db) override {
         level_db_ = level_db;
+    }
+
+    void set_streams(const std::vector<InputStream>& streams) override {
+        streams_ = streams;
+    }
+
+    [[nodiscard]] const std::vector<InputStream>& streams() const noexcept {
+        return streams_;
     }
 
     [[nodiscard]] const std::optional<std::string>& input() const noexcept {
@@ -49,6 +58,7 @@ private:
     bool send_muted_ = false;
     std::uint32_t epoch_ = 0;
     double level_db_ = 0.0;
+    std::vector<InputStream> streams_;
 };
 
 }  // namespace vocroz::session

@@ -80,6 +80,11 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
   select_input: keysOf<UiMessageOf<"select_input">>({ ...kDiscreteKeys, device_id: true }),
   select_output: keysOf<UiMessageOf<"select_output">>({ ...kDiscreteKeys, device_id: true }),
   set_send_mute: keysOf<UiMessageOf<"set_send_mute">>({ ...kDiscreteKeys, muted: true }),
+  set_input_channels: keysOf<UiMessageOf<"set_input_channels">>({
+    ...kDiscreteKeys,
+    channels: true,
+  }),
+  set_app_audio: keysOf<UiMessageOf<"set_app_audio">>({ ...kDiscreteKeys, enabled: true }),
   stage_routing: keysOf<UiMessageOf<"stage_routing">>({ ...kDiscreteKeys, config: true }),
   commit_routing: keysOf<UiMessageOf<"commit_routing">>({
     ...kDiscreteKeys,
@@ -215,6 +220,8 @@ const kClientKeys = keysOf<ClientSnapshot>({
   input_missing: true,
   send_muted: true,
   send_level_db: true,
+  input_channels: true,
+  app_audio: true,
 });
 const kInputDeviceKeys = keysOf<InputDevice>({ id: true, name: true });
 

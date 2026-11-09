@@ -2,7 +2,7 @@
 //
 // 子機のセッション管理の実装。
 // 状態の遷移は src/state/client_state_machine の遷移表に従い、ここでは遷移に伴う副作用だけを行う。
-// revision はコマンドで変えた値（参加、退出、入力の選択、送信ミュート）でだけ進め、
+// revision はコマンドで変えた値（参加、退出、入力の選択と構成、送信ミュート）でだけ進め、
 // 接続の進行や入力の欠落のような観測値では進めない（docs/adr/0015-control-protocol-messages.md）。
 
 #include "vocroz/session/client_session.h"
@@ -71,7 +71,9 @@ public:
         settings_.send_level_db = clamp_send_level(settings_.send_level_db);
         snapshot_.selected_input_id = settings_.selected_input_id;
         snapshot_.send_level_db = settings_.send_level_db;
+        snapshot_.input_channels = settings_.input_channels;
         ports_.capture.select_input(snapshot_.selected_input_id);
+        ports_.capture.set_streams(streams());
         ports_.capture.set_send_muted(true, epoch_);
         ports_.capture.set_send_level(snapshot_.send_level_db);
     }
@@ -124,6 +126,8 @@ public:
                 request.reconnect_token = token_for(resolved_->endpoint.host_public_key);
                 request.display_name = settings_.display_name;
                 send(request);
+                // 承認のときに入力の数だけストリップが作られるよう、申請に続けて申告する。
+                send(wire::StreamsReport{streams()});
                 return;
             }
             case ClientState::kReconnecting:
@@ -287,6 +291,10 @@ private:
                     return select_input(body.device_id);
                 } else if constexpr (std::is_same_v<B, cp::SetSendMute>) {
                     return set_send_mute(body.muted);
+                } else if constexpr (std::is_same_v<B, cp::SetInputChannels>) {
+                    return set_input_channels(body.channels);
+                } else if constexpr (std::is_same_v<B, cp::SetAppAudio>) {
+                    return set_app_audio(body.enabled);
                 } else {
                     return common::make_unexpected(ErrorCode::kInvalidState);
                 }
@@ -369,6 +377,51 @@ private:
         return snapshot_.revision;
     }
 
+    CommandResult set_input_channels(std::uint8_t channels) {
+        if (snapshot_.input_channels != channels) {
+            snapshot_.input_channels = channels;
+            settings_.input_channels = channels;
+            apply_streams();
+            save_settings();
+        }
+        return snapshot_.revision;
+    }
+
+    CommandResult set_app_audio(bool enabled) {
+        if (snapshot_.app_audio != enabled) {
+            snapshot_.app_audio = enabled;
+            apply_streams();
+        }
+        return snapshot_.revision;
+    }
+
+    // 入力の構成をキャプチャへ反映し、親機へ申告し直す。親機は変わった入力のストリップを
+    // 作り直す（チャンネルミュートで始まる）ので、送信ミュートはここでは変えない。
+    void apply_streams() {
+        const auto list = streams();
+        ports_.capture.set_streams(list);
+        if (in_session()) {
+            send(wire::StreamsReport{list});
+        }
+        detail::bump_revision(snapshot_.revision);
+        publish();
+    }
+
+    // 送る入力の一覧。マイクはストリーム 0、アプリ音声はストリーム 1 にする。
+    // マイクのストリーム ID は、申告を送らない子機（親機はストリーム 0 のモノラルとみなす）と
+    // 同じにしておく。
+    [[nodiscard]] std::vector<InputStream> streams() const {
+        std::vector<InputStream> list{
+            InputStream{kMicrophoneStreamId, cp::InputSourceKind::kMicrophone,
+                        snapshot_.input_channels},
+        };
+        if (snapshot_.app_audio) {
+            list.push_back(InputStream{kAppAudioStreamId, cp::InputSourceKind::kApplicationAudio,
+                                       kAppAudioChannels});
+        }
+        return list;
+    }
+
     // --- 連続値のコマンド ---
 
     void handle_gain(const cp::SetGain& command) {
@@ -431,6 +484,7 @@ private:
     void report_state() {
         send(wire::SendMuteReport{snapshot_.send_muted, epoch_});
         send(wire::InputReport{snapshot_.input_missing});
+        send(wire::StreamsReport{streams()});
     }
 
     // --- 状態 ---

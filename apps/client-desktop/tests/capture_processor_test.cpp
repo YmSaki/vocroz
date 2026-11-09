@@ -6,12 +6,14 @@
 
 #include "capture_processor.h"
 
+#include <cmath>
 #include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "vocroz/transport/media_payload.h"
+#include "vocroz/transport/opus_frame_decoder.h"
 
 #include "fakes/fake_datagram_socket.h"
 #include "secure_pair.h"
@@ -60,7 +62,8 @@ protected:
 
     SendWakeup wakeup_;
     PacketSender sender_{wakeup_};
-    CaptureProcessor processor_{transport::OpusFrameEncoder::create({}).value(), sender_};
+    CaptureProcessor processor_{transport::OpusFrameEncoder::create({}).value(), sender_,
+                                kMicrophoneLane, 0};
     transport::FakeDatagramSocket* socket_ = nullptr;
     std::unique_ptr<transport::SecureChannel> host_;
     std::vector<std::vector<std::uint8_t>> plaintexts_;
@@ -79,7 +82,7 @@ TEST_F(CaptureProcessorTest, SendsFramesWithMuteEpochAfterUnmute) {
     ASSERT_EQ(media.size(), 3U);
     for (const auto& m : media) {
         EXPECT_EQ(m.mute_epoch, 3U);
-        EXPECT_EQ(m.stream_id, kMicStreamId);
+        EXPECT_EQ(m.stream_id, 0U);
     }
     // タイムスタンプはフレーム長ずつ進む。
     EXPECT_EQ(media[1].timestamp - media[0].timestamp, kFrame);
@@ -125,6 +128,70 @@ TEST_F(CaptureProcessorTest, UsesFirstChannelOfMultichannelInput) {
     }
     processor_.on_captured({block, 2});
     EXPECT_FLOAT_EQ(processor_.take_input_peak(), 0.1F);
+}
+
+// ステレオの入力をステレオでエンコードし、左右を分けたまま、入力のストリーム ID で送る。
+TEST_F(CaptureProcessorTest, EncodesStereoInputWithItsStreamId) {
+    transport::OpusEncoderConfig config;
+    config.channels = 2;
+    CaptureProcessor stereo{transport::OpusFrameEncoder::create(config).value(), sender_,
+                            kAppAudioLane, 1};
+    EXPECT_EQ(stereo.channels(), 2U);
+    ASSERT_TRUE(stereo.set_params({.muted = false, .mute_epoch = 1, .gain = 1.0F}));
+    // 左は無音、右は 1 kHz の正弦波。
+    std::vector<float> block;
+    for (std::size_t i = 0; i < kFrame * 8; ++i) {
+        block.push_back(0.0F);
+        block.push_back(0.5F * static_cast<float>(std::sin(2.0 * 3.14159265 * 1000.0 *
+                                                           static_cast<double>(i) / 48000.0)));
+    }
+    stereo.on_captured({block, 2});
+    sender_.pump();
+
+    const auto media = sent_media();
+    ASSERT_EQ(media.size(), 8U);
+    auto decoder = transport::OpusFrameDecoder::create(2).value();
+    std::vector<float> pcm(kFrame * 2);
+    double left = 0.0;
+    double right = 0.0;
+    for (const auto& m : media) {
+        EXPECT_EQ(m.stream_id, 1U);
+        ASSERT_TRUE(decoder.decode(m.opus_payload, pcm));
+        for (std::size_t i = 0; i < kFrame; ++i) {
+            left += std::fabs(pcm[i * 2]);
+            right += std::fabs(pcm[(i * 2) + 1]);
+        }
+    }
+    EXPECT_GT(right, 10.0 * left);
+}
+
+TEST_F(CaptureProcessorTest, StereoEncodingOfAMonoInputCopiesItToBothSides) {
+    transport::OpusEncoderConfig config;
+    config.channels = 2;
+    CaptureProcessor stereo{transport::OpusFrameEncoder::create(config).value(), sender_,
+                            kMicrophoneLane, 0};
+    ASSERT_TRUE(stereo.set_params({.muted = false, .mute_epoch = 1, .gain = 1.0F}));
+    std::vector<float> block;
+    for (std::size_t i = 0; i < kFrame * 8; ++i) {
+        block.push_back(0.5F * static_cast<float>(std::sin(2.0 * 3.14159265 * 1000.0 *
+                                                           static_cast<double>(i) / 48000.0)));
+    }
+    stereo.on_captured({block, 1});
+    sender_.pump();
+
+    auto decoder = transport::OpusFrameDecoder::create(2).value();
+    std::vector<float> pcm(kFrame * 2);
+    double left = 0.0;
+    double right = 0.0;
+    for (const auto& m : sent_media()) {
+        ASSERT_TRUE(decoder.decode(m.opus_payload, pcm));
+        for (std::size_t i = 0; i < kFrame; ++i) {
+            left += std::fabs(pcm[i * 2]);
+            right += std::fabs(pcm[(i * 2) + 1]);
+        }
+    }
+    EXPECT_GT(left, 1.0);
+    EXPECT_NEAR(left, right, left * 0.1);
 }
 
 TEST_F(CaptureProcessorTest, RestartAppliesLatestParamsEvenWhenQueueWasFull) {
