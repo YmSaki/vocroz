@@ -69,6 +69,7 @@ export class MixerStore extends Store<MixerState> {
       case "reject":
       case "gain_ack":
       case "meters":
+      case "link_stats":
       case "notice":
         return;
     }

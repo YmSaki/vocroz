@@ -181,7 +181,8 @@ std::optional<int> CompositionRoot::start() {
     session_ = std::make_unique<session::HostSession>(
         std::move(config),
         session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, *peer_links_,
-                                    *rendezvous_tap_, *settings_, random_, clock_, *logger_});
+                                    *rendezvous_tap_, *settings_, random_, clock_, *logger_,
+                                    *peer_links_});
     peer_events_.bind(session_.get());
     const auto on_registered =
         [this](

@@ -197,6 +197,20 @@ void HostPeerLinks::admit(session::PeerHandle peer,
     defer([&events = ports_.events, peer] { events.on_peer_established(peer); });
 }
 
+void HostPeerLinks::set_latency_target(std::chrono::microseconds target) {
+    // あとから作るストリーム（新しい子機、再接続、申告の変更）も同じ目標で作る。
+    playout_.max_delay = target;
+    for (const auto& [handle, peer] : peers_) {
+        for (const auto& stream : peer->streams) {
+            // session が範囲を検証済みなので失敗しないはず。失敗したら前の上限のまま再生を続ける。
+            if (!stream.source->stream().set_max_delay(target)) {
+                ports_.logger.log(common::LogLevel::kWarning,
+                                  "子機のジッターバッファの上限を変えられませんでした");
+            }
+        }
+    }
+}
+
 bool HostPeerLinks::apply_routes(Peer& peer, const std::vector<session::StreamRoute>& routes) {
     bool connected = true;
     std::vector<Peer::Stream> next;

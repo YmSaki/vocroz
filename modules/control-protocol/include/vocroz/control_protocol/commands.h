@@ -138,12 +138,19 @@ struct SetReturnMute {
     friend bool operator==(const SetReturnMute&, const SetReturnMute&) = default;
 };
 
+/// 全体の目標レイテンシーを変える（親機）。対象は "session"。
+struct SetLatencyTarget {
+    /// 目標（ms）。kMinLatencyTargetMs〜kMaxLatencyTargetMs。
+    double target_ms = 20.0;
+    friend bool operator==(const SetLatencyTarget&, const SetLatencyTarget&) = default;
+};
+
 /// 離散コマンドの種類ごとの本体。
 using DiscreteCommandBody =
     std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
                  RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
                  StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput,
-                 SetReturnMute, SetInputChannels, SetAppAudio>;
+                 SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget>;
 
 /// 離散コマンド。
 struct DiscreteCommand {

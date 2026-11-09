@@ -14,6 +14,7 @@ import { MixerScreen } from "./screens/mixer/MixerScreen";
 import { RoutingScreen } from "./screens/routing/RoutingScreen";
 import { connectContinuousFeedback, connectNotices } from "./screens/shared/feedback";
 import { ClientStore } from "./state/client-store";
+import { LinkStatsStore } from "./state/link-stats-store";
 import { MeterStore } from "./state/meter-store";
 import { MixerStore } from "./state/mixer-store";
 import { OptimisticStore } from "./state/optimistic-store";
@@ -62,12 +63,24 @@ async function main(): Promise<void> {
     );
   } else {
     const store = new MixerStore();
-    client.subscribe((message) => store.apply(message));
+    const linkStats = new LinkStatsStore();
+    client.subscribe((message) => {
+      store.apply(message);
+      if (message.type === "link_stats") linkStats.apply(message);
+    });
     // ルーティング画面は同じウィンドウで切り替えて開く（docs/adr/0033-routing-persistence.md）。
     // ストアは画面をまたいで共有するので、切り替えてもエンジンの状態を取り直さない。
     const showMixer = (): void =>
       render(
-        h(MixerScreen, { client, store, optimistic, meters, toasts, onOpenRouting: showRouting }),
+        h(MixerScreen, {
+          client,
+          store,
+          optimistic,
+          meters,
+          linkStats,
+          toasts,
+          onOpenRouting: showRouting,
+        }),
         root,
       );
     const showRouting = (): void =>

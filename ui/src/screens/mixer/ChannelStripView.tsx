@@ -2,6 +2,7 @@
 // 入力チャンネルストリップ 1 本。
 // 参加者名、短い識別 ID、入力の種類（2 本目以降の入力とステレオのとき）、状態欄、ミュートの表示（子機側と親機側を区別）、メーター、フェーダー、
 // MUTE と SEL を常に表示する（ホバーしないと見えない操作は置かない）。
+// 受信の実測値（ジッターとバッファの長さ）も、目標遅延を選ぶ判断材料として常に表示する。
 
 import { Fader } from "../../components/fader/Fader";
 import { kMixerFaderScale } from "../../components/fader/fader-scale";
@@ -10,7 +11,7 @@ import { MuteBadge } from "../../components/mute-badge/MuteBadge";
 import { MuteButton } from "../../components/mute-button/MuteButton";
 import { PlannedButton } from "../../components/planned-button/PlannedButton";
 import { t } from "../../i18n/i18n";
-import type { ChannelStrip, GainDb } from "../../ipc/messages";
+import type { ChannelStrip, GainDb, LinkStat } from "../../ipc/messages";
 import { errorText } from "../shared/feedback";
 import { stripInputLabel } from "./strip-input";
 import { stripStatus } from "./strip-status";
@@ -24,6 +25,8 @@ export interface ChannelStripViewProps {
   mutePending: boolean;
   /** 選択中か。 */
   selected: boolean;
+  /** 受信の統計値。まだ届いていなければ undefined。 */
+  link: LinkStat | undefined;
   readMeter: () => MeterSample | undefined;
   onGainInput: (value: GainDb) => void;
   onGainCommit: (value: GainDb) => void;
@@ -33,12 +36,23 @@ export interface ChannelStripViewProps {
   onPlanned: () => void;
 }
 
+/**
+ * 統計値の表示。値がなければ、受信していないことを示す記号にする。
+ * ストリップの幅に収めるため、10 ms 以上は小数を省く（その桁の差は判断に影響しない）。
+ */
+function linkValue(ms: number | null | undefined): string {
+  return ms === null || ms === undefined
+    ? t("mixer.link_none")
+    : t("mixer.link_value", { ms: ms.toFixed(ms < 10 ? 1 : 0) });
+}
+
 /** 入力チャンネルストリップ。 */
 export function ChannelStripView({
   channel,
   gainDb,
   mutePending,
   selected,
+  link,
   readMeter,
   onGainInput,
   onGainCommit,
@@ -81,6 +95,12 @@ export function ChannelStripView({
       >
         {statusText}
       </div>
+      <dl class="strip__link" title={t("mixer.link_hint")}>
+        <dt>{t("mixer.jitter")}</dt>
+        <dd>{linkValue(link?.jitter_ms)}</dd>
+        <dt>{t("mixer.buffer")}</dt>
+        <dd>{linkValue(link?.buffer_ms)}</dd>
+      </dl>
       <MuteBadge
         active={channel.send_muted}
         text={t("mute.send_muted")}

@@ -57,6 +57,9 @@ struct SessionInfo {
     std::vector<OutputDevice> output_devices;
     /// 利用可能な更新のバージョン。なければ std::nullopt。
     std::optional<std::string> update_available;
+    /// 全体の目標レイテンシー（ms）。受信するすべてのストリームのジッターバッファの深さの上限で、
+    /// オペレーターが回線の状態に応じて選ぶ。
+    double latency_target_ms = 20.0;
 
     friend bool operator==(const SessionInfo&, const SessionInfo&) = default;
 };

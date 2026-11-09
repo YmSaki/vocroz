@@ -15,6 +15,7 @@ import {
 import { PlannedButton } from "../../components/planned-button/PlannedButton";
 import { t, type MessageKey } from "../../i18n/i18n";
 import type { EngineClient } from "../../ipc/engine-client";
+import type { LinkStatsStore } from "../../state/link-stats-store";
 import type { MeterStore } from "../../state/meter-store";
 import type { MixerStore } from "../../state/mixer-store";
 import type { OptimisticStore } from "../../state/optimistic-store";
@@ -37,6 +38,7 @@ export interface MixerScreenProps {
   store: MixerStore;
   optimistic: OptimisticStore;
   meters: MeterStore;
+  linkStats: LinkStatsStore;
   toasts: ToastStore;
   /** ルーティング画面を開く。 */
   onOpenRouting: () => void;
@@ -61,12 +63,14 @@ export function MixerScreen({
   store,
   optimistic,
   meters,
+  linkStats,
   toasts,
   onOpenRouting,
   writeClipboard = defaultWriteClipboard,
 }: MixerScreenProps) {
   const state = useStore(store);
   const toastState = useStore(toasts);
+  const links = useStore(linkStats);
   const gain = useContinuousGain(client, optimistic);
   const command = useCommand(client, toasts);
   const [approvalOpen, setApprovalOpen] = useState(false);
@@ -110,6 +114,12 @@ export function MixerScreen({
         sessionPending={command.isPending(session.entity_id)}
         approvalOpen={approvalOpen}
         historyOpen={historyOpen}
+        onSetLatencyTarget={(targetMs) =>
+          command.send(session.entity_id, session.revision, {
+            type: "set_latency_target",
+            target_ms: targetMs,
+          })
+        }
         onCreateSession={() =>
           command.send(session.entity_id, session.revision, { type: "create_session" })
         }
@@ -155,6 +165,7 @@ export function MixerScreen({
                 gainDb={gain.displayValue(channel.entity_id, channel.gain_db)}
                 mutePending={command.isPending(channel.entity_id)}
                 selected={selected === channel.entity_id}
+                link={links[channel.entity_id]}
                 readMeter={readMeter(channel.entity_id)}
                 onGainInput={(value) => gain.onInput(channel.entity_id, value)}
                 onGainCommit={(value) => gain.onCommit(channel.entity_id, value)}

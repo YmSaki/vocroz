@@ -63,6 +63,8 @@ template <>
 inline constexpr std::string_view kMessageType<SetInputChannels> = "set_input_channels";
 template <>
 inline constexpr std::string_view kMessageType<SetAppAudio> = "set_app_audio";
+template <>
+inline constexpr std::string_view kMessageType<SetLatencyTarget> = "set_latency_target";
 
 // エンジンから UI へ。
 template <>
@@ -93,6 +95,8 @@ template <>
 inline constexpr std::string_view kMessageType<GainAck> = "gain_ack";
 template <>
 inline constexpr std::string_view kMessageType<Meters> = "meters";
+template <>
+inline constexpr std::string_view kMessageType<LinkStats> = "link_stats";
 template <>
 inline constexpr std::string_view kMessageType<Notice> = "notice";
 

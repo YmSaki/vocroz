@@ -20,6 +20,7 @@ import type {
   ErrorCode,
   InputDelay,
   InputDevice,
+  LinkStat,
   MasterMuteReason,
   MasterStrip,
   BusKind,
@@ -93,6 +94,10 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
   discard_routing: keysOf<UiMessageOf<"discard_routing">>(kDiscreteKeys),
   set_route_mute: keysOf<UiMessageOf<"set_route_mute">>({ ...kDiscreteKeys, muted: true }),
   set_return_mute: keysOf<UiMessageOf<"set_return_mute">>({ ...kDiscreteKeys, muted: true }),
+  set_latency_target: keysOf<UiMessageOf<"set_latency_target">>({
+    ...kDiscreteKeys,
+    target_ms: true,
+  }),
 };
 
 /** エンジンから UI への種別ごとのフィールド。 */
@@ -116,6 +121,7 @@ const kEngineMessageKeys: { [K in EngineToUiMessage["type"]]: string[] } = {
     applied_revision: true,
   }),
   meters: keysOf<EngineMessageOf<"meters">>({ type: true, levels: true }),
+  link_stats: keysOf<EngineMessageOf<"link_stats">>({ type: true, stats: true }),
   notice: keysOf<EngineMessageOf<"notice">>({
     type: true,
     severity: true,
@@ -136,6 +142,7 @@ const kSessionKeys = keysOf<SessionInfo>({
   output_device_id: true,
   output_devices: true,
   update_available: true,
+  latency_target_ms: true,
 });
 const kChannelKeys = keysOf<ChannelStrip>({
   entity_id: true,
@@ -227,6 +234,7 @@ const kClientKeys = keysOf<ClientSnapshot>({
   app_audio: true,
 });
 const kInputDeviceKeys = keysOf<InputDevice>({ id: true, name: true });
+const kLinkStatKeys = keysOf<LinkStat>({ jitter_ms: true, buffer_ms: true });
 
 // 状態の正規名。Record<型, true> なので、型に値を足したのに一覧を直し忘れると型検査で止まる。
 const kSessionStates: Record<SessionState, true> = {
@@ -414,6 +422,9 @@ function checkEngineMessage(message: EngineToUiMessage, seen: Seen): void {
       return;
     case "reject":
       seen.add(kErrorCodes, message.error_code);
+      return;
+    case "link_stats":
+      for (const stat of Object.values(message.stats)) expectKeys(stat, kLinkStatKeys);
       return;
     case "channel_removed":
     case "ack":

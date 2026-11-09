@@ -142,6 +142,11 @@ struct HostContext {
     /// オペレーターの承認を待ち、問題のある構成は戻さない（docs/adr/0033-routing-persistence.md）。
     void restore_routing();
 
+    /// 全体の目標レイテンシーを受信側へ反映し、セッションの状態と設定に記録する。
+    /// UI への通知と保存は呼び出し側が行う。
+    /// @param target_ms 目標（ms）。範囲は検証済みであること
+    void apply_latency_target(double target_ms);
+
     /// 今あるチャンネルストリップの entity_id。ルーティングの検証に使う。
     [[nodiscard]] std::vector<std::string> strip_ids() const;
 

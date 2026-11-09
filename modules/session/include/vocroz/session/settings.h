@@ -14,6 +14,10 @@
 
 namespace vocroz::session {
 
+/// 全体の目標レイテンシーの既定値（ms）。合奏向けの低遅延プロファイルの上限
+/// （docs/adr/0002-opus-low-delay.md）。
+inline constexpr double kDefaultLatencyTargetMs = 20.0;
+
 /// 保存するバスかセンドのフェーダーの値。ミュートは保存しない（復元したバスとセンドはミュートで
 /// 始まる）。
 struct SavedRouteGain {
@@ -40,6 +44,8 @@ struct HostSettings {
     control_protocol::RoutingConfig routing;
     /// routing のバスとセンドのフェーダーの値。
     std::vector<SavedRouteGain> route_gains;
+    /// 全体の目標レイテンシー（ms）。回線の状態に合わせてオペレーターが選んだ値を次の起動でも使う。
+    double latency_target_ms = kDefaultLatencyTargetMs;
 
     friend bool operator==(const HostSettings&, const HostSettings&) = default;
 };

@@ -60,8 +60,12 @@ struct PlayoutStream::Impl {
           channels(decoder.channels()),
           min_delay(min_delay),
           max_delay(max_delay),
+          requested_max_delay(max_delay),
           target(min_delay),
-          jitter(frame_samples, max_delay / frame_samples * kCapacityPerMaxDelay + 1),
+          // 上限は再生中に広げられる（set_max_delay()）ので、受け付ける最大の上限に合わせて確保する。
+          jitter(frame_samples, round_up_to_frames(to_samples(kLongestMaxDelay), frame_samples) /
+                                        frame_samples * kCapacityPerMaxDelay +
+                                    1),
           decoder(std::move(decoder)),
           interleaved(frame_samples * channels) {
         for (std::size_t ch = 0; ch < channels; ++ch) {
@@ -94,10 +98,15 @@ struct PlayoutStream::Impl {
     void update_after_render(std::size_t rendered) noexcept VOCROZ_NONBLOCKING;
     [[nodiscard]] double total_depth() const noexcept VOCROZ_NONBLOCKING;
 
+    void apply_requested_max_delay() noexcept VOCROZ_NONBLOCKING;
+
     const std::size_t frame_samples;
     const std::size_t channels;
     const std::size_t min_delay;
-    const std::size_t max_delay;
+    std::size_t max_delay;
+    // set_max_delay() で頼まれた上限（サンプル数）。
+    // 後勝ちでよいので、キューではなくアトミック変数で渡す。
+    std::atomic<std::size_t> requested_max_delay;
     std::size_t target;
 
     JitterBuffer jitter;
@@ -129,7 +138,18 @@ struct PlayoutStream::Impl {
     std::atomic<std::uint64_t> queue_full{0};
 };
 
+void PlayoutStream::Impl::apply_requested_max_delay() noexcept VOCROZ_NONBLOCKING {
+    const std::size_t requested = requested_max_delay.load(std::memory_order_relaxed);
+    if (requested == max_delay) {
+        return;
+    }
+    max_delay = requested;
+    // 上限を狭めたら、今の目標も上限まで浅くする。溜まりすぎた分は drain() が捨てる。
+    target = std::min(target, max_delay);
+}
+
 void PlayoutStream::Impl::drain() noexcept VOCROZ_NONBLOCKING {
+    apply_requested_max_delay();
     while (const auto frame = queue.try_pop()) {
         accept(*frame);
     }
@@ -379,6 +399,15 @@ PlayoutStream::PlayoutStream(ConstructionKey /*key*/, std::unique_ptr<Impl> impl
     : impl_(std::move(impl)) {}
 
 PlayoutStream::~PlayoutStream() = default;
+
+bool PlayoutStream::set_max_delay(std::chrono::microseconds max_delay) noexcept {
+    const std::size_t samples = round_up_to_frames(to_samples(max_delay), impl_->frame_samples);
+    if (max_delay > kLongestMaxDelay || samples < impl_->min_delay) {
+        return false;
+    }
+    impl_->requested_max_delay.store(samples, std::memory_order_relaxed);
+    return true;
+}
 
 bool PlayoutStream::enqueue(const MediaFrame& frame) noexcept {
     if (impl_->queue.try_push(frame)) {

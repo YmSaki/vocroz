@@ -113,6 +113,8 @@ export interface SessionInfo {
   output_devices: OutputDevice[];
   /** 利用可能な更新のバージョン。なければ null。 */
   update_available: string | null;
+  /** 全チャンネル共通の目標レイテンシー（ジッターバッファの上限、ms）。 */
+  latency_target_ms: number;
 }
 
 /** 入力チャンネルストリップ 1 本の状態。並び順はエンジンが決め、UI は並べ替えない。 */
@@ -319,7 +321,8 @@ export type DiscreteCommandBody =
   | { type: "discard_routing" }
   | { type: "set_route_mute"; muted: boolean }
   | { type: "select_output"; device_id: string | null }
-  | { type: "set_return_mute"; muted: boolean };
+  | { type: "set_return_mute"; muted: boolean }
+  | { type: "set_latency_target"; target_ms: number };
 
 /** 離散コマンド。 */
 export type DiscreteCommand = DiscreteCommandBase & DiscreteCommandBody;
@@ -373,6 +376,23 @@ export interface MetersMessage {
   levels: Record<string, number | null>;
 }
 
+/** 1 本の受信の統計値。null はまだ値がない（受信していない）ことを表す。 */
+export interface LinkStat {
+  /** 到着間隔の揺らぎから推定したジッター（ms）。 */
+  jitter_ms: number | null;
+  /** ジッターバッファにたまっている長さ（ms）。 */
+  buffer_ms: number | null;
+}
+
+/**
+ * 受信の統計値。エンジンが 1 Hz ほどで送る。stats は entity_id ごとの値で、
+ * 受信していないチャンネルは含まないことがある。
+ */
+export interface LinkStatsMessage {
+  type: "link_stats";
+  stats: Record<string, LinkStat>;
+}
+
 /** エンジンからの通知。UI はトーストで表示する。 */
 export interface NoticeMessage {
   type: "notice";
@@ -399,4 +419,5 @@ export type EngineToUiMessage =
   | RejectMessage
   | GainAckMessage
   | MetersMessage
+  | LinkStatsMessage
   | NoticeMessage;

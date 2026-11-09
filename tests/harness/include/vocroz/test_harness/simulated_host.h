@@ -29,6 +29,7 @@
 
 #include "fakes/fake_logger.h"
 #include "fakes/fake_output_device_control.h"
+#include "fakes/fake_playout_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
@@ -140,6 +141,9 @@ private:
     session::FakeUiEventSink ui_;
     HarnessMixer mixer_;
     session::FakeOutputDeviceControl outputs_;
+    // 再生ストリームは playout_
+    // の固定の設定で作るので、目標レイテンシーの変更は記録するだけにする。
+    session::FakePlayoutControl playout_control_;
     session::FakeRendezvousClient rendezvous_;
     session::FakeSettingsStore settings_;
     session::FakeSecureRandom random_;
