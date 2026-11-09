@@ -9,6 +9,8 @@
 // - コントロールスレッド: run() を呼んだメインスレッド。session、ミキサーの操作、UI への送信
 // - オーディオスレッド: device の出力のスレッド（Mixer::render() だけ）
 // - パイプの受信スレッド: UI のメッセージのデコード。session へはループに積んで渡す
+// - ネットワーク受信スレッド: network の UDP ソケットのスレッド。子機のメディアの復号から
+//   ジッターバッファへの投入まで（PeerReceivePath）。鍵交換と制御はループに積んで渡す
 #pragma once
 
 #include <chrono>
@@ -24,9 +26,13 @@
 #include "vocroz/control_protocol/ports/message_channel.h"
 #include "vocroz/network/https_rendezvous_client.h"
 #include "vocroz/network/ports/https_transport.h"
+#include "vocroz/network/ports/network_environment.h"
+#include "vocroz/network/ports/udp_endpoint.h"
+#include "vocroz/network/receive_router.h"
 #include "vocroz/session/host_session.h"
 #include "vocroz/session/ports/secret_store.h"
 #include "vocroz/session/ports/settings_store.h"
+#include "vocroz/transport/crypto_random_source.h"
 #include "vocroz/transport/static_key_pair.h"
 
 #include "control_loop.h"
@@ -35,13 +41,17 @@
 #include "engine_activity.h"
 #include "engine_mixer.h"
 #include "engine_output_devices.h"
+#include "host_peer_links.h"
+#include "host_rendezvous_driver.h"
 #include "invite_result_relay.h"
 #include "launch_options.h"
 #include "offline_rendezvous_client.h"
+#include "peer_receive_path.h"
+#include "peer_receive_relay.h"
+#include "rendezvous_id_tap.h"
+#include "session_peer_events.h"
 #include "ui_event_publisher.h"
 #include "ui_message_receiver.h"
-#include "unconnected_peer_link.h"
-#include "unconnected_playout_control.h"
 #include "win/execution_state_sleep_inhibitor.h"
 #include "win/win32_named_mutex.h"
 
@@ -71,6 +81,9 @@ private:
     // ランデブーサーバーとの通信を、ビルドで与えた URL の HTTPS で始める。URL がないか
     // HTTPS を使えなければ、オフラインと同じ振る舞い（セッションを作れない）にする。
     void create_rendezvous_client();
+    // 子機の受信（UDP ソケット、ランデブーへの登録、接続）を用意する。
+    // ソケットを開けなければ false を返す。
+    [[nodiscard]] bool create_peer_network();
 
     LaunchOptions options_;
     // 絶対パスにそろえた --data-dir。決められなければ空（start() が終了コード 1 で終わる）。
@@ -98,9 +111,10 @@ private:
     std::unique_ptr<network::HttpsTransport> https_transport_;
     std::unique_ptr<network::HttpsRendezvousClient> https_rendezvous_;
     session::RendezvousClient* rendezvous_ = &offline_rendezvous_;
+    // session に渡す RendezvousClient。登録の要求に載ったランデブー ID で UDP の登録を始める。
+    std::unique_ptr<RendezvousIdTap> rendezvous_tap_;
     CryptoSecureRandom random_;
-    UnconnectedPeerLink peers_;
-    UnconnectedPlayoutControl playout_;
+    transport::CryptoRandomSource network_random_;
     std::optional<transport::StaticKeyPair> host_keys_;
     audio_core::Mixer mixer_;
     EngineMixer engine_mixer_;
@@ -108,6 +122,20 @@ private:
     DeviceLossRelay device_loss_relay_;
     // 開いている出力はミキサーと device_loss_relay_ を呼ぶので、それらより後に宣言する。
     std::unique_ptr<EngineOutputDevices> outputs_;
+
+    // --- 子機の受信（docs/adr/0028-engine-assembly.md） ---
+    // 受信スレッドは endpoint_ が持ち、endpoint_ の破棄で止まる。受信スレッドが使うもの
+    // （peer_relay_、peer_receive_、router_、peer_links_ が持つ接続）は、
+    // endpoint_ より前に宣言する（後に破棄する）。
+    SessionPeerEvents peer_events_;
+    PeerReceiveRelay peer_relay_;
+    PeerReceivePath peer_receive_;
+    network::ReceiveRouter router_;
+    std::unique_ptr<network::NetworkEnvironment> network_environment_;
+    std::unique_ptr<HostPeerLinks> peer_links_;
+    std::unique_ptr<network::UdpEndpoint> endpoint_;
+    // endpoint_ で送るので、endpoint_ より後に宣言する（先に破棄する）。
+    std::unique_ptr<HostRendezvousDriver> rendezvous_driver_;
     std::unique_ptr<UiEventPublisher> ui_publisher_;
     std::unique_ptr<session::HostSession> session_;
     std::unique_ptr<UiMessageReceiver> ui_receiver_;

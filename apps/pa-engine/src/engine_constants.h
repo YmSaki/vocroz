@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 
 namespace vocroz::engine {
 
@@ -39,5 +40,24 @@ inline constexpr std::size_t kMixerMeterCapacity = 256;
 /// 古いクラッシュダンプを消して残す数。起動時に 1 つ空けておき、次のクラッシュで 5 件になる
 /// （docs/adr/0008-runtime-behavior.md の「最新の 5 件だけを残す」）。
 inline constexpr std::size_t kCrashDumpsKeptAtStartup = 4;
+
+/// 同時に持つ子機との接続の上限。ストリップの上限（64 本）と同じにする。張り直しの途中の古い接続も
+/// 数えるので、上限に達したら新しい鍵交換を受け付けない（古い接続が閉じれば空く）。
+inline constexpr std::size_t kMaxPeerConnections = 64;
+
+/// コントロールスレッドからネットワーク受信スレッドへの指示（接続の追加、承認、送信ミュート、
+/// 取り外し）のキューの長さ。接続ごとに数個しか積まないので、上限の接続数の 4 倍で足りる。
+/// 満杯なら次の周期で積み直す。
+inline constexpr std::size_t kReceiveCommandCapacity = 256;
+
+/// ネットワーク受信スレッドを起こすデータグラムを自分のポートへ送る間隔。受信スレッドは
+/// データグラムが届くまで待つので、子機の音が途絶えたときの信号状態の判定（500 ms で NO_SIGNAL）
+/// と指示の反映が、データグラムの来ない間も遅れないようにする。
+/// 間隔は判定の粒度（100 ms 程度）に合わせる。
+inline constexpr std::chrono::milliseconds kReceiveWakeInterval{100};
+
+/// ランデブーサーバーの UDP のポート。infra/rendezvous の既定値で、
+/// 子機の client_constants.h と同じ値。
+inline constexpr std::uint16_t kRendezvousUdpPort = 3478;
 
 }  // namespace vocroz::engine

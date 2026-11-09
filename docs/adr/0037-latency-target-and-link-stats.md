@@ -64,4 +64,5 @@ ADR-0026 では、この 2 つを `transport` と `session` の統計の側で�
 - `control-protocol` に `set_latency_target`、`link_stats`、`SessionInfo.latency_target_ms` が増える。
 - `session` に `PlayoutControl` ポートが増える。
 - `transport` に `JitterEstimator` と `PlayoutStream::set_max_delay()` が増える。ジッターバッファの容量は、上限の最大の 250 ms 分を最初から確保する。
-- 受信ストリームへの配布、ジッターの推定の実行、`link_stats` の送信は、`pa-engine` の子機の受信の組み立て（E1）で接続する。それまでの `pa-engine` は、何もしない `PlayoutControl`（`UnconnectedPlayoutControl`）を注入する。
+- `pa-engine` では、子機の接続とジッターバッファを持つ `HostPeerLinks` が `PlayoutControl` を実装する。今ある受信ストリームに上限を配り、あとから作るストリーム（新しい子機、再接続、入力の申告の変更）も同じ目標で作る。
+- ジッターの推定の実行と `link_stats` の送信は、E1 の続きで接続する。

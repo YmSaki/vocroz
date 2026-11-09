@@ -45,8 +45,7 @@ if (plugin) {
 
 ## 設計上の注意
 
-- JUCE のモジュールは GUI を含まない `juce_audio_processors_headless` を使っています。エディターのウィンドウを加えるときに `juce_audio_processors` に切り替えます
-- JUCE のモジュールのソースはこのライブラリの中で 1 回だけコンパイルし、利用側にはインクルードパスと定義だけを渡します。利用側でもう一度リンクすると、シンボルが重複します
+- JUCE のモジュールは、共通の `vocroz::juce`（`cmake/juce.cmake`）に 1 回だけコンパイルしたものを使います。webui と device も同じものを使い、1 つのバイナリで JUCE のシンボルが重複しないようにしています（`docs/adr/0034-single-juce-target.md`）。ソースは今も GUI を含まない `juce_audio_processors_headless` のヘッダーだけを読みます
 - プラグインの例外は捕まえて、以降は `kFailed` を返し続けます（グラフ側でそのノードは無音になります）。アクセス違反などの構造化例外は捕まえられないので、クラッシュ隔離はアウトオブプロセス実行（ADR-0009、未実装）で扱います
 - `pa-plugin-scanner` は Windows のエラー報告のダイアログを出さないようにしています。出すとダイアログが閉じられるまで終わらず、制限時間まで待つことになるためです
 
@@ -59,7 +58,7 @@ if (plugin) {
 - `juce_helper_plugin_scanner_test`: ヘルパーの失敗の区分の写し方と、`PluginCatalog` と組み合わせて落ちるファイルを記録しながらスキャンを続けること
 - `juce_plugin_instance_test`: 状態の保存と復元の往復と、プラグインの例外で失敗を返すこと
 
-JUCE を使うテストは Windows の CI で実行します。Linux でも `-DVOCROZ_WITH_JUCE=ON` でビルドできます（headless のモジュールは GUI のライブラリを要求しません）。
+JUCE を使うテストは Windows の CI で実行します。Linux で `-DVOCROZ_WITH_JUCE=ON` にするときは、`vocroz::juce` が WebKitGTK と GTK を要求します。
 
 ## 依存してよいモジュール
 

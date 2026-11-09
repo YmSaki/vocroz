@@ -213,6 +213,7 @@ DenyReason to_wire(ErrorCode reason) noexcept {
         case ErrorCode::kNotFound:
         case ErrorCode::kInvalidState:
         case ErrorCode::kEngineError:
+        case ErrorCode::kDeviceUnavailable:
             return DenyReason::kRejected;
     }
     return DenyReason::kRejected;
