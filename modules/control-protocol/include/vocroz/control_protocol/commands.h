@@ -78,10 +78,38 @@ struct SetSendMute {
     friend bool operator==(const SetSendMute&, const SetSendMute&) = default;
 };
 
+/// ルーティングの構成をステージングする（親機）。対象は "routing"。
+/// エンジンは構成を検証して結果とともに保持するだけで、音声のグラフはまだ変えない。
+/// 検証で問題が見つかってもステージングは受け付け、理由を RoutingCheck で知らせる。
+struct StageRouting {
+    RoutingConfig config;
+    friend bool operator==(const StageRouting&, const StageRouting&) = default;
+};
+
+/// ステージング中の構成を適用する（親機）。対象は "routing"。
+/// 遅延ノードを通るループがある構成は、approve_feedback が true のときだけ適用する。
+struct CommitRouting {
+    /// オペレーターがループを確認して承認した。
+    bool approve_feedback = false;
+    friend bool operator==(const CommitRouting&, const CommitRouting&) = default;
+};
+
+/// ステージング中の構成を捨てる（親機）。対象は "routing"。
+struct DiscardRouting {
+    friend bool operator==(const DiscardRouting&, const DiscardRouting&) = default;
+};
+
+/// バスかセンドのミュートを切り替える（親機）。対象はバスかセンド。
+struct SetRouteMute {
+    bool muted = true;
+    friend bool operator==(const SetRouteMute&, const SetRouteMute&) = default;
+};
+
 /// 離散コマンドの種類ごとの本体。
 using DiscreteCommandBody =
     std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
-                 RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute>;
+                 RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
+                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute>;
 
 /// 離散コマンド。
 struct DiscreteCommand {
@@ -97,8 +125,8 @@ struct DiscreteCommand {
     friend bool operator==(const DiscreteCommand&, const DiscreteCommand&) = default;
 };
 
-/// 連続値のコマンド（フェーダー、送信レベル）。UI はドラッグ中に最大 60 Hz で送る。
-/// エンジンは受け取るたびに 5〜20 ms のゲインランプで適用し、GainAck を返す。
+/// 連続値のコマンド（フェーダー、送信レベル、バスとセンドのレベル）。UI はドラッグ中に最大 60 Hz
+/// で送る。 エンジンは受け取るたびに 5〜20 ms のゲインランプで適用し、GainAck を返す。
 struct SetGain {
     std::string entity_id;
     /// entity ごとのシーケンス番号。エンジンは適用済みより小さい番号を捨てる。

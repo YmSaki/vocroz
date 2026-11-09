@@ -76,6 +76,20 @@ void read_fields(ObjectReader& r, ClientUpdated& event) {
     event.client = r.nested<ClientSnapshot>("client", read_client_snapshot);
 }
 
+void write_fields(nlohmann::json& out, const RoutingUpdated& event) {
+    out["routing"] = write_json(event.routing);
+}
+void read_fields(ObjectReader& r, RoutingUpdated& event) {
+    event.routing = r.nested<RoutingInfo>("routing", read_routing_info);
+}
+
+void write_fields(nlohmann::json& out, const RouteLevelUpdated& event) {
+    out["level"] = write_json(event.level);
+}
+void read_fields(ObjectReader& r, RouteLevelUpdated& event) {
+    event.level = r.nested<RouteLevel>("level", read_route_level);
+}
+
 void write_fields(nlohmann::json& out, const Ack& event) {
     out["request_id"] = event.request_id;
     out["applied_revision"] = event.applied_revision;

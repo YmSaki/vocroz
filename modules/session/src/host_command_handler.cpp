@@ -70,6 +70,12 @@ std::optional<cp::Revision> HostCommandHandler::revision_of(const std::string& e
     if (const auto* pending = ctx_.registry.find_pending(entity_id)) {
         return pending->entry.revision;
     }
+    if (entity_id == kRoutingEntityId) {
+        return ctx_.routing.info().revision;
+    }
+    if (const auto* level = ctx_.routing.find_level(entity_id)) {
+        return level->revision;
+    }
     return std::nullopt;
 }
 
@@ -101,6 +107,15 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
                 return reject(id);
             } else if constexpr (std::is_same_v<B, cp::RemoveStrip>) {
                 return remove_strip(id);
+            } else if constexpr (std::is_same_v<B, cp::StageRouting>) {
+                return id == kRoutingEntityId ? stage_routing(body.config) : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::CommitRouting>) {
+                return id == kRoutingEntityId ? commit_routing(body.approve_feedback)
+                                              : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::DiscardRouting>) {
+                return id == kRoutingEntityId ? discard_routing() : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetRouteMute>) {
+                return set_route_mute(id, body.muted);
             } else {
                 static_assert(std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
                               std::is_same_v<B, cp::SelectInput> ||
@@ -232,7 +247,63 @@ HostCommandHandler::CommandResult HostCommandHandler::remove_strip(const std::st
     ctx_.ports.mixer.remove_channel(entity_id);
     ctx_.registry.remove(entity_id);
     ctx_.ports.ui.publish(cp::ChannelRemoved{entity_id});
+    ctx_.forget_strip_in_routing(entity_id);
     return revision;
+}
+
+// --- ルーティング ---
+
+HostCommandHandler::CommandResult HostCommandHandler::stage_routing(
+    const cp::RoutingConfig& config) {
+    // ステージングは検証の結果を示すための段階なので、問題のある構成も受け付けて理由を返す。
+    ctx_.routing.stage(config, ctx_.strip_ids());
+    ctx_.publish_routing();
+    return ctx_.routing.info().revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::commit_routing(bool approve_feedback) {
+    if (auto prepared = ctx_.routing.prepare_commit(approve_feedback, ctx_.strip_ids());
+        !prepared) {
+        // 検証し直した結果が変わっていることがあるので、拒否の理由を UI が示せるよう知らせる。
+        ctx_.publish_routing();
+        return common::make_unexpected(prepared.error());
+    }
+    const auto& staged = *ctx_.routing.info().staged;
+    if (!ctx_.ports.mixer.apply_routing(staged.config, staged.check.needs_approval)) {
+        // ミキサーが受け付けなければ今のグラフのまま音を出し続け、ステージングも残す。
+        ctx_.log(common::LogLevel::kWarning, "ルーティングをミキサーに適用できませんでした");
+        return common::make_unexpected(ErrorCode::kEngineError);
+    }
+    ctx_.routing.commit();
+    // 消えたバスとセンドの seq は、同じ entity_id が作り直されたときに古い値と比べないよう忘れる。
+    std::erase_if(last_route_gain_seq_, [this](const auto& entry) {
+        return ctx_.routing.find_level(entry.first) == nullptr;
+    });
+    ctx_.publish_routing();
+    return ctx_.routing.info().revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::discard_routing() {
+    if (auto discarded = ctx_.routing.discard(); !discarded) {
+        return common::make_unexpected(discarded.error());
+    }
+    ctx_.publish_routing();
+    return ctx_.routing.info().revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::set_route_mute(const std::string& entity_id,
+                                                                     bool muted) {
+    auto* level = ctx_.routing.find_level(entity_id);
+    if (level == nullptr) {
+        return invalid_state();
+    }
+    if (level->muted != muted) {
+        level->muted = muted;
+        ctx_.ports.mixer.set_route_muted(entity_id, muted);
+        detail::bump_revision(level->revision);
+        ctx_.publish_route_level(*level);
+    }
+    return level->revision;
 }
 
 // --- 連続値のコマンド ---
@@ -251,6 +322,10 @@ void HostCommandHandler::handle_gain(const cp::SetGain& command) {
         ctx_.ports.ui.publish(cp::GainAck{command.entity_id, command.seq, ctx_.master.revision});
         return;
     }
+    if (auto* level = ctx_.routing.find_level(command.entity_id)) {
+        handle_route_gain(*level, command);
+        return;
+    }
     auto* p = ctx_.registry.find(command.entity_id);
     if (p == nullptr) {
         // セッションや承認待ちにはフェーダーがない。SetGain には拒否の応答がないので捨てる。
@@ -265,6 +340,19 @@ void HostCommandHandler::handle_gain(const cp::SetGain& command) {
     ctx_.ports.mixer.set_channel_gain(p->strip.entity_id, gain);
     ctx_.publish_channel(*p);
     ctx_.ports.ui.publish(cp::GainAck{command.entity_id, command.seq, p->strip.revision});
+}
+
+void HostCommandHandler::handle_route_gain(cp::RouteLevel& level, const cp::SetGain& command) {
+    const auto last = last_route_gain_seq_.find(level.entity_id);
+    if (last != last_route_gain_seq_.end() && command.seq < last->second) {
+        return;
+    }
+    last_route_gain_seq_[level.entity_id] = command.seq;
+    // バスとセンドのフェーダーも、チャンネルと同じ範囲（-∞〜+10 dB）にする。
+    level.gain_db = clamp_fader(command.gain_db);
+    ctx_.ports.mixer.set_route_gain(level.entity_id, level.gain_db);
+    ctx_.publish_route_level(level);
+    ctx_.ports.ui.publish(cp::GainAck{command.entity_id, command.seq, level.revision});
 }
 
 }  // namespace vocroz::session

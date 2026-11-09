@@ -104,7 +104,7 @@ VOCROZ は AGPL-3.0-only で配布します。依存するライブラリは、�
 | [libsodium](https://libsodium.org/) | 1.0.20 | ISC | 可 | AEAD、鍵交換などの暗号プリミティブ |
 | [libsodium-cmake](https://github.com/robinlinden/libsodium-cmake) | コミット `9b2848d` | ISC | 可 | libsodium の CMake ビルド |
 | [noise-c](https://github.com/rweather/noise-c) | コミット `cfe2541` | MIT | 可 | Noise プロトコル（Noise_IK）の実装 |
-| [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | MIT | 可 | UI とエンジン間のメッセージ、設定ファイルの JSON |
+| [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | MIT | 可 | UI とエンジン間のメッセージ、設定ファイル、VST3 のスキャン結果の JSON |
 | [WebView2 SDK](https://www.nuget.org/packages/Microsoft.Web.WebView2)（`Microsoft.Web.WebView2`） | 1.0.3912.50 | BSD-3-Clause | 可 | Windows の WebView2 の読み込み（`WebView2LoaderStatic.lib` を静的にリンク） |
 | [miniupnpc](https://github.com/miniupnp/miniupnp) | 2.3.3（コミット `bf4215a`） | BSD-3-Clause | 可 | UPnP-IGD による自動ポート開放（Windows のビルドだけ） |
 | [GoogleTest](https://github.com/google/googletest) | 1.15.2 | BSD-3-Clause | 可（テストだけで使い、配布物に含めない） | 単体テスト |

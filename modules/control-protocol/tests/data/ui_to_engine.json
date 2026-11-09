@@ -91,5 +91,102 @@
     "entity_id": "client",
     "expected_revision": 4,
     "muted": false
+  },
+  {
+    "type": "stage_routing",
+    "request_id": "r-20",
+    "entity_id": "routing",
+    "expected_revision": 3,
+    "config": {
+      "buses": [
+        {
+          "entity_id": "bus-cue1",
+          "name": "返し 1",
+          "kind": "CUE"
+        },
+        {
+          "entity_id": "bus-fx",
+          "name": "リバーブ",
+          "kind": "USER"
+        }
+      ],
+      "outputs": [
+        {
+          "entity_id": "out-mon",
+          "name": "モニター",
+          "device_channel": 2
+        }
+      ],
+      "sends": [
+        {
+          "entity_id": "send-1",
+          "from": "ch1",
+          "to": "bus-cue1",
+          "tap": "PRE_FADER"
+        },
+        {
+          "entity_id": "send-2",
+          "from": "bus-cue1",
+          "to": "out-mon",
+          "tap": "POST_FADER"
+        },
+        {
+          "entity_id": "send-3",
+          "from": "master",
+          "to": "delay-echo",
+          "tap": "POST_FADER"
+        },
+        {
+          "entity_id": "send-4",
+          "from": "delay-echo",
+          "to": "bus-fx",
+          "tap": "POST_FADER"
+        },
+        {
+          "entity_id": "send-5",
+          "from": "bus-fx",
+          "to": "master",
+          "tap": "POST_FADER"
+        }
+      ],
+      "delays": [
+        {
+          "entity_id": "delay-echo",
+          "delay_ms": 250.0
+        }
+      ],
+      "input_delays": [
+        {
+          "strip_id": "ch2",
+          "delay_ms": 12.5
+        }
+      ]
+    }
+  },
+  {
+    "type": "commit_routing",
+    "request_id": "r-21",
+    "entity_id": "routing",
+    "expected_revision": 4,
+    "approve_feedback": true
+  },
+  {
+    "type": "discard_routing",
+    "request_id": "r-22",
+    "entity_id": "routing",
+    "expected_revision": 4
+  },
+  {
+    "type": "set_route_mute",
+    "request_id": "r-23",
+    "entity_id": "send-1",
+    "expected_revision": 1,
+    "muted": false
+  },
+  {
+    "type": "set_gain",
+    "entity_id": "send-1",
+    "seq": 7,
+    "gain_db": -6.0
   }
 ]

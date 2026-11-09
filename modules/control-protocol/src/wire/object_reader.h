@@ -109,6 +109,22 @@ public:
         return std::move(result).value();
     }
 
+    /// null か、入れ子のオブジェクトを read で読む。
+    /// @param read `common::Result<T, DecodeError>(const nlohmann::json&)` の関数
+    template <typename T, typename Read>
+    [[nodiscard]] std::optional<T> nullable_nested(std::string_view key, Read read) {
+        const nlohmann::json* value = find(key);
+        if (value == nullptr || value->is_null()) {
+            return std::nullopt;
+        }
+        auto result = read(*value);
+        if (!result) {
+            fail_nested(key, result.error());
+            return std::nullopt;
+        }
+        return std::move(result).value();
+    }
+
     /// 配列の各要素を read で読む。
     /// @param read `common::Result<T, DecodeError>(const nlohmann::json&)` の関数
     template <typename T, typename Read>
