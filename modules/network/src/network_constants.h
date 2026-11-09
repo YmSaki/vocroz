@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 namespace vocroz::network {
 
@@ -47,5 +48,20 @@ inline constexpr std::chrono::milliseconds kPunchWindow = 5s;
 /// 子機が経路の確立を打ち切るまでの時間。ランデブーサーバーの応答（最大 5 秒）と、
 /// ホールパンチ（数百ミリ秒で開くことが多い）に余裕を持たせた値。
 inline constexpr std::chrono::milliseconds kClientConnectTimeout = 10s;
+
+/// 招待 API のパス（infra/rendezvous/internal/httpapi/httpapi.go の NewMux）。
+/// 招待コードと招待トークンがアクセスログに残らないよう、どれも POST の本文で受け渡す。
+inline constexpr std::string_view kRegisterInvitePath = "/v1/invites";
+inline constexpr std::string_view kResolveInvitePath = "/v1/invites/resolve";
+inline constexpr std::string_view kRevokeInvitePath = "/v1/invites/revoke";
+
+/// 招待 API の応答の本文の上限。正しい応答は 1 KiB に収まるので、壊れたサーバーや
+/// 途中の機器が大きな本文を返しても、メモリを使い切らないように打ち切る。
+inline constexpr std::size_t kMaxHttpResponseBytes = 16 * 1024;
+
+/// 招待 API の 1 回の要求で、名前解決、接続、TLS、応答のそれぞれを待つ時間。
+/// 親機のセッションの作成と子機の参加は、この待ち時間の間だけ止まって見えるので、
+/// 回線が遅くても届く長さにしつつ、届かないときに利用者を長く待たせない。
+inline constexpr std::chrono::milliseconds kHttpsStepTimeout = 5s;
 
 }  // namespace vocroz::network
