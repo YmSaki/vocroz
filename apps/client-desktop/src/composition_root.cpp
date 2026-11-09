@@ -54,7 +54,11 @@ common::Result<std::unique_ptr<CompositionRoot>, ClientAppError> CompositionRoot
 
 CompositionRoot::CompositionRoot(ConstructionKey /*key*/, ClientAppConfig config,
                                  common::Logger& logger)
-    : config_(std::move(config)), logger_(logger), inputs_(logger), router_(peer_inbox_) {}
+    : config_(std::move(config)),
+      logger_(logger),
+      inputs_(logger),
+      app_audio_(logger),
+      router_(peer_inbox_) {}
 
 CompositionRoot::~CompositionRoot() {
     // 周期の処理を止めてから、参加中なら切断の通知を送る。送信スレッドは ClientRuntime の

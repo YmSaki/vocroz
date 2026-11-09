@@ -47,6 +47,8 @@ if (plugin) {
 
 - JUCE のモジュールは、共通の `vocroz::juce`（`cmake/juce.cmake`）に 1 回だけコンパイルしたものを使います。webui と device も同じものを使い、1 つのバイナリで JUCE のシンボルが重複しないようにしています（`docs/adr/0034-single-juce-target.md`）。ソースは今も GUI を含まない `juce_audio_processors_headless` のヘッダーだけを読みます
 - プラグインの例外は捕まえて、以降は `kFailed` を返し続けます（グラフ側でそのノードは無音になります）。アクセス違反などの構造化例外は捕まえられないので、クラッシュ隔離はアウトオブプロセス実行（ADR-0009、未実装）で扱います
+- プラグインに渡す MIDI は、1 回の処理につき `kMaxMidiEventsPerProcess`（8,192 件）までを構築時に確保した `MidiBuffer` に積み、オーディオスレッドでは確保しません。超えたブロックは、Note Off やサステインのオフなど止める側のイベントを優先して残し、音残りを防ぎます
+- `MidiBuffer::addEvent()` は挿入位置を先頭から探すので、件数の 2 乗の時間がかかります（Panic の 2,064 件で約 4.5 ms と、1 ブロックの約 2.7 ms を超えます）。イベントはサンプル位置の昇順で届くので、`MidiBuffer` と同じ形式で末尾に直接書き足しています。この形式は JUCE の内部の取り決めなので、JUCE を上げたら `JucePluginProcessorTest.PluginReadsBackTheSameMidiEventsInOrder` で確かめます
 - `pa-plugin-scanner` は Windows のエラー報告のダイアログを出さないようにしています。出すとダイアログが閉じられるまで終わらず、制限時間まで待つことになるためです
 
 ## テスト

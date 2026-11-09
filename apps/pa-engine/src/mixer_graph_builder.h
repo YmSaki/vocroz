@@ -18,11 +18,13 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "vocroz/audio_core/graph_description.h"
 #include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
+#include "vocroz/audio_core/ports/midi_source.h"
 #include "vocroz/control_protocol/entities.h"
 
 namespace vocroz::engine {
@@ -49,6 +51,27 @@ struct ReturnAssignment {
     std::shared_ptr<audio_core::AudioSink> sink;
 };
 
+/// MIDI ソース 1 つ（MIDI デバイス 1 台、子機 1 台）の割り当て。経路（midi_connections）は
+/// MIDI の送り先（プラグインノード）がグラフに入ってから加える。経路がなくてもグラフは
+/// ブロックごとにソースから取り出すので、キューはあふれない（docs/adr/0029-midi-and-vsti.md）。
+struct MidiSourceAssignment {
+    /// ソースを区別するキー（"device:<ポートの ID>"、"strip:<ストリップの entity_id>"）。
+    std::string key;
+    /// グラフ内の識別子。同じソースを付け替えても変えない（経路ごとの発音中のノートを
+    /// 引き継ぐため）。
+    audio_core::MidiSourceId id;
+    /// イベントの取り出し先（null にしない）。
+    std::shared_ptr<audio_core::MidiSource> source;
+};
+
+/// 子機の MIDI（ストリップのキュー）の MidiSourceAssignment::key を返す。
+/// @param strip_id ストリップの entity_id
+[[nodiscard]] std::string strip_midi_key(std::string_view strip_id);
+
+/// MIDI デバイスの MidiSourceAssignment::key を返す。
+/// @param device_id MIDI 入力ポートの ID（MidiDeviceInfo::id）
+[[nodiscard]] std::string device_midi_key(std::string_view device_id);
+
 /// グラフを組み立てるのに使う、フェーダーとメーターの割り当て。
 struct MixerAssignments {
     audio_core::FaderId master_fader;
@@ -58,6 +81,8 @@ struct MixerAssignments {
     std::vector<StripAssignment> strips;
     /// 子機への返送。
     std::vector<ReturnAssignment> returns;
+    /// MIDI ソース。
+    std::vector<MidiSourceAssignment> midi_sources;
     /// バスとセンドの entity_id ごとのフェーダー。
     std::map<std::string, audio_core::FaderId, std::less<>> route_faders;
     /// バスの entity_id ごとのポストフェーダーのメーター。

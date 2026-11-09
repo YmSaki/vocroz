@@ -86,6 +86,10 @@ void EngineMixer::add_channel(const std::string& strip_id) {
     }
 }
 
+void EngineMixer::set_strip_removal_handler(std::function<void(const std::string&)> handler) {
+    on_strip_removal_ = std::move(handler);
+}
+
 void EngineMixer::remove_channel(const std::string& strip_id) {
     const auto it = std::find_if(
         assignments_.strips.begin(), assignments_.strips.end(),
@@ -93,9 +97,15 @@ void EngineMixer::remove_channel(const std::string& strip_id) {
     if (it == assignments_.strips.end()) {
         return;
     }
+    // 子機の MIDI の Panic を先に求める。グラフから外す前に Note Off を送れるようにするため。
+    if (on_strip_removal_) {
+        on_strip_removal_(strip_id);
+    }
     const auto fader = it->fader;
     const auto meter = it->meter;
     assignments_.strips.erase(it);
+    std::erase_if(assignments_.midi_sources,
+                  [key = strip_midi_key(strip_id)](const auto& midi) { return midi.key == key; });
     if (!rebuild(assignments_, routing_, feedback_approved_)) {
         logger_.log(common::LogLevel::kError, "ストリップを外したグラフを適用できませんでした");
     }
@@ -235,6 +245,40 @@ void EngineMixer::detach_return(std::uint64_t key) {
     returns.erase(it);
     if (!rebuild(assignments_, routing_, feedback_approved_)) {
         logger_.log(common::LogLevel::kError, "返送を外したグラフを適用できませんでした");
+    }
+}
+
+bool EngineMixer::attach_midi_source(const std::string& key,
+                                     std::shared_ptr<ac::MidiSource> source) {
+    if (!source) {
+        return false;
+    }
+    auto& sources = assignments_.midi_sources;
+    const auto previous = sources;
+    const auto it = std::ranges::find(sources, key, &MidiSourceAssignment::key);
+    if (it == sources.end()) {
+        sources.push_back(
+            MidiSourceAssignment{key, ac::MidiSourceId{next_midi_source_++}, std::move(source)});
+    } else {
+        it->source = std::move(source);
+    }
+    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+        sources = previous;
+        logger_.log(common::LogLevel::kError, "MIDI ソースをつないだグラフを適用できませんでした");
+        return false;
+    }
+    return true;
+}
+
+void EngineMixer::detach_midi_source(const std::string& key) {
+    auto& sources = assignments_.midi_sources;
+    const auto it = std::ranges::find(sources, key, &MidiSourceAssignment::key);
+    if (it == sources.end()) {
+        return;
+    }
+    sources.erase(it);
+    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+        logger_.log(common::LogLevel::kError, "MIDI ソースを外したグラフを適用できませんでした");
     }
 }
 

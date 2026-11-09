@@ -16,6 +16,7 @@
 
 #include "fakes/fake_audio_sink.h"
 #include "fakes/fake_audio_source.h"
+#include "fakes/fake_midi_source.h"
 
 namespace vocroz::engine {
 namespace {
@@ -278,6 +279,24 @@ TEST(MixerGraphBuilderTest, ReturnIgnoresOwnStripsThatNoLongerExist) {
     const auto& g = built.graph;
     const auto* ch2 = node_with_fader(g, ac::FaderId{2});
     EXPECT_EQ(return_inputs(g, return_tap_to(g, sink)->id), (std::vector<ac::NodeId>{ch2->id}));
+}
+
+TEST(MixerGraphBuilderTest, MidiSourcesKeepTheirIdsAndHaveNoConnectionsYet) {
+    auto a = two_strips();
+    auto device = std::make_shared<ac::FakeMidiSource>();
+    auto client = std::make_shared<ac::FakeMidiSource>();
+    a.midi_sources.push_back({"device:a", ac::MidiSourceId{7}, device});
+    a.midi_sources.push_back({"strip:ch-1", ac::MidiSourceId{3}, client});
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto& sources = built.graph.midi_sources;
+    ASSERT_EQ(sources.size(), 2U);
+    EXPECT_EQ(sources[0].id, ac::MidiSourceId{7});
+    EXPECT_EQ(sources[0].source, device);
+    EXPECT_EQ(sources[1].id, ac::MidiSourceId{3});
+    EXPECT_EQ(sources[1].source, client);
+    // 送り先のプラグインノードはまだグラフにないので、経路は作らない。
+    EXPECT_TRUE(built.graph.midi_connections.empty());
+    EXPECT_TRUE(is_valid(built.graph));
 }
 
 }  // namespace

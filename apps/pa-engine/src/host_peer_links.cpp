@@ -102,9 +102,16 @@ struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport:
 
     void on_control_message(transport::ControlLane lane,
                             std::span<const std::uint8_t> message) override {
-        // MIDI のレーンは、子機の MIDI の受け口がつながってから扱う
-        // （docs/adr/0029-midi-and-vsti.md）。
-        if (lane != transport::ControlLane::kControl || closing) {
+        if (closing) {
+            return;
+        }
+        if (lane == transport::ControlLane::kMidi) {
+            // 打鍵の遅れを増やさないよう、session の通知を待たずにすぐキューへ積む。
+            // 承認前と途絶中の接続のものは受け口が捨てる。
+            owner.ports_.midi.on_midi_message(handle, message);
+            return;
+        }
+        if (lane != transport::ControlLane::kControl) {
             return;
         }
         owner.defer([&events = owner.ports_.events, peer = handle,
@@ -114,11 +121,14 @@ struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport:
     }
 
     void on_peer_timed_out() override {
+        // 途絶えたまま戻らなければ、再接続の猶予のあいだ音が鳴り続ける。途絶の時点で止める。
+        owner.ports_.midi.suspend(handle);
         owner.defer(
             [&events = owner.ports_.events, peer = handle] { events.on_peer_timeout(peer); });
     }
 
     void on_peer_resumed() override {
+        owner.ports_.midi.resume(handle);
         owner.defer(
             [&events = owner.ports_.events, peer = handle] { events.on_peer_resumed(peer); });
     }
@@ -220,6 +230,7 @@ void HostPeerLinks::admit(session::PeerHandle peer,
     found->admitted = true;
     const bool connected = apply_routes(*found, routes);
     attach_return(*found, routes);
+    attach_midi(*found, routes.front().strip_id);
     if (found->reported_admission) {
         // 再接続や申告の変更での置き換え。接続はもう確立しているので、失敗は記録だけにする。
         return;
@@ -343,6 +354,15 @@ void HostPeerLinks::attach_return(Peer& peer, const std::vector<session::StreamR
         peer.return_attached = true;
     } else {
         ports_.logger.log(common::LogLevel::kError, "子機への返送をミキサーにつなげませんでした");
+    }
+}
+
+void HostPeerLinks::attach_midi(Peer& peer, const std::string& strip_id) {
+    // ストリップのキューは再接続をまたいで同じものなので、つなぎ直してもグラフの MIDI ソースの
+    // 識別子は変わらない。
+    auto queue = ports_.midi.admit(peer.handle, strip_id);
+    if (!ports_.mixer.attach_midi_source(strip_midi_key(strip_id), std::move(queue))) {
+        ports_.logger.log(common::LogLevel::kError, "子機の MIDI をグラフにつなげませんでした");
     }
 }
 
@@ -509,6 +529,9 @@ void HostPeerLinks::create_return_encoder(Peer& peer) {
 
 void HostPeerLinks::begin_close(Peer& peer) {
     peer.closing = true;
+    // 発音中のノートを止める。キューとグラフの MIDI
+    // ソースは、再接続で同じストリップが使うので残す。
+    ports_.midi.close(peer.handle);
     std::vector<std::string> strips;
     for (const auto& [strip, source] : peer.attached) {
         strips.push_back(strip);

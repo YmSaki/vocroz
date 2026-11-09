@@ -10,12 +10,15 @@
 // - 子機の受信ストリーム（AudioSource）のストリップへの接続（子機の受信の組み立てが使う）
 // -
 // 子機への返送（Minus-Me）の渡し先（AudioSink）のストリップへの接続（子機への送信の組み立てが使う）
+// - MIDI ソース（MIDI デバイス、子機の MIDI）のグラフへの接続。ストリップを削除したら、
+//   そのストリップの子機の MIDI も外す
 // - UI に送るメーターの値の読み取り
 // オーディオスレッドへの受け渡しは Mixer が SPSC キューとグラフのスワップで行う。
 #pragma once
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,6 +44,11 @@ public:
     ///               以上にする。このオブジェクトより長く生存させる
     /// @param logger グラフを適用できなかったときの記録先。このオブジェクトより長く生存させる
     EngineMixer(audio_core::Mixer& mixer, common::Logger& logger);
+
+    /// ストリップを削除する直前に呼ぶ処理を設定する。子機の MIDI の受け口に、そのストリップの
+    /// Panic とキューの解放を伝えるのに使う（docs/adr/0029-midi-and-vsti.md）。
+    /// @param handler ストリップの entity_id を受け取る処理。空なら何もしない
+    void set_strip_removal_handler(std::function<void(const std::string&)> handler);
 
     // --- session::MixerControl ---
     void add_channel(const std::string& strip_id) override;
@@ -79,6 +87,17 @@ public:
     /// オーディオスレッド外で外れる。
     /// @param key attach_return() に渡したキー
     void detach_return(std::uint64_t key);
+
+    /// MIDI ソースをグラフに加える。同じキーのソースがあれば置き換え、識別子は引き継ぐ。
+    /// @param key    ソースを区別するキー（MidiSourceAssignment::key）
+    /// @param source イベントの取り出し先（null にしない）
+    /// @return 引数が正しく、グラフを差し替えられたら true。失敗したら前の状態のまま
+    [[nodiscard]] bool attach_midi_source(const std::string& key,
+                                          std::shared_ptr<audio_core::MidiSource> source);
+    /// MIDI ソースをグラフから外す。発音中のノートは、外した後の最初のブロックで止まる。
+    /// ソースの最後の参照は、古いグラフの破棄（collect()）でオーディオスレッド外で外れる。
+    /// @param key attach_midi_source() に渡したキー
+    void detach_midi_source(const std::string& key);
 
     /// 周期処理。キューの満杯で失敗したフェーダーの操作を送り直し、古いグラフを破棄する。
     void collect();
@@ -131,6 +150,10 @@ private:
     control_protocol::RoutingConfig routing_;
     bool feedback_approved_ = false;
     std::deque<FaderOp> retry_;
+    std::function<void(const std::string&)> on_strip_removal_;
+    // 次に割り当てる MIDI ソースの識別子。使い回さないので、外したソースの経路の状態を
+    // 別のソースが引き継ぐことはない。
+    std::uint32_t next_midi_source_ = 0;
 };
 
 }  // namespace vocroz::engine

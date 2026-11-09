@@ -91,8 +91,12 @@ CompositionRoot::CompositionRoot(const LaunchOptions& options)
       logger_(make_logger(data_dir_, options.log_level)),
       invite_relay_(loop_),
       offline_rendezvous_(loop_),
-      mixer_(mixer_config()),
+      // MIDI のタイムスタンプをブロック内の位置に写すため、ミキサーに時計を渡す
+      // （docs/adr/0029-midi-and-vsti.md）。
+      mixer_(mixer_config(), clock_),
       engine_mixer_(mixer_, *logger_),
+      midi_inbox_(clock_),
+      device_midi_relay_(loop_, engine_mixer_),
       device_loss_relay_(mixer_, loop_,
                          [this] {
                              logger_->log(common::LogLevel::kWarning,
@@ -102,7 +106,11 @@ CompositionRoot::CompositionRoot(const LaunchOptions& options)
       peer_relay_(loop_),
       peer_receive_(peer_relay_, clock_),
       router_(peer_receive_),
-      idle_timer_(kIdleShutdownTimeout) {}
+      idle_timer_(kIdleShutdownTimeout) {
+    // ストリップを削除するときは、子機の MIDI の発音中のノートを止めてからキューを手放す。
+    engine_mixer_.set_strip_removal_handler(
+        [this](const std::string& strip_id) { midi_inbox_.remove_strip(strip_id); });
+}
 
 CompositionRoot::~CompositionRoot() {
     shutdown();
@@ -204,6 +212,10 @@ std::optional<int> CompositionRoot::start() {
         *logger_);
     ui_channel_->set_listener(ui_receiver_.get());
     next_session_tick_ = clock_.now();
+#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
+    midi_thread_.start();
+#endif
+    next_midi_scan_ = clock_.now();
     return std::nullopt;
 }
 
@@ -244,7 +256,7 @@ bool CompositionRoot::create_peer_network() {
     rendezvous_tap_ = std::make_unique<RendezvousIdTap>(
         *rendezvous_, [this](const session::RendezvousId& id) { rendezvous_driver_->start(id); });
     peer_links_ = std::make_unique<HostPeerLinks>(
-        HostPeerLinks::Ports{*endpoint_, peer_receive_, engine_mixer_,
+        HostPeerLinks::Ports{*endpoint_, peer_receive_, engine_mixer_, midi_inbox_,
                              rendezvous_driver_->rendezvous(), peer_events_, *host_keys_, clock_,
                              *logger_, peer_sending_},
         transport::PlayoutConfig{});
@@ -260,6 +272,10 @@ void CompositionRoot::on_tick() {
     rendezvous_driver_->poll();
     peer_links_->poll();
     const auto now = clock_.now();
+    if (now >= next_midi_scan_) {
+        next_midi_scan_ = now + kMidiDeviceScanInterval;
+        request_midi_refresh();
+    }
     if (now >= next_session_tick_) {
         next_session_tick_ = now + kSessionTickInterval;
         session_->tick();
@@ -297,11 +313,40 @@ void CompositionRoot::apply_activity() {
     }
 }
 
+void CompositionRoot::request_midi_refresh() {
+#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
+    // 一覧の取得もポートの開閉も、JUCE のメッセージスレッドでしかできない。
+    midi_thread_.post([this] {
+        if (!device_midi_) {
+            midi_catalog_ = device::make_juce_midi_device_catalog();
+            device_midi_ = std::make_unique<DeviceMidiInputs>(DeviceMidiInputs::Ports{
+                *midi_catalog_,
+                [this](const audio_core::MidiDeviceInfo& info) {
+                    return device::make_juce_midi_input(info.id, clock_, *logger_);
+                },
+                device_midi_relay_, *logger_});
+        }
+        device_midi_->refresh();
+    });
+#endif
+}
+
+void CompositionRoot::stop_midi() {
+#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
+    // ポートを閉じてから JUCE を終える。キューは Panic を求めてから閉じるので、音は残らない。
+    midi_thread_.stop([this] {
+        device_midi_.reset();
+        midi_catalog_.reset();
+    });
+#endif
+}
+
 void CompositionRoot::shutdown() {
     // UI の受信を先に止め、ループに積まれた処理が session を呼ばないようにする。
     if (ui_channel_) {
         ui_channel_->set_listener(nullptr);
     }
+    stop_midi();
     if (outputs_) {
         outputs_->close_output();
     }

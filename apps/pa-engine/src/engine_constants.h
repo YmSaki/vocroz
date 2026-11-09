@@ -56,6 +56,11 @@ inline constexpr std::size_t kReceiveCommandCapacity = 256;
 /// 間隔は判定の粒度（100 ms 程度）に合わせる。
 inline constexpr std::chrono::milliseconds kReceiveWakeInterval{100};
 
+/// MIDI 入力ポートの一覧を読み直す間隔。抜き差しした MIDI デバイスを、この間隔のうちに開く。
+/// 一覧は JUCE のメッセージループが更新するキャッシュから返るので、読み直しは軽い。
+/// 演奏の途中で挿し直したときに、待たされたと感じない程度にする。
+inline constexpr std::chrono::milliseconds kMidiDeviceScanInterval{1000};
+
 /// ランデブーサーバーの UDP のポート。infra/rendezvous の既定値で、
 /// 子機の client_constants.h と同じ値。
 inline constexpr std::uint16_t kRendezvousUdpPort = 3478;

@@ -18,8 +18,10 @@
 
 #include <gtest/gtest.h>
 
+#include "vocroz/audio_core/constants.h"
 #include "vocroz/audio_core/mixer.h"
 #include "vocroz/network/host_rendezvous.h"
+#include "vocroz/session/peer_midi_inbox.h"
 #include "vocroz/transport/constants.h"
 #include "vocroz/transport/control_lane.h"
 #include "vocroz/transport/media_payload.h"
@@ -45,6 +47,13 @@ namespace vocroz::engine {
 namespace {
 
 namespace ac = audio_core;
+
+// 時計のない 1 ブロック（イベントはすべてブロックの先頭に置かれる）。
+ac::MidiBlockClock block_clock() {
+    ac::MidiBlockClock clock;
+    clock.frames = ac::kBlockSize;
+    return clock;
+}
 namespace cp = control_protocol;
 namespace net = network;
 namespace tp = transport;
@@ -52,6 +61,8 @@ using namespace std::chrono_literals;
 
 const net::UdpAddress kClientAddress = net::UdpAddress::from_ipv4({203, 0, 113, 10}, 50000);
 const net::UdpAddress kOtherPath = net::UdpAddress::from_ipv4({192, 168, 1, 10}, 50000);
+// MIDI レーンのメッセージ: 種別（MIDI イベント）、子機の時刻（µs、u32 BE）、Note On。
+const std::vector<std::uint8_t> kNoteOn{0x40, 0, 0, 0, 0, 0x90, 60, 100};
 const net::UdpAddress kRebound = net::UdpAddress::from_ipv4({203, 0, 113, 10}, 50123);
 constexpr std::uint16_t kMicStreamId = 0;
 
@@ -196,6 +207,14 @@ public:
         return seal_control(plaintexts.back());
     }
 
+    // MIDI のメッセージを信頼制御層の MIDI レーンに載せ、暗号化したパケットを返す。
+    [[nodiscard]] std::vector<std::uint8_t> midi_packet(std::span<const std::uint8_t> message) {
+        EXPECT_TRUE(control_.send(tp::ControlLane::kMidi, message));
+        auto plaintexts = sink_.take();
+        EXPECT_EQ(plaintexts.size(), 1U);
+        return seal_control(plaintexts.back());
+    }
+
     // 440 Hz の正弦波を 1 フレームぶんエンコードし、暗号化したメディアのパケットを返す。
     [[nodiscard]] std::vector<std::uint8_t> media_packet(std::uint32_t mute_epoch,
                                                          std::uint16_t stream_id = kMicStreamId,
@@ -292,9 +311,10 @@ protected:
           path_(relay_, clock_),
           mixer_(ac::MixerConfig{kMixerFaderCapacity, kMixerMeterCapacity}),
           engine_mixer_(mixer_, logger_),
+          midi_inbox_(clock_),
           rendezvous_(endpoint_, random_, rendezvous_listener_),
-          links_(HostPeerLinks::Ports{endpoint_, path_, engine_mixer_, rendezvous_, events_,
-                                      host_keys_, clock_, logger_, sending_},
+          links_(HostPeerLinks::Ports{endpoint_, path_, engine_mixer_, midi_inbox_, rendezvous_,
+                                      events_, host_keys_, clock_, logger_, sending_},
                  tp::PlayoutConfig{}) {
         relay_.target = &links_;
     }
@@ -349,6 +369,16 @@ protected:
         return peak;
     }
 
+    // ストリップの MIDI のキューから 1 ブロックぶん取り出す（グラフの代わり）。
+    ac::MidiPullResult pull_midi(const std::string& strip, std::vector<ac::MidiEvent>& events) {
+        auto queue = midi_inbox_.queue_for(strip);
+        EXPECT_NE(queue, nullptr);
+        events.assign(16, ac::MidiEvent{});
+        const auto result = queue->pull(block_clock(), events);
+        events.resize(result.count);
+        return result;
+    }
+
     // 20 回ぶん（100 ms）描画し、L の最大の絶対値を返す。
     float render_peak_for_a_while() {
         float peak = 0.0F;
@@ -393,6 +423,7 @@ protected:
     PeerReceivePath path_;
     ac::Mixer mixer_;
     EngineMixer engine_mixer_;
+    session::PeerMidiInbox midi_inbox_;
     net::HostRendezvous rendezvous_;
     HostPeerLinks links_;
     session::PeerHandle next_handle_ = 1;
@@ -728,6 +759,67 @@ TEST_F(HostPeerLinksTest, ClosedConnectionStopsReturn) {
 TEST_F(HostPeerLinksTest, DoesNotWakeReceiveThreadWithoutConnections) {
     links_.poll();
     EXPECT_TRUE(endpoint_.sent.empty());
+}
+
+}  // namespace
+}  // namespace vocroz::engine
+
+namespace vocroz::engine {
+namespace {
+
+TEST_F(HostPeerLinksTest, MidiOfAdmittedClientGoesToItsFirstStrip) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    engine_mixer_.add_channel("ch-1");
+    engine_mixer_.add_channel("ch-2");
+    links_.admit(peer, {session::StreamRoute{.stream_id = 0, .channels = 1, .strip_id = "ch-1"},
+                        session::StreamRoute{.stream_id = 1, .channels = 1, .strip_id = "ch-2"}});
+    links_.poll();
+    deliver(kClientAddress, client->midi_packet(kNoteOn));
+
+    std::vector<ac::MidiEvent> events;
+    pull_midi("ch-1", events);
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].data[0], 0x90);
+    EXPECT_EQ(events[0].data[1], 60);
+    EXPECT_EQ(midi_inbox_.queue_for("ch-2"), nullptr);
+    EXPECT_EQ(midi_inbox_.rejected_count(), 0U);
+}
+
+TEST_F(HostPeerLinksTest, MidiBeforeAdmissionIsDropped) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    deliver(kClientAddress, client->midi_packet(kNoteOn));
+    EXPECT_EQ(midi_inbox_.rejected_count(), 1U);
+
+    engine_mixer_.add_channel("ch-1");
+    links_.admit(peer, mic_to("ch-1"));
+    std::vector<ac::MidiEvent> events;
+    pull_midi("ch-1", events);
+    EXPECT_TRUE(events.empty());
+}
+
+TEST_F(HostPeerLinksTest, AdmittedMidiIsAGraphSourceThatTheMixerDrains) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    engine_mixer_.add_channel("ch-1");
+    links_.admit(peer, mic_to("ch-1"));
+    deliver(kClientAddress, client->midi_packet(kNoteOn));
+    static_cast<void>(render_peak(ac::kBlockSize));
+    std::vector<ac::MidiEvent> events;
+    pull_midi("ch-1", events);
+    EXPECT_TRUE(events.empty());
+}
+
+TEST_F(HostPeerLinksTest, ClosingStopsTheNotesOfTheClient) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    engine_mixer_.add_channel("ch-1");
+    links_.admit(peer, mic_to("ch-1"));
+    deliver(kClientAddress, client->midi_packet(kNoteOn));
+    links_.close(peer);
+    std::vector<ac::MidiEvent> events;
+    EXPECT_TRUE(pull_midi("ch-1", events).panic);
 }
 
 }  // namespace
