@@ -59,7 +59,8 @@ NodeSpec NodeSpec::make_output(NodeId id, std::optional<MeterId> meter,
     return spec;
 }
 
-NodeSpec NodeSpec::make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin) {
+NodeSpec NodeSpec::make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin,
+                               std::shared_ptr<PluginFault> fault) {
     NodeSpec spec;
     spec.id = id;
     spec.kind = NodeKind::kPlugin;
@@ -68,6 +69,7 @@ NodeSpec NodeSpec::make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugi
         spec.latency_samples = plugin->latency_samples();
     }
     spec.plugin = std::move(plugin);
+    spec.plugin_fault = std::move(fault);
     return spec;
 }
 

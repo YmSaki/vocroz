@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include "vocroz/audio_core/constants.h"
+#include "vocroz/audio_core/plugin_fault.h"
 
 #include "fakes/fake_audio_source.h"
 #include "fakes/fake_plugin_processor.h"
@@ -499,6 +500,49 @@ TEST(RenderGraphTest, MutesPluginNodeThatProducesNonFiniteSamples) {
     for (std::size_t i = 0; i < kBlockSize; ++i) {
         ASSERT_EQ(out[0].left[i], 0.0F) << i;
     }
+}
+
+TEST(RenderGraphTest, RaisesSharedFaultWhenPluginFails) {
+    auto plugin = std::make_shared<FakePluginProcessor>(PluginBusLayout{1, 1});
+    plugin->fail_after(1);
+    auto fault = std::make_shared<PluginFault>();
+    GraphDescription description = plugin_chain(plugin, 0.5F);
+    description.nodes[1] = NodeSpec::make_plugin(NodeId{2}, plugin, fault);
+    auto graph = RenderGraph::build(description, kCapacity, kCapacity);
+    ASSERT_TRUE(graph.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1});
+    (void)graph.value()->process(kBlockSize, faders, meters);
+    EXPECT_FALSE(fault->raised());
+    (void)graph.value()->process(kBlockSize, faders, meters);
+    EXPECT_TRUE(fault->raised());
+}
+
+TEST(RenderGraphTest, KeepsPluginNodeMutedAcrossRebuildWhenFaultIsShared) {
+    // NaN を出したプラグインは、グラフを差し替えても無音のままにする。
+    auto plugin = std::make_shared<FakePluginProcessor>(PluginBusLayout{1, 1});
+    plugin->produce_nan_after(0);
+    auto fault = std::make_shared<PluginFault>();
+    GraphDescription description = plugin_chain(plugin, 0.5F);
+    description.nodes[1] = NodeSpec::make_plugin(NodeId{2}, plugin, fault);
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1});
+    {
+        auto first = RenderGraph::build(description, kCapacity, kCapacity);
+        ASSERT_TRUE(first.has_value());
+        (void)first.value()->process(kBlockSize, faders, meters);
+        ASSERT_TRUE(fault->raised());
+    }
+    const std::size_t calls_before_rebuild = plugin->process_count();
+    auto rebuilt = RenderGraph::build(description, kCapacity, kCapacity);
+    ASSERT_TRUE(rebuilt.has_value());
+    (void)rebuilt.value()->process(kBlockSize, faders, meters);
+    const auto out = rebuilt.value()->process(kBlockSize, faders, meters);
+    EXPECT_EQ(out[0].left[kBlockSize - 1], 0.0F);
+    // 失敗したプラグインは、新しいグラフでも呼ばない。
+    EXPECT_EQ(plugin->process_count(), calls_before_rebuild);
 }
 
 TEST(RenderGraphTest, AlignsPathsWithAndWithoutPluginLatencyAtTheBus) {

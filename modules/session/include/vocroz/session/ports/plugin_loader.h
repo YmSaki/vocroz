@@ -29,7 +29,8 @@ enum class PluginStateError {
 };
 
 /// 読み込んだプラグイン 1 つ。
-/// スレッド安全性: すべて JUCE のメッセージスレッド（pa-engine ではコントロールスレッド）から呼ぶ。
+/// スレッド安全性: すべて JUCE のメッセージスレッド（pa-engine では
+/// docs/adr/0039-pa-engine-juce-message-thread.md の専用のスレッド）から呼ぶ。
 /// 破棄もそのスレッドで行う。
 class PluginInstance {
 public:
@@ -53,7 +54,8 @@ public:
 };
 
 /// プラグインの読み込み。
-/// スレッド安全性: JUCE のメッセージスレッド（pa-engine ではコントロールスレッド）から呼ぶ。
+/// スレッド安全性: JUCE のメッセージスレッド（pa-engine では
+/// docs/adr/0039-pa-engine-juce-message-thread.md の専用のスレッド）から呼ぶ。
 class PluginLoader {
 public:
     virtual ~PluginLoader() = default;

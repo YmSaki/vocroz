@@ -48,6 +48,7 @@
 | `vocroz/session/ports/plugin_scanner.h` | `PluginScanner`（プラグインファイルの列挙とスキャン） |
 | `vocroz/session/ports/plugin_catalog_store.h` | `PluginCatalogStore`（スキャンの記録の保存） |
 | `vocroz/session/ports/plugin_loader.h` | `PluginLoader`、`PluginInstance`（プラグインの読み込みと状態の保存と復元） |
+| `vocroz/session/ports/plugin_editor_host.h` | `PluginEditorHost`、`PluginEditorError`（プラグインのエディターのウィンドウ。`docs/adr/0041-plugin-editor-and-failure-notice.md`） |
 
 テストでは `vocroz::session_fakes` をリンクすると、`fakes/fake_<役割名>.h` で各ポートのフェイクを使えます。
 
