@@ -55,7 +55,7 @@
 `HostSession` と `ClientSession` のメンバー関数は、すべてコントロールスレッドから呼びます。オーディオスレッドからは呼びません。
 ネットワーク受信スレッド、デバイス、ランデブーサーバーとの通信の結果は、コンポジションルートがコントロールスレッドへ移してから渡します。
 `tick()` は 100 ms〜1 s の間隔で呼び、招待の期限と再接続の猶予（120 秒）を進めます。
-`PeerMidiInbox` だけは例外で、打鍵の遅れを増やさないよう、`on_midi_message()` をネットワーク受信スレッドから直接呼びます（内部はミューテックスで守り、オーディオスレッドへはキューで渡す）。
+`PeerMidiInbox` だけは例外で、打鍵の遅れを増やさないよう、`on_midi_message()` を MIDI レーンを取り出したスレッドから session の通知を待たずに直接呼びます（内部はミューテックスで守り、オーディオスレッドへはキューで渡す）。`pa-engine` では信頼制御層がコントロールスレッドにあるので、コントロールスレッドから呼びます（`docs/adr/0028-engine-assembly.md`）。
 
 ## 組み立ての例（親機）
 
@@ -86,6 +86,6 @@ void close(PeerHandle peer) override { media_.close(peer); midi_inbox_.close(pee
 // MixerControl::remove_channel() では midi_inbox_.remove_strip(strip_id)。
 // 受信の途絶と復帰は host_session_.on_peer_timeout() / on_peer_resumed() と同じ所で
 // midi_inbox_.suspend(peer) / resume(peer)。
-// ネットワーク受信スレッド: MIDI レーン（ControlLane::kMidi）の本文はそのまま渡す。
+// MIDI レーン（ControlLane::kMidi）の本文は、取り出したスレッドでそのまま渡す。
 midi_inbox_.on_midi_message(peer, body);
 ```

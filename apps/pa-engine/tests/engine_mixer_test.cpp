@@ -17,6 +17,7 @@
 #include "fakes/fake_audio_sink.h"
 #include "fakes/fake_audio_source.h"
 #include "fakes/fake_logger.h"
+#include "fakes/fake_midi_source.h"
 
 namespace vocroz::engine {
 namespace {
@@ -269,6 +270,53 @@ TEST_F(EngineMixerTest, AttachReturnFailsForUnknownStripOrNullSink) {
     EXPECT_FALSE(engine_.attach_return(1, {"ch-unknown"}, std::make_shared<ac::FakeAudioSink>()));
     EXPECT_FALSE(engine_.attach_return(1, {}, std::make_shared<ac::FakeAudioSink>()));
     EXPECT_FALSE(engine_.attach_return(1, {"ch-1"}, nullptr));
+}
+
+}  // namespace
+}  // namespace vocroz::engine
+
+namespace vocroz::engine {
+namespace {
+
+TEST_F(EngineMixerTest, AttachedMidiSourceIsPulledEveryCallbackUntilDetached) {
+    auto midi = std::make_shared<audio_core::FakeMidiSource>();
+    ASSERT_TRUE(engine_.attach_midi_source("device:a", midi));
+    // 経路がなくてもグラフが取り出すので、キューはあふれない。
+    static_cast<void>(render_last_left());
+    const auto pulled = midi->pull_count();
+    EXPECT_GT(pulled, 0U);
+
+    engine_.detach_midi_source("device:a");
+    static_cast<void>(render_last_left());
+    EXPECT_EQ(midi->pull_count(), pulled);
+}
+
+TEST_F(EngineMixerTest, AttachingTheSameKeyReplacesTheSource) {
+    auto first = std::make_shared<audio_core::FakeMidiSource>();
+    auto second = std::make_shared<audio_core::FakeMidiSource>();
+    ASSERT_TRUE(engine_.attach_midi_source("strip:ch-1", first));
+    ASSERT_TRUE(engine_.attach_midi_source("strip:ch-1", second));
+    static_cast<void>(render_last_left());
+    EXPECT_EQ(first->pull_count(), 0U);
+    EXPECT_GT(second->pull_count(), 0U);
+}
+
+TEST_F(EngineMixerTest, AttachMidiSourceRejectsNull) {
+    EXPECT_FALSE(engine_.attach_midi_source("device:a", nullptr));
+}
+
+TEST_F(EngineMixerTest, RemovingAStripNotifiesAndDetachesItsMidi) {
+    std::vector<std::string> removed;
+    engine_.set_strip_removal_handler([&](const std::string& id) { removed.push_back(id); });
+    engine_.add_channel("ch-1");
+    auto midi = std::make_shared<audio_core::FakeMidiSource>();
+    ASSERT_TRUE(engine_.attach_midi_source(strip_midi_key("ch-1"), midi));
+
+    engine_.remove_channel("ch-1");
+    EXPECT_EQ(removed, (std::vector<std::string>{"ch-1"}));
+    const auto pulled = midi->pull_count();
+    static_cast<void>(render_last_left());
+    EXPECT_EQ(midi->pull_count(), pulled);
 }
 
 }  // namespace

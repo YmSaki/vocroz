@@ -9,6 +9,11 @@
 // メディアの受け付けを指示してから on_peer_established() を知らせる。承認のあとも、再接続と
 // 入力の申告の変更のたびに admit() で対応が置き換わる（docs/adr/0035-client-input-expansion.md）。
 //
+// 子機の MIDI（信頼制御層の MIDI レーン）は、承認したときに先頭のストリップのキューへ結び付け、
+// そのキューをグラフの MIDI ソースにする。子機の MIDI は 1 系統なので先頭のストリップに流す
+// （docs/adr/0029-midi-and-vsti.md）。信頼制御層がコントロールスレッドにあるので、MIDI レーンの
+// 本文もコントロールスレッドで受け口へ渡す（受け口に積むのはこのスレッドだけになる）。
+//
 // 子機は応答が届くまで同じ 1 つ目のメッセージを送り直し、複数の経路から同じものが届くこともある。
 // 接続 ID が同じものは重複として、保存した応答を送り直すだけにする（接続を作り直さない）。
 //
@@ -31,6 +36,7 @@
 #include "vocroz/network/host_rendezvous.h"
 #include "vocroz/network/ports/udp_endpoint.h"
 #include "vocroz/network/udp_address.h"
+#include "vocroz/session/peer_midi_inbox.h"
 #include "vocroz/session/ports/peer_link.h"
 #include "vocroz/transport/playout_stream.h"
 #include "vocroz/transport/static_key_pair.h"
@@ -51,7 +57,8 @@ public:
     struct Ports {
         network::UdpEndpoint& endpoint;  ///< 子機への送信と、受信スレッドを起こす送信
         PeerReceivePath& receive;        ///< 受信スレッドへの指示の渡し先
-        EngineMixer& mixer;              ///< ジッターバッファをつなぐストリップ
+        EngineMixer& mixer;  ///< ジッターバッファと子機の MIDI をつなぐミキサー
+        session::PeerMidiInbox& midi;         ///< 子機の MIDI の受け口
         network::HostRendezvous& rendezvous;  ///< 確立した経路のホールパンチを止める
         PeerEventSink& events;                ///< session への通知
         const transport::StaticKeyPair& keys;  ///< 親機の静的鍵
@@ -97,6 +104,8 @@ private:
     void accept(const network::UdpAddress& from, std::span<const std::uint8_t> datagram);
     // 対応に合わせてストリームとストリップの接続を置き換える。すべてつなげたら true。
     [[nodiscard]] bool apply_routes(Peer& peer, const std::vector<session::StreamRoute>& routes);
+    // 子機の MIDI をストリップのキューに結び付け、グラフの MIDI ソースにする。
+    void attach_midi(Peer& peer, const std::string& strip_id);
     void detach_strip(Peer& peer, const std::string& strip_id);
     void begin_close(Peer& peer);
     void command(const ReceiveCommand& command);
