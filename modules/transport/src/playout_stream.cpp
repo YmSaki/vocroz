@@ -85,8 +85,8 @@ struct PlayoutStream::Impl {
     const std::size_t frame_samples;
     const std::size_t min_delay;
     std::size_t max_delay;
-    // set_max_delay() で頼まれた上限（サンプル数）。後勝ちでよいので、キューではなく 1
-    // つの値で渡す。
+    // set_max_delay() で頼まれた上限（サンプル数）。
+    // 後勝ちでよいので、キューではなくアトミック変数で渡す。
     std::atomic<std::size_t> requested_max_delay;
     std::size_t target;
 
