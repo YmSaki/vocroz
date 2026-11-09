@@ -12,7 +12,9 @@ add_library(vocroz_session STATIC
   src/host_session.cpp
   src/invite_book.cpp
   src/invite_code.cpp
+  src/midi_timeline.cpp
   src/participant_registry.cpp
+  src/peer_midi_inbox.cpp
   src/plugin_catalog.cpp
   src/request_deduplicator.cpp
   src/routing_book.cpp
@@ -22,6 +24,7 @@ add_library(vocroz_session STATIC
   src/state/connection_state_machine.cpp
   src/state/output_device_state_machine.cpp
   src/state/session_state_machine.cpp
+  src/wire/midi_message_codec.cpp
   src/wire/peer_message_codec.cpp)
 add_library(vocroz::session ALIAS vocroz_session)
 target_include_directories(vocroz_session
@@ -46,8 +49,11 @@ if(VOCROZ_BUILD_TESTS)
     tests/host_session_test.cpp
     tests/invite_book_test.cpp
     tests/invite_code_test.cpp
+    tests/midi_message_codec_test.cpp
+    tests/midi_timeline_test.cpp
     tests/output_device_state_machine_test.cpp
     tests/participant_registry_test.cpp
+    tests/peer_midi_inbox_test.cpp
     tests/plugin_catalog_test.cpp
     tests/peer_message_codec_test.cpp
     tests/request_deduplicator_test.cpp
