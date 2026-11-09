@@ -90,4 +90,33 @@ enum class NoticeSeverity {
     kWarning,  ///< warning: 8 秒表示する警告
 };
 
+/// ルーティングのバスの種類。処理は同じで、ルーティング画面での表示と既定の送り方だけが違う。
+enum class BusKind {
+    kUser,  ///< USER: ユーザーバス（サブグループ、エフェクトの送りなど）
+    kCue,  ///< CUE: キューやモニターのバス（出演者への返しや、オペレーターのモニター）
+};
+
+/// センドを取り出す位置。
+enum class SendTap {
+    kPostFader,  ///< POST_FADER: 送り元のフェーダーとミュートの後
+    /// PRE_FADER: 送り元のフェーダーとミュートの前（モニターの返しなど）。
+    /// 送り元のミュートでは止まらないので、センドのミュートで止める。
+    kPreFader,
+};
+
+/// ステージングしたルーティングを適用できない理由。最初に見つかった 1 つだけを返す。
+enum class RoutingIssue {
+    kInvalidId,  ///< INVALID_ID: entity_id が種類ごとの接頭辞（bus- など）で始まらない
+    kDuplicateId,   ///< DUPLICATE_ID: 同じ entity_id が複数ある
+    kTooManyItems,  ///< TOO_MANY_ITEMS: バス、出力、センド、遅延ノードのいずれかが上限を超える
+    kUnknownNode,  ///< UNKNOWN_NODE: センドや手動ディレイが存在しないノードを指している
+    kInvalidSend,  ///< INVALID_SEND:
+                   ///< つなげない組み合わせ（ストリップへの入力、出力からの送りなど）か、重複
+    kInvalidSendTap,  ///< INVALID_SEND_TAP: プリフェーダーの送り元がストリップでもバスでもない
+    kDelayOutOfRange,  ///< DELAY_OUT_OF_RANGE: 手動ディレイか遅延ノードの遅延が範囲外
+    kOutputChannelOutOfRange,  ///< OUTPUT_CHANNEL_OUT_OF_RANGE: 出力のチャンネルが範囲外
+    kOverlappingOutputs,  ///< OVERLAPPING_OUTPUTS: 複数の出力が同じデバイスのチャンネルに書く
+    kUndelayedLoop,  ///< UNDELAYED_LOOP: 遅延ノードを通らないループがある。承認しても適用できない
+};
+
 }  // namespace vocroz::control_protocol

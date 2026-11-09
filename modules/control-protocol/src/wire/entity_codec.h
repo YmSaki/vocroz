@@ -15,6 +15,9 @@ namespace vocroz::control_protocol::wire {
 [[nodiscard]] nlohmann::json write_json(const ChannelStrip& channel);
 [[nodiscard]] nlohmann::json write_json(const MasterStrip& master);
 [[nodiscard]] nlohmann::json write_json(const PendingParticipant& participant);
+[[nodiscard]] nlohmann::json write_json(const RoutingConfig& config);
+[[nodiscard]] nlohmann::json write_json(const RouteLevel& level);
+[[nodiscard]] nlohmann::json write_json(const RoutingInfo& routing);
 [[nodiscard]] nlohmann::json write_json(const MixerSnapshot& snapshot);
 [[nodiscard]] nlohmann::json write_json(const InputDevice& device);
 [[nodiscard]] nlohmann::json write_json(const ClientSnapshot& snapshot);
@@ -26,6 +29,11 @@ namespace vocroz::control_protocol::wire {
 [[nodiscard]] common::Result<MasterStrip, DecodeError> read_master_strip(
     const nlohmann::json& value);
 [[nodiscard]] common::Result<PendingParticipant, DecodeError> read_pending_participant(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<RoutingConfig, DecodeError> read_routing_config(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<RouteLevel, DecodeError> read_route_level(const nlohmann::json& value);
+[[nodiscard]] common::Result<RoutingInfo, DecodeError> read_routing_info(
     const nlohmann::json& value);
 [[nodiscard]] common::Result<MixerSnapshot, DecodeError> read_mixer_snapshot(
     const nlohmann::json& value);

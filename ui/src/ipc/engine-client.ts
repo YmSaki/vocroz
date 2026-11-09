@@ -244,6 +244,8 @@ export class EngineClient {
       case "master_updated":
       case "pending_updated":
       case "client_updated":
+      case "routing_updated":
+      case "route_level_updated":
       case "meters":
       case "notice":
         return;

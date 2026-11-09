@@ -5,6 +5,7 @@
 // ここ 1 か所で行い、状態の変更と副作用は HostContext に任せる。
 #pragma once
 
+#include <map>
 #include <optional>
 #include <string>
 
@@ -41,12 +42,20 @@ private:
     CommandResult approve(const std::string& entity_id);
     CommandResult reject(const std::string& entity_id);
     CommandResult remove_strip(const std::string& entity_id);
+    CommandResult stage_routing(const control_protocol::RoutingConfig& config);
+    CommandResult commit_routing(bool approve_feedback);
+    CommandResult discard_routing();
+    CommandResult set_route_mute(const std::string& entity_id, bool muted);
     void handle_gain(const control_protocol::SetGain& command);
+    void handle_route_gain(control_protocol::RouteLevel& level,
+                           const control_protocol::SetGain& command);
 
     HostContext& ctx_;
     RequestDeduplicator requests_{kRememberedRequestIds};
     /// Master の SetGain の最後に適用した seq。古い seq の値で戻さないため。
     std::optional<control_protocol::Sequence> last_master_gain_seq_;
+    /// バスとセンドの SetGain の最後に適用した seq（entity_id ごと）。
+    std::map<std::string, control_protocol::Sequence> last_route_gain_seq_;
 };
 
 }  // namespace vocroz::session
