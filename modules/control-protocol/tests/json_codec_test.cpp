@@ -283,7 +283,8 @@ TEST(JsonCodecTest, RejectsInvalidEngineMessages) {
                               {"signal_state", nullptr}, {"send_muted", true},
                               {"channel_muted", true},   {"gain_db", 0.0},
                               {"error_code", nullptr},   {"source_kind", "MICROPHONE"},
-                              {"channel_count", 1},      {"source_number", 1}};
+                              {"channel_count", 1},      {"source_number", 1},
+                              {"return_muted", true}};
     EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
               (DecodeError{DecodeErrorCode::kOutOfRange, "channel.connection_state"}));
 

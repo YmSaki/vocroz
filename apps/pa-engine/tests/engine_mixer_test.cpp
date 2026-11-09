@@ -14,6 +14,7 @@
 #include "vocroz/audio_core/mixer.h"
 
 #include "engine_constants.h"
+#include "fakes/fake_audio_sink.h"
 #include "fakes/fake_audio_source.h"
 #include "fakes/fake_logger.h"
 
@@ -202,6 +203,72 @@ TEST_F(EngineMixerTest, ReadMetersReportsStripsAndMasterSortedById) {
     ASSERT_TRUE(meters[1].peak_db.has_value());
     EXPECT_NEAR(*meters[1].peak_db, -20.0, 0.1);
     EXPECT_TRUE(meters[2].peak_db.has_value());
+}
+
+// --- 返送（Minus-Me） ---
+
+TEST_F(EngineMixerTest, ReturnCarriesOtherStripsButNotTheOwnOne) {
+    add_audible_strip("ch-1");
+    add_audible_strip("ch-2");
+    auto sink1 = std::make_shared<ac::FakeAudioSink>();
+    auto sink2 = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink1));
+    ASSERT_TRUE(engine_.attach_return(2, {"ch-2"}, sink2));
+    (void)render_last_left();
+    // それぞれの返送には、相手のストリップだけが入る（自分の声は入らない）。
+    EXPECT_NEAR(sink1->last(), kInput, 1e-5F);
+    EXPECT_NEAR(sink2->last(), kInput, 1e-5F);
+
+    // ch-2 をチャンネルミュートすると、ch-1 の返送からも消える（ポストフェーダー）。
+    engine_.set_channel_muted("ch-2", true);
+    (void)render_last_left();
+    EXPECT_EQ(sink1->last(), 0.0F);
+}
+
+TEST_F(EngineMixerTest, ReturnIsIndependentOfTheMasterMute) {
+    add_audible_strip("ch-1");
+    add_audible_strip("ch-2");
+    auto sink1 = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink1));
+    engine_.set_master_muted(true);
+    // ハウスの出力を止めても、出演者のモニターは止めない。
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_NEAR(sink1->last(), kInput, 1e-5F);
+}
+
+TEST_F(EngineMixerTest, DetachReturnStopsFeedingTheSink) {
+    add_audible_strip("ch-1");
+    add_audible_strip("ch-2");
+    auto sink1 = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink1));
+    (void)render_last_left();
+    const auto received = sink1->received();
+    engine_.detach_return(1);
+    (void)render_last_left();
+    EXPECT_EQ(sink1->received(), received);
+}
+
+TEST_F(EngineMixerTest, ReturnOfAClientWithSeveralInputsCarriesOnlyTheOthers) {
+    // ch-1 と ch-2 は同じ子機の 2 つの入力、ch-3 は別の子機。
+    add_audible_strip("ch-1");
+    add_audible_strip("ch-2");
+    add_audible_strip("ch-3");
+    auto sink = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1", "ch-2"}, sink));
+    (void)render_last_left();
+    EXPECT_NEAR(sink->last(), kInput, 1e-5F);
+
+    // 子機の入力が 1 本に減ったら、同じキーで自分のストリップの一覧を付け替える。
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink));
+    (void)render_last_left();
+    EXPECT_NEAR(sink->last(), 2.0F * kInput, 1e-5F);
+}
+
+TEST_F(EngineMixerTest, AttachReturnFailsForUnknownStripOrNullSink) {
+    engine_.add_channel("ch-1");
+    EXPECT_FALSE(engine_.attach_return(1, {"ch-unknown"}, std::make_shared<ac::FakeAudioSink>()));
+    EXPECT_FALSE(engine_.attach_return(1, {}, std::make_shared<ac::FakeAudioSink>()));
+    EXPECT_FALSE(engine_.attach_return(1, {"ch-1"}, nullptr));
 }
 
 }  // namespace

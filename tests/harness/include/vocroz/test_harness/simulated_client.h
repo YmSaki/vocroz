@@ -129,6 +129,7 @@ private:
     void connect(const session::HostEndpoint& endpoint) override;
     void reconnect() override;
     void send(std::span<const std::uint8_t> message) override;
+    void apply_return_mute(bool muted, std::uint32_t epoch) override;
     void close() override;
 
     // transport::ControlMessageListener

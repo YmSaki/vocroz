@@ -523,5 +523,49 @@ TEST_F(ClientSessionTest, ReplaysTheFullStateToANewlyConnectedUi) {
     EXPECT_EQ(snapshot->snapshot, session().snapshot());
 }
 
+// --- 返送モニター（Minus-Me） ---
+
+TEST_F(ClientSessionTest, StartsWithTheReturnMuted) {
+    EXPECT_TRUE(session().snapshot().return_muted);
+}
+
+TEST_F(ClientSessionTest, ReturnMuteFromTheHostIsPassedToTheReceiverAndShown) {
+    join_and_connect(token(7));
+    const auto revision = session().snapshot().revision;
+    receive(wire::ReturnMuteNotice{false, 1});
+    EXPECT_FALSE(session().snapshot().return_muted);
+    ASSERT_TRUE(link_.return_mute());
+    EXPECT_FALSE(link_.return_mute()->muted);
+    EXPECT_EQ(link_.return_mute()->epoch, 1U);
+    // 親機が決めた観測値なので、子機の revision は進めない。
+    EXPECT_EQ(session().snapshot().revision, revision);
+    EXPECT_FALSE(ui_.last<cp::ClientUpdated>()->client.return_muted);
+
+    receive(wire::ReturnMuteNotice{true, 1});
+    EXPECT_TRUE(session().snapshot().return_muted);
+    EXPECT_TRUE(link_.return_mute()->muted);
+}
+
+TEST_F(ClientSessionTest, ClientCannotUnmuteTheReturn) {
+    // 子機から返送を操作するコマンドは受け付けない（解除できるのは親機だけ）。
+    join_and_connect(token(7));
+    EXPECT_FALSE(command(cp::SetReturnMute{false}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    EXPECT_TRUE(session().snapshot().return_muted);
+}
+
+TEST_F(ClientSessionTest, ReturnIsShownMutedAgainAfterTheSessionEnds) {
+    join_and_connect(token(7));
+    receive(wire::ReturnMuteNotice{false, 1});
+    receive(wire::SessionEndedNotice{});
+    EXPECT_TRUE(session().snapshot().return_muted);
+}
+
+TEST_F(ClientSessionTest, IgnoresReturnMuteOutsideASession) {
+    receive(wire::ReturnMuteNotice{false, 1});
+    EXPECT_TRUE(session().snapshot().return_muted);
+    EXPECT_FALSE(link_.return_mute());
+}
+
 }  // namespace
 }  // namespace vocroz::session

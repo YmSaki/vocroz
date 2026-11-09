@@ -47,6 +47,9 @@ struct Participant {
     std::optional<common::Clock::TimePoint> reconnecting_since;
     /// 最後に適用したフェーダーのシーケンス番号。
     std::optional<control_protocol::Sequence> last_gain_seq;
+    /// 返送モニターのミュートの世代番号。解除のたびに 1 増やす。再接続しても続きから数え、
+    /// 子機が古い接続の世代のフレームを新しいものと取り違えないようにする。
+    std::uint32_t return_epoch = 0;
 };
 
 /// 参加者の一覧。
@@ -78,7 +81,8 @@ public:
 
     /// 承認待ちの参加者に、申告した入力ごとのストリップを作り、末尾に足す。
     /// 承認待ちの一覧からは取り除かない。
-    /// ストリップは CONNECTING、チャンネルミュート、送信ミュート、0 dB で始まる（初期ミュート）。
+    /// ストリップは CONNECTING、チャンネルミュート、送信ミュート、返送ミュート、0 dB で始まる
+    /// （初期ミュート）。
     /// @param pending 承認する参加者
     /// @param token   発行した再接続トークン
     /// @return 足した 1 本目のストリップ。以降の追加で無効になるので、続けて保持しない

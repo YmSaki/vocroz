@@ -198,15 +198,22 @@
     "device_id": null
   },
   {
-    "type": "set_input_channels",
+    "type": "set_return_mute",
     "request_id": "r-26",
+    "entity_id": "ch1",
+    "expected_revision": 2,
+    "muted": false
+  },
+  {
+    "type": "set_input_channels",
+    "request_id": "r-27",
     "entity_id": "client",
     "expected_revision": 3,
     "channels": 2
   },
   {
     "type": "set_app_audio",
-    "request_id": "r-27",
+    "request_id": "r-28",
     "entity_id": "client",
     "expected_revision": 4,
     "enabled": true

@@ -36,6 +36,9 @@ public:
         send_mutes_[peer] = SendMute{send_muted, epoch};
     }
 
+    void set_return_mute(PeerHandle peer, bool muted, std::uint32_t epoch) override {
+        return_mutes_[peer] = SendMute{muted, epoch};
+    }
     void close(PeerHandle peer) override {
         closed_.insert(peer);
         admitted_.erase(peer);
@@ -66,8 +69,14 @@ public:
         return send_mutes_;
     }
 
+    /// set_return_mute() で最後に渡された値（send_muted に返送のミュートを入れる）。
+    [[nodiscard]] const std::map<PeerHandle, SendMute>& return_mutes() const noexcept {
+        return return_mutes_;
+    }
+
 private:
     std::map<PeerHandle, std::vector<std::vector<std::uint8_t>>> sent_;
+    std::map<PeerHandle, SendMute> return_mutes_;
     std::map<PeerHandle, std::string> admitted_;
     std::map<PeerHandle, std::vector<StreamRoute>> routes_;
     std::map<PeerHandle, SendMute> send_mutes_;

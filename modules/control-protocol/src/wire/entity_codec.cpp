@@ -244,6 +244,7 @@ nlohmann::json write_json(const ChannelStrip& channel) {
         {"source_kind", enum_json(channel.source_kind)},
         {"channel_count", channel.channel_count},
         {"source_number", channel.source_number},
+        {"return_muted", channel.return_muted},
     };
 }
 
@@ -268,6 +269,7 @@ common::Result<ChannelStrip, DecodeError> read_channel_strip(const nlohmann::jso
         channel.source_kind = r.enumeration<InputSourceKind>("source_kind");
         channel.channel_count = small_count(r, "channel_count", kMaxInputChannels);
         channel.source_number = small_count(r, "source_number", kMaxInputStreams);
+        channel.return_muted = r.boolean("return_muted");
         return channel;
     });
 }
@@ -429,6 +431,7 @@ nlohmann::json write_json(const ClientSnapshot& snapshot) {
         {"input_missing", snapshot.input_missing},
         {"send_muted", snapshot.send_muted},
         {"send_level_db", snapshot.send_level_db},
+        {"return_muted", snapshot.return_muted},
         {"input_channels", snapshot.input_channels},
         {"app_audio", snapshot.app_audio},
     };
@@ -447,6 +450,7 @@ common::Result<ClientSnapshot, DecodeError> read_client_snapshot(const nlohmann:
         snapshot.input_missing = r.boolean("input_missing");
         snapshot.send_muted = r.boolean("send_muted");
         snapshot.send_level_db = r.number("send_level_db", kMinFiniteGainDb, kMaxGainDb);
+        snapshot.return_muted = r.boolean("return_muted");
         snapshot.input_channels = small_count(r, "input_channels", kMaxInputChannels);
         snapshot.app_audio = r.boolean("app_audio");
         return snapshot;

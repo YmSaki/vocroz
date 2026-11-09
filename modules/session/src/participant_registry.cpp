@@ -80,6 +80,8 @@ Participant& ParticipantRegistry::add_participant(const PendingJoin& pending,
     // 初期ミュート: 新しい参加者はチャンネルミュートで始める。子機も送信ミュートで参加する。
     participant.strip.send_muted = true;
     participant.strip.channel_muted = true;
+    // 返送モニターも OFF（ミュート）で始める。
+    participant.strip.return_muted = true;
     participant.strip.gain_db = 0.0;
     participant.reconnect_token = token;
     participant.peer = pending.peer;

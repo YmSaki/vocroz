@@ -298,6 +298,12 @@ void SimulatedHost::apply_send_mute(session::PeerHandle peer, bool send_muted,
     }
 }
 
+void SimulatedHost::set_return_mute(session::PeerHandle /*peer*/, bool /*muted*/,
+                                    std::uint32_t /*epoch*/) {
+    // この試験基盤の親機は返送（下りの音声）を送らない。返送のミックスとエンコードは
+    // audio-core と transport の単体テストで確かめる（docs/adr/0036-return-monitor.md）。
+}
+
 void SimulatedHost::close(session::PeerHandle peer) {
     // 呼び出し元が、まさにこの接続の受信の処理の中にいることがあるので、破棄は step()
     // の最後に行う。
