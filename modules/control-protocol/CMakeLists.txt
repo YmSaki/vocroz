@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # control-protocol: UI とエンジン間のコマンドとイベントの DTO、JSON のエンコードとデコード（信頼境界）、
-# メッセージを運ぶ MessageChannel ポートと、2 つの経路をつなぐ ChannelRelay。
+# メッセージを運ぶ MessageChannel ポートと、2 つの経路をつなぐ ChannelRelay、複数の UI の経路をまとめる ChannelGroup。
 # nlohmann/json は実装の中だけで使い、公開ヘッダーには出さない。
 add_library(vocroz_control_protocol STATIC
+  src/channel_group.cpp
   src/channel_relay.cpp
   src/json_codec.cpp
   src/wire/command_codec.cpp
@@ -27,6 +28,7 @@ if(VOCROZ_BUILD_TESTS)
   target_link_libraries(vocroz_control_protocol_fakes INTERFACE vocroz::control_protocol)
 
   vocroz_add_unit_test(control_protocol_tests
+    tests/channel_group_test.cpp
     tests/channel_relay_test.cpp
     tests/json_codec_test.cpp
     tests/json_codec_examples_test.cpp

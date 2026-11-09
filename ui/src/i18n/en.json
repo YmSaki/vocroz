@@ -145,6 +145,7 @@
   "notice.update_available": "Version {version} is available. It can be installed after the session ends.",
   "routing.title": "Routing",
   "routing.back": "Back to mixer",
+  "routing.close": "Close",
   "routing.state_applied": "This is the applied routing. Changes do not affect the sound until you press Apply.",
   "routing.ready": "You have unapplied changes. No problems found; ready to apply.",
   "routing.needs_approval": "There is a feedback loop through a delay node. Approve the loop to apply.",

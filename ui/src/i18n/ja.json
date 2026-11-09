@@ -145,6 +145,7 @@
   "notice.update_available": "更新版 {version} が利用可能です。セッションの終了後に適用できます。",
   "routing.title": "ルーティング",
   "routing.back": "ミキサーに戻る",
+  "routing.close": "閉じる",
   "routing.state_applied": "適用中の構成です。変更しても、「適用」を押すまで音は変わりません。",
   "routing.ready": "未適用の変更があります。問題はなく、適用できます。",
   "routing.needs_approval": "遅延ノードを通るフィードバックループがあります。適用するにはループの承認が必要です。",

@@ -121,6 +121,10 @@ HostMode::~HostMode() {
     alive_.reset();
     timer_.reset();
     detach();
+    close_routing_window();
+    if (web_ui_) {
+        windows_.remove(web_ui_->channel());
+    }
     web_ui_.reset();
 }
 
@@ -131,25 +135,76 @@ void HostMode::open_window() {
                          .height = kHostWindowHeight,
                          .min_width = kHostWindowMinWidth,
                          .min_height = kHostWindowMinHeight};
-    ui_options.launch = {.mode = webui::UiMode::kHost, .lang = config_.options.lang, .join = {}};
+    ui_options.launch = {.mode = webui::UiMode::kHost,
+                         .lang = config_.options.lang,
+                         .join = {},
+                         .screen = webui::UiScreen::kMain,
+                         .request_id_prefix = kMixerRequestIdPrefix};
     ui_options.assets = config_.ui_assets;
     ui_options.user_data_folder = config_.data_dir / kHostWebViewDataFolderName;
     ui_options.on_close_requested = [this] { on_close_requested(); };
+    ui_options.on_open_routing = [this] { open_routing_window(); };
     // 画面はエンジンの起動を待たずに開き、起動中であることが見えるようにする。
     web_ui_ = webui::make_juce_web_ui_host(std::move(ui_options));
+    windows_.add(web_ui_->channel());
     attacher_.begin();
     timer_ = std::make_unique<AttachTimer>(attacher_);
+}
+
+void HostMode::open_routing_window() {
+    if (routing_ui_) {
+        routing_ui_->bring_to_front();
+        return;
+    }
+    webui::WebUiHostOptions ui_options;
+    ui_options.window = {.title = std::string{routing_window_title(config_.language)},
+                         .width = kRoutingWindowWidth,
+                         .height = kRoutingWindowHeight,
+                         .min_width = kHostWindowMinWidth,
+                         .min_height = kHostWindowMinHeight};
+    ui_options.launch = {.mode = webui::UiMode::kHost,
+                         .lang = config_.options.lang,
+                         .join = {},
+                         .screen = webui::UiScreen::kRouting,
+                         .request_id_prefix = kRoutingRequestIdPrefix};
+    ui_options.assets = config_.ui_assets;
+    // ミキサーの窓と同じフォルダにして、WebView2 のブラウザープロセスを共有する。
+    ui_options.user_data_folder = config_.data_dir / kHostWebViewDataFolderName;
+    // 閉じるボタンの処理の中で窓を破棄しないよう、処理を抜けてから閉じる。
+    ui_options.on_close_requested = [alive = std::weak_ptr<HostMode*>(alive_)] {
+        juce::MessageManager::callAsync([alive] {
+            if (const auto self = alive.lock()) {
+                (*self)->close_routing_window();
+            }
+        });
+    };
+    routing_ui_ = webui::make_juce_web_ui_host(std::move(ui_options));
+    // エンジンにつながっていれば、窓が読み込み後に送る hello でスナップショットを受け取る。
+    // まだつながっていなければ、つながったときの reload() で受け取り直す。
+    windows_.add(routing_ui_->channel());
+}
+
+void HostMode::close_routing_window() {
+    if (!routing_ui_) {
+        return;
+    }
+    // 先にまとめから外し、パイプの受信スレッドからこの窓へ送らないようにしてから破棄する。
+    windows_.remove(routing_ui_->channel());
+    routing_ui_.reset();
 }
 
 void HostMode::on_engine_attached(std::unique_ptr<control_protocol::MessageChannel> channel) {
     engine_ = std::move(channel);
     tap_ = std::make_unique<SessionActivityTap>(*engine_);
     relay_ = std::make_unique<control_protocol::ChannelRelay>(
-        web_ui_->channel(), *tap_,
+        windows_, *tap_,
         [this](control_protocol::ChannelRelay::Side side) { on_relay_closed(side); });
     // つながる前に UI が送った hello は届いていないので、読み込み直して hello からやり直させる。
     // 再アタッチのときも、UI の表示を新しいスナップショットからやり直すために同じことをする。
     web_ui_->reload();
+    if (routing_ui_) {
+        routing_ui_->reload();
+    }
     logger_.log(common::LogLevel::kInfo, "エンジンに接続しました");
 }
 
