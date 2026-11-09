@@ -129,6 +129,20 @@ std::variant<LaunchOptions, LaunchError> parse_launch_options(common::Args args)
     return options;
 }
 
+std::string_view log_level_argument(common::LogLevel level) noexcept {
+    switch (level) {
+        case common::LogLevel::kError:
+            return "error";
+        case common::LogLevel::kWarning:
+            return "warn";
+        case common::LogLevel::kInfo:
+            return "info";
+        case common::LogLevel::kDebug:
+            return "debug";
+    }
+    return "info";
+}
+
 std::string launch_options_help() {
     return "使い方: remote-pa [オプション] [vocroz://join?code=<招待コード>]\n"
            "\n"

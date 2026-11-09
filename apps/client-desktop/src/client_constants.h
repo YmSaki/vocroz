@@ -47,4 +47,20 @@ inline constexpr std::chrono::milliseconds kMeterInterval{50};
 /// ランデブーサーバーの UDP のポート（docs/adr/0012-rendezvous-protocol.md）。
 inline constexpr std::uint16_t kRendezvousUdpPort = 3478;
 
+/// コントロールスレッドの周期の処理（ClientRuntime::poll()）の間隔。親機からの制御メッセージと
+/// ハンドシェイクの応答を処理するまでの遅れの上限になる。音声の経路（オーディオスレッドと
+/// 送信スレッド）はこの周期を待たないので、制御の応答として気にならない 10ms にする。
+inline constexpr std::chrono::milliseconds kPollInterval{10};
+
+/// 子機の画面の大きさ。出演者が演奏しながら横に置ける小さな縦長の窓にし、親機の画面より
+/// 小さくする（docs/adr/0005-ui-juce-webview.md）。最小はボタンとメーターが重ならない大きさ。
+inline constexpr int kWindowWidth = 480;
+inline constexpr int kWindowHeight = 720;
+inline constexpr int kWindowMinWidth = 360;
+inline constexpr int kWindowMinHeight = 560;
+
+/// WebView2 のデータを置く、データフォルダの下のフォルダ名。同じデータフォルダで親機モードと
+/// 同時に動かしても、WebView2 のブラウザープロセスを共有しないよう、モードごとに分ける。
+inline constexpr const char* kWebViewDataFolderName = "webview2-client";
+
 }  // namespace vocroz::client
