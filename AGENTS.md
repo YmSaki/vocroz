@@ -366,9 +366,11 @@ modules/<module>/
     wire/                          ワイヤーフォーマットのパースとシリアライズ（信頼境界のモジュールだけ）
     win/<技術名>_<役割名>.{h,cpp}  Win32 を直接呼ぶアダプター（例: win/wasapi_audio_output.cpp）
     juce/<技術名>_<役割名>.{h,cpp} JUCE によるアダプター（例: juce/juce_web_ui_host.cpp）。JUCE は OS 非依存なので win/ と分ける
+    posix/<技術名>_<役割名>.{h,cpp} Linux の CI で単体テストするための POSIX 実装（製品には含めない。docs/adr/0027-persistence.md）
   tests/
     <対象>_test.cpp
     fakes/fake_<役割名>.h
+    support/                       テスト用の補助（フェイク以外。例: 一時フォルダ）
 ```
 
 `CMakeLists.txt` は `modules/common/CMakeLists.txt` と同じ順序（ライブラリ定義 → ALIAS → include ディレクトリ → 依存 → 警告 → テスト）で書きます。
