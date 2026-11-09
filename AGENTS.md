@@ -85,6 +85,7 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | コントロールスレッド | IPC、セッションの状態遷移、設定の永続化、ロギング | 制約なし。オーディオスレッドへは SPSC キューかオーディオグラフのスワップで渡す |
 | ディスク I/O スレッド（Beta2 以降） | 録音の書き出し、再生ファイルの読み込みとデコード | ブロッキング I/O を含んでよい。オーディオスレッドとはロックフリーの SPSC リングバッファだけで受け渡し、溢れたら欠落として記録してオーディオスレッドを待たせない |
 | 送信スレッド | メディアと制御のパケットの暗号化と UDP の送信。子機は 1 本、親機は子機との接続ごとに 1 本（`docs/adr/0030-remote-pa-assembly.md`、`docs/adr/0036-return-monitor.md`） | ブロッキング I/O を含んでよい。オーディオスレッドからはエンコード済みのフレームを、コントロールスレッドからは制御パケットの平文を SPSC キューで受け取る |
+| JUCE のメッセージスレッド（`pa-engine`） | JUCE の MIDI 入力ポートの一覧、開閉、切断の通知と、プラグインのエディターのウィンドウ（`docs/adr/0039-pa-engine-juce-message-thread.md`） | JUCE の API を呼んでよい。コントロールスレッドとは分け、依頼は `MessageManager::callAsync` で受け、結果と通知はコントロールスレッドのキューへ戻す。子機は `remote-pa` の既存のメッセージループを使う |
 
 スレッド間のデータの受け渡しは、6.1 のパターン（ロックフリー SPSC キュー、ダブルバッファリングによるグラフのスワップ）だけで行います。
 
@@ -143,7 +144,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | モジュール | レイヤー | 責務 | 持たない責務（担当モジュール） |
 | --- | --- | --- | --- |
 | `common` | 共通基盤 | CLI 引数、文字列、時刻などのステートレスなユーティリティ。`Clock` と `Logger` のポート。Result 型 | 特定モジュールのドメイン知識 |
-| `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート。ルーティンググラフ、フィードバックループの検出、PDC、Minus-Me のミックス、録音タップと再生ノード、プラグインノード、MIDI の処理と Panic と、`PluginProcessor`、`AudioFileWriter`、`AudioFileReader`、`MidiInput` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧の `AudioDeviceCatalog` のポート（`docs/adr/0023-wasapi-device-io.md`）。MIDI ソースの `MidiSource` のポートと、MIDI の入力 1 系統のキュー `MidiInputQueue`（`docs/adr/0029-midi-and-vsti.md`） | デバイス制御（`device`）、ネットワーク（`transport`） |
+| `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート。ルーティンググラフ、フィードバックループの検出、PDC、Minus-Me のミックス、録音タップと再生ノード、プラグインノード、MIDI の処理と Panic と、`PluginProcessor`、`AudioFileWriter`、`AudioFileReader`、`MidiInput` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧の `AudioDeviceCatalog` のポート（`docs/adr/0023-wasapi-device-io.md`）。MIDI ソースの `MidiSource` のポートと、MIDI の入力 1 系統のキュー `MidiInputQueue`（`docs/adr/0029-midi-and-vsti.md`）。MIDI 入力ポートの一覧の `MidiDeviceCatalog` と、受信した MIDI を受け取る `MidiInputCallback` のポート（同） | デバイス制御（`device`）、ネットワーク（`transport`） |
 | `transport` | ドメイン | ワイヤーフォーマット、Noise による鍵交換と AEAD（libsodium）、信頼制御層、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正。ソケットのポート。親機から子機への下りストリーム、ステレオと複数ストリーム、MIDI 専用チャンネル（Beta、`docs/adr/0009-beta-module-layout.md`） | 参加者と承認の判断（`session`）、ソケットの実装（`network`） |
 | `control-protocol` | ドメイン | UI とエンジン間のコマンドとイベントの DTO、JSON のシリアライズとデシリアライズ。メッセージを送受信する `MessageChannel` ポートと、2 つのチャンネルをつなぐ `ChannelRelay` | ビジネスロジック、状態（`session`） |
 | `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。子機の MIDI のデコード、時刻の写し方、承認済みの接続だけを受け付ける `PeerMidiInbox`（`docs/adr/0029-midi-and-vsti.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |

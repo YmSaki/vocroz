@@ -45,6 +45,9 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/ports/audio_render_callback.h` | `AudioRenderCallback`（`Mixer` が実装） | 呼び出し可能 |
 | `vocroz/audio_core/ports/audio_capture_callback.h` | `AudioCaptureCallback` | 呼び出し可能 |
 | `vocroz/audio_core/ports/audio_device_listener.h` | `AudioDeviceListener`（デバイスの抜去の通知） | 対象外 |
+| `vocroz/audio_core/ports/midi_input.h` | `MidiInput`（MIDI 入力ポート。`device` が JUCE で実装） | 対象外 |
+| `vocroz/audio_core/ports/midi_input_callback.h` | `MidiInputCallback`（MIDI 入力のメッセージの受け取り） | 対象外 |
+| `vocroz/audio_core/ports/midi_device_catalog.h` | `MidiDeviceCatalog`、`MidiDeviceInfo`（MIDI 入力ポートの一覧。`device` が実装） | 対象外 |
 | `vocroz/audio_core/ports/audio_device_catalog.h` | `AudioDeviceCatalog`（デバイスの一覧。`device` が実装） | 対象外 |
 | `vocroz/audio_core/audio_device_info.h` | `AudioDeviceInfo`、`AudioDeviceDirection` | 対象外 |
 | `vocroz/audio_core/ports/audio_source.h` | `AudioSource`（`transport` のジッターバッファが実装。モノラルかステレオで、ストリップのチャンネル数はソースにそろえる。`docs/adr/0035-client-input-expansion.md`） | 呼び出し可能 |
@@ -223,7 +226,7 @@ if (auto added = add_minus_me_returns(graph, mix_inputs, returns); !added) { /* 
 
 ## テストダブル
 
-`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog`、`FakePluginProcessor`（報告した遅延のぶん実際に遅らせ、受け取った MIDI を記録する）、`FakeAudioFileWriter`（書き込みの遅延と容量不足を模擬する）、`FakeAudioFileReader`（位置から値が決まるサンプルを返す）、`FakeMidiSource`、`FakeAudioSink`（受け取ったサンプルを記録する）は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
+`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog`、`FakePluginProcessor`（報告した遅延のぶん実際に遅らせ、受け取った MIDI を記録する）、`FakeAudioFileWriter`（書き込みの遅延と容量不足を模擬する）、`FakeAudioFileReader`（位置から値が決まるサンプルを返す）、`FakeMidiSource`、`FakeMidiInput`、`FakeMidiDeviceCatalog`、`FakeAudioSink`（受け取ったサンプルを記録する）は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
 
 ```cmake
 target_link_libraries(device_tests PRIVATE vocroz::device vocroz::audio_core_fakes)
