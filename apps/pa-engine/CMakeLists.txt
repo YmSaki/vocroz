@@ -13,6 +13,8 @@ add_library(pa_engine_core STATIC
   src/crash_dump_retention.cpp
   src/crypto_secure_random.cpp
   src/device_loss_relay.cpp
+  src/device_midi_inputs.cpp
+  src/device_midi_relay.cpp
   src/engine_activity.cpp
   src/engine_mixer.cpp
   src/engine_output_devices.cpp
@@ -61,6 +63,13 @@ if(WIN32)
     dbghelp
     shell32
     ole32)
+  if(VOCROZ_WITH_JUCE)
+    # MIDI デバイスの入力のため、JUCE のメッセージスレッドを 1 本持つ
+    # （docs/adr/0039-pa-engine-juce-message-thread.md）。
+    target_sources(pa_engine PRIVATE src/juce/juce_message_thread.cpp)
+    target_compile_definitions(pa_engine PRIVATE VOCROZ_PA_ENGINE_HAS_MIDI)
+    target_link_libraries(pa_engine PRIVATE vocroz::juce)
+  endif()
 endif()
 
 if(VOCROZ_BUILD_TESTS)
@@ -68,6 +77,8 @@ if(VOCROZ_BUILD_TESTS)
     tests/control_loop_test.cpp
     tests/crash_dump_retention_test.cpp
     tests/device_loss_relay_test.cpp
+    tests/device_midi_inputs_test.cpp
+    tests/device_midi_relay_test.cpp
     tests/engine_activity_test.cpp
     tests/engine_mixer_test.cpp
     tests/engine_output_devices_test.cpp

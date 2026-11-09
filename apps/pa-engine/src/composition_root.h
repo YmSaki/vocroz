@@ -11,6 +11,9 @@
 // - パイプの受信スレッド: UI のメッセージのデコード。session へはループに積んで渡す
 // - ネットワーク受信スレッド: network の UDP ソケットのスレッド。子機のメディアの復号から
 //   ジッターバッファへの投入まで（PeerReceivePath）。鍵交換と制御はループに積んで渡す
+// - JUCE のメッセージスレッド（JUCE を使うビルドだけ）: MIDI デバイスの一覧、開閉、抜去の通知。
+//   グラフへの反映はループに積んで渡す（docs/adr/0039-pa-engine-juce-message-thread.md）
+// - JUCE の MIDI の受信スレッド: MIDI デバイスのメッセージをキューに積むだけ
 #pragma once
 
 #include <chrono>
@@ -30,6 +33,7 @@
 #include "vocroz/network/ports/udp_endpoint.h"
 #include "vocroz/network/receive_router.h"
 #include "vocroz/session/host_session.h"
+#include "vocroz/session/peer_midi_inbox.h"
 #include "vocroz/session/ports/secret_store.h"
 #include "vocroz/session/ports/settings_store.h"
 #include "vocroz/transport/crypto_random_source.h"
@@ -38,6 +42,8 @@
 #include "control_loop.h"
 #include "crypto_secure_random.h"
 #include "device_loss_relay.h"
+#include "device_midi_inputs.h"
+#include "device_midi_relay.h"
 #include "engine_activity.h"
 #include "engine_mixer.h"
 #include "engine_output_devices.h"
@@ -54,6 +60,11 @@
 #include "ui_message_receiver.h"
 #include "win/execution_state_sleep_inhibitor.h"
 #include "win/win32_named_mutex.h"
+#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
+#include "vocroz/audio_core/ports/midi_device_catalog.h"
+
+#include "juce/juce_message_thread.h"
+#endif
 
 namespace vocroz::engine {
 
@@ -84,6 +95,11 @@ private:
     // 子機の受信（UDP ソケット、ランデブーへの登録、接続）を用意する。
     // ソケットを開けなければ false を返す。
     [[nodiscard]] bool create_peer_network();
+    // MIDI デバイスの一覧を読み直すよう、メッセージスレッドへ頼む。
+    // JUCE を使わないビルドでは何もしない。
+    void request_midi_refresh();
+    // MIDI デバイスを閉じ、メッセージスレッドを止める。
+    void stop_midi();
 
     LaunchOptions options_;
     // 絶対パスにそろえた --data-dir。決められなければ空（start() が終了コード 1 で終わる）。
@@ -118,6 +134,11 @@ private:
     std::optional<transport::StaticKeyPair> host_keys_;
     audio_core::Mixer mixer_;
     EngineMixer engine_mixer_;
+    // 子機の MIDI
+    // の受け口。ストリップのキューはグラフも参照する（docs/adr/0029-midi-and-vsti.md）。
+    session::PeerMidiInbox midi_inbox_;
+    // MIDI デバイスの開閉を、ループでグラフに反映する。
+    DeviceMidiRelay device_midi_relay_;
     // 抜去の後始末は session に任せる（session が出力を閉じ、Master を SAFETY でミュートする）。
     DeviceLossRelay device_loss_relay_;
     // 開いている出力はミキサーと device_loss_relay_ を呼ぶので、それらより後に宣言する。
@@ -140,9 +161,19 @@ private:
     std::unique_ptr<session::HostSession> session_;
     std::unique_ptr<UiMessageReceiver> ui_receiver_;
 
+#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
+    // --- MIDI デバイス（docs/adr/0039-pa-engine-juce-message-thread.md） ---
+    // midi_catalog_ と device_midi_ は JUCE の資源を持つので、メッセージスレッドの上で作り、
+    // stop_midi() でメッセージスレッドの上で破棄する。
+    std::unique_ptr<audio_core::MidiDeviceCatalog> midi_catalog_;
+    std::unique_ptr<DeviceMidiInputs> device_midi_;
+    JuceMessageThread midi_thread_;
+#endif
+
     // --- 周期処理の状態 ---
     IdleShutdownTimer idle_timer_;
     common::Clock::TimePoint next_session_tick_{};
+    common::Clock::TimePoint next_midi_scan_{};
     bool session_exists_ = false;
     int exit_code_ = 0;
 };
