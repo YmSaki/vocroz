@@ -139,6 +139,8 @@ export interface ChannelStrip {
   channel_count: number;
   /** 同じ子機の同じ種類の入力の中での番号（1 から）。 */
   source_number: number;
+  /** 親機から子機への返送モニター（Minus-Me）のミュート。ミュート中は返送を送らない。初期値は true。 */
+  return_muted: boolean;
 }
 
 /** Master ストリップの状態。 */
@@ -277,6 +279,8 @@ export interface ClientSnapshot {
   send_muted: boolean;
   /** 送信レベル（-60〜+12 dB）。 */
   send_level_db: number;
+  /** 親機が返送モニターをミュート（OFF）にしている。子機からは解除できない。 */
+  return_muted: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +312,8 @@ export type DiscreteCommandBody =
   | { type: "commit_routing"; approve_feedback: boolean }
   | { type: "discard_routing" }
   | { type: "set_route_mute"; muted: boolean }
-  | { type: "select_output"; device_id: string | null };
+  | { type: "select_output"; device_id: string | null }
+  | { type: "set_return_mute"; muted: boolean };
 
 /** 離散コマンド。 */
 export type DiscreteCommand = DiscreteCommandBase & DiscreteCommandBody;

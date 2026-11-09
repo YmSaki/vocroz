@@ -63,6 +63,8 @@ function channel(
     channel_count: 1,
     source_number: 1,
     error_code: null,
+    // 返送モニターも初期値は OFF（ミュート）。
+    return_muted: true,
     ...overrides,
   };
 }
@@ -319,6 +321,9 @@ export class FakeMixerEngine extends FakeEngineBase {
         return;
       case "set_channel_mute":
         this.ack(command, this.updateChannel(command.entity_id, { channel_muted: command.muted }));
+        return;
+      case "set_return_mute":
+        this.ack(command, this.updateChannel(command.entity_id, { return_muted: command.muted }));
         return;
       case "set_master_mute":
         // SAFETY のミュートも、解除はオペレーターの明示的な操作だけで行う。

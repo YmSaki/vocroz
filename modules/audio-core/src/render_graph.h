@@ -98,6 +98,7 @@ private:
         std::shared_ptr<PluginProcessor> plugin;    // kPlugin のときだけ使う
         std::shared_ptr<RecordingTrack> recording;  // kRecordTap のときだけ使う
         std::shared_ptr<PlaybackTrack> playback;    // kPlayer のときだけ使う
+        std::shared_ptr<AudioSink> sink;            // kReturnTap のときだけ使う
         // プラグインの処理が失敗したら立て、このグラフを破棄するまで出力を無音にする。
         // オーディオスレッドだけが読み書きする。
         bool plugin_failed = false;
@@ -109,6 +110,7 @@ private:
     void process_node(std::size_t position, std::size_t frames, FaderBank& faders,
                       MeterBank& meters) noexcept VOCROZ_NONBLOCKING;
     static void keep_pre_fader(Node& node, std::size_t frames) noexcept VOCROZ_NONBLOCKING;
+    static void push_return(Node& node, std::size_t frames) noexcept VOCROZ_NONBLOCKING;
     static void process_plugin(Node& node, std::size_t frames,
                                std::span<const MidiEvent> midi) noexcept VOCROZ_NONBLOCKING;
 

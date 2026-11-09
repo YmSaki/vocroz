@@ -168,6 +168,10 @@ void SimulatedClient::send(std::span<const std::uint8_t> message) {
     }
 }
 
+void SimulatedClient::apply_return_mute(bool /*muted*/, std::uint32_t /*epoch*/) {
+    // この試験基盤の子機は返送（下りの音声）を受信しない（SimulatedHost::set_return_mute()）。
+}
+
 void SimulatedClient::close() {
     link_request_ = LinkRequest::kClose;
 }

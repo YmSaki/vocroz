@@ -124,6 +124,11 @@ struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport:
     bool reported_admission = false;
     // 受信スレッドに取り外しを指示した。on_receive_released() で破棄する。
     bool closing = false;
+    // 返送（Minus-Me）のミュートと世代番号。返送は初期値で OFF なのでミュートで始める。
+    // 下りの送信（返送のエンコーダーと送信）を組み立てたら、ここからエンコーダーへ渡す
+    // （docs/adr/0036-return-monitor.md）。
+    bool return_muted = true;
+    std::uint32_t return_epoch = 0;
 };
 
 HostPeerLinks::HostPeerLinks(Ports ports, const transport::PlayoutConfig& playout)
@@ -284,6 +289,14 @@ void HostPeerLinks::apply_send_mute(session::PeerHandle peer, bool send_muted,
                                .peer = &found->receive,
                                .send_muted = send_muted,
                                .mute_epoch = epoch});
+    }
+}
+
+void HostPeerLinks::set_return_mute(session::PeerHandle peer, bool muted, std::uint32_t epoch) {
+    // 下りの送信はまだ組み立てていないので、状態だけを持つ（送るものはない）。
+    if (Peer* const found = find(peer)) {
+        found->return_muted = muted;
+        found->return_epoch = epoch;
     }
 }
 

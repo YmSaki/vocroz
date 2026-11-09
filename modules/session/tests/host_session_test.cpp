@@ -1167,6 +1167,33 @@ TEST_F(HostSessionTest, RemovingAStripRemovesEveryStripOfTheDisconnectedClient) 
     EXPECT_TRUE(mixer_.channels().empty());
 }
 
+TEST_F(HostSessionTest, ReturnMuteAppliesToEveryStripOfTheClient) {
+    // 返送は子機 1 台に 1 本なので、どの入力のストリップから操作しても子機全体に効く。
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+    const auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 2U);
+
+    ASSERT_TRUE(command(channels[1].entity_id, cp::SetReturnMute{false}));
+    for (const auto& c : session().snapshot().channels) {
+        EXPECT_FALSE(c.return_muted) << c.entity_id;
+        EXPECT_GT(c.revision, 1U) << c.entity_id;
+    }
+    EXPECT_FALSE(peers_.return_mutes().at(7).send_muted);
+    EXPECT_EQ(peers_.return_mutes().at(7).epoch, 1U);
+
+    // 後から足した入力のストリップも、子機の返送の今の状態を持つ。
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio, kSecondMic}});
+    const auto after = session().snapshot().channels;
+    ASSERT_EQ(after.size(), 3U);
+    EXPECT_FALSE(after[2].return_muted);
+    ASSERT_TRUE(command(after[2].entity_id, cp::SetReturnMute{true}));
+    ASSERT_TRUE(command(after[0].entity_id, cp::SetReturnMute{false}));
+    EXPECT_EQ(peers_.return_mutes().at(7).epoch, 2U);
+}
+
 TEST_F(HostSessionTest, RejectsApprovalWhenTheInputsDoNotFitInTheStripLimit) {
     create();
     for (PeerHandle peer = 1; peer < kMaxChannelStrips; ++peer) {
@@ -1177,6 +1204,112 @@ TEST_F(HostSessionTest, RejectsApprovalWhenTheInputsDoNotFitInTheStripLimit) {
     const auto pending = session().snapshot().pending.back().entity_id;
     EXPECT_FALSE(command(pending, cp::ApproveParticipant{}));
     EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+}
+
+// --- 返送モニター（Minus-Me） ---
+
+// 接続 peer に送った ReturnMuteNotice のうち最後のもの。
+std::optional<wire::ReturnMuteNotice> last_return_notice(const FakePeerLink& peers,
+                                                         PeerHandle peer) {
+    const auto sent = peers.sent_to(peer);
+    for (auto it = sent.rbegin(); it != sent.rend(); ++it) {
+        auto decoded = wire::decode_host_to_client(*it);
+        if (decoded) {
+            if (const auto* notice = std::get_if<wire::ReturnMuteNotice>(&decoded.value())) {
+                return *notice;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+TEST_F(HostSessionTest, ApprovedStripStartsWithTheReturnMutedAndTellsTheConnection) {
+    create();
+    const auto a = connect(1, "Vo");
+    EXPECT_TRUE(strip(a).return_muted);
+    // 返送の送信側は止めた状態で始まり、子機にもミュートを知らせる。
+    ASSERT_TRUE(peers_.return_mutes().contains(1));
+    EXPECT_TRUE(peers_.return_mutes().at(1).send_muted);
+    const auto notice = last_return_notice(peers_, 1);
+    ASSERT_TRUE(notice);
+    EXPECT_TRUE(notice->muted);
+}
+
+TEST_F(HostSessionTest, UnmutingTheReturnStartsSendingWithANewEpoch) {
+    create();
+    const auto a = connect(1, "Vo");
+    const auto before = strip(a).revision;
+    const auto applied = command(a, cp::SetReturnMute{false});
+    ASSERT_TRUE(applied);
+    EXPECT_GT(*applied, before);
+    EXPECT_FALSE(strip(a).return_muted);
+    EXPECT_FALSE(peers_.return_mutes().at(1).send_muted);
+    EXPECT_EQ(peers_.return_mutes().at(1).epoch, 1U);
+    EXPECT_EQ(last_return_notice(peers_, 1), (wire::ReturnMuteNotice{false, 1}));
+}
+
+TEST_F(HostSessionTest, MutingTheReturnStopsSendingAndKeepsTheEpoch) {
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command(a, cp::SetReturnMute{false}));
+    ASSERT_TRUE(command(a, cp::SetReturnMute{true}));
+    EXPECT_TRUE(strip(a).return_muted);
+    // ミュートしたら送信を止める（方向別のデータフロー規則）。同じ世代のうちに止まる。
+    EXPECT_TRUE(peers_.return_mutes().at(1).send_muted);
+    EXPECT_EQ(peers_.return_mutes().at(1).epoch, 1U);
+    EXPECT_EQ(last_return_notice(peers_, 1), (wire::ReturnMuteNotice{true, 1}));
+
+    ASSERT_TRUE(command(a, cp::SetReturnMute{false}));
+    EXPECT_EQ(peers_.return_mutes().at(1).epoch, 2U);
+}
+
+TEST_F(HostSessionTest, ReturnMuteDoesNotAffectTheChannelOrOtherParticipants) {
+    create();
+    const auto a = connect(1, "Vo");
+    const auto b = connect(2, "Gt");
+    ASSERT_TRUE(command(a, cp::SetReturnMute{false}));
+    EXPECT_TRUE(strip(a).channel_muted);
+    EXPECT_TRUE(mixer_.channels().at(a).muted);
+    EXPECT_TRUE(strip(b).return_muted);
+    EXPECT_TRUE(peers_.return_mutes().at(2).send_muted);
+}
+
+TEST_F(HostSessionTest, SameReturnMuteIsAcknowledgedWithoutChanges) {
+    create();
+    const auto a = connect(1, "Vo");
+    const auto before = strip(a).revision;
+    const auto sent_before = peers_.sent_to(1).size();
+    EXPECT_EQ(command(a, cp::SetReturnMute{true}), before);
+    EXPECT_EQ(peers_.sent_to(1).size(), sent_before);
+}
+
+TEST_F(HostSessionTest, ReturnMuteTargetsOnlyChannelStrips) {
+    create();
+    EXPECT_FALSE(command("master", cp::SetReturnMute{false}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    request_join(7, "Tp");
+    EXPECT_FALSE(command("pending1", cp::SetReturnMute{false}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+}
+
+TEST_F(HostSessionTest, ReturnStateIsRestoredOnTheNewConnectionAfterReconnect) {
+    create();
+    const auto a = connect(1, "Vo");
+    const auto token = approved_token(1);
+    ASSERT_TRUE(token);
+    ASSERT_TRUE(command(a, cp::SetReturnMute{false}));
+    session().on_peer_timeout(1);
+    // 再接続の間に操作されたら、接続がなくても状態は変わり、戻ったときに反映する。
+    ASSERT_TRUE(command(a, cp::SetReturnMute{true}));
+    ASSERT_TRUE(command(a, cp::SetReturnMute{false}));
+
+    send_from(20, wire::ReconnectRequest{*token});
+    EXPECT_EQ(approved_token(20), token);
+    ASSERT_TRUE(peers_.return_mutes().contains(20));
+    EXPECT_FALSE(peers_.return_mutes().at(20).send_muted);
+    // 世代番号は接続をまたいで続く。
+    EXPECT_EQ(peers_.return_mutes().at(20).epoch, 2U);
+    EXPECT_EQ(last_return_notice(peers_, 20), (wire::ReturnMuteNotice{false, 2}));
 }
 
 }  // namespace
