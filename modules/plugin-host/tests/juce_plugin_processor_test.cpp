@@ -2,16 +2,25 @@
 //
 // JucePluginProcessor の単体テスト。JUCE の AudioPluginInstance をまねたフェイクで、
 // チャンネル構成と遅延の報告、グラフのバッファをその場で処理すること、
-// プラグインの例外で失敗を返し続けることを検証する。
+// プラグインの例外で失敗を返し続けること、MIDI の上限を超えたら止める側のイベントを残すことを
+// 検証する。
 
 #include "juce/juce_plugin_processor.h"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
+
+#include "vocroz/audio_core/midi_message.h"
+
+#include "plugin_host_constants.h"
 
 namespace vocroz::plugin_host {
 namespace {
@@ -28,6 +37,9 @@ public:
     float gain = 0.5F;
     int process_count = 0;
     int last_midi_events = 0;
+    int last_note_offs = 0;
+    // 受け取った MIDI の (サンプル位置, バイト列)。
+    std::vector<std::pair<int, std::vector<std::uint8_t>>> last_midi;
 
     void fillInPluginDescription(juce::PluginDescription& description) const override {
         description.name = "Fake";
@@ -40,6 +52,17 @@ public:
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override {
         ++process_count;
         last_midi_events = midi.getNumEvents();
+        last_note_offs = 0;
+        last_midi.clear();
+        for (const juce::MidiMessageMetadata metadata : midi) {
+            const juce::MidiMessage message = metadata.getMessage();
+            if (message.isNoteOff()) {
+                ++last_note_offs;
+            }
+            last_midi.emplace_back(
+                metadata.samplePosition,
+                std::vector<std::uint8_t>(metadata.data, metadata.data + metadata.numBytes));
+        }
         if (throw_on_process) {
             throw std::runtime_error("plugin failure");
         }
@@ -135,6 +158,84 @@ TEST(JucePluginProcessorTest, PassesMidiEventsToPlugin) {
                             audio_core::MidiEvent{32, {0x80, 60, 0}, 3}};
     EXPECT_EQ(fixture.process(events), audio_core::PluginProcessStatus::kOk);
     EXPECT_EQ(fixture.instance->last_midi_events, 2);
+}
+
+// MidiBuffer の末尾に直接書き足す形式が JUCE の形式と合っていることを、JUCE の読み出しで確かめる。
+// JUCE を上げて内部の形式が変わったら、このテストが落ちる。
+TEST(JucePluginProcessorTest, PluginReadsBackTheSameMidiEventsInOrder) {
+    Fixture fixture(0, 2, 0);
+    const std::array events{
+        audio_core::MidiEvent{0, {0xC0, 5, 0}, 2}, audio_core::MidiEvent{0, {0x90, 60, 100}, 3},
+        audio_core::MidiEvent{17, {0xB0, 64, 127}, 3}, audio_core::MidiEvent{17, {0x80, 60, 0}, 3},
+        audio_core::MidiEvent{63, {0xE0, 0, 64}, 3}};
+    EXPECT_EQ(fixture.process(events), audio_core::PluginProcessStatus::kOk);
+    const auto& received = fixture.instance->last_midi;
+    ASSERT_EQ(received.size(), events.size());
+    for (std::size_t i = 0; i < events.size(); ++i) {
+        EXPECT_EQ(received[i].first, static_cast<int>(events[i].sample_offset)) << i;
+        EXPECT_EQ(received[i].second,
+                  std::vector<std::uint8_t>(events[i].data.begin(),
+                                            events[i].data.begin() + events[i].size))
+            << i;
+    }
+}
+
+TEST(JucePluginProcessorTest, SortsEventsThatArriveOutOfOrder) {
+    Fixture fixture(0, 2, 0);
+    // 昇順の約束から外れても、プラグインにはサンプル位置の順に渡す。
+    const std::array events{audio_core::MidiEvent{40, {0x90, 60, 100}, 3},
+                            audio_core::MidiEvent{10, {0x90, 62, 100}, 3}};
+    EXPECT_EQ(fixture.process(events), audio_core::PluginProcessStatus::kOk);
+    const auto& received = fixture.instance->last_midi;
+    ASSERT_EQ(received.size(), 2U);
+    EXPECT_EQ(received[0].first, 10);
+    EXPECT_EQ(received[1].first, 40);
+}
+
+TEST(JucePluginProcessorTest, ClearsMidiBetweenBlocks) {
+    Fixture fixture(0, 2, 0);
+    const std::array first{audio_core::MidiEvent{50, {0x90, 60, 100}, 3}};
+    EXPECT_EQ(fixture.process(first), audio_core::PluginProcessStatus::kOk);
+    // 前のブロックの位置より前のイベントも、次のブロックでは先頭から積む。
+    const std::array second{audio_core::MidiEvent{3, {0x80, 60, 0}, 3}};
+    EXPECT_EQ(fixture.process(second), audio_core::PluginProcessStatus::kOk);
+    ASSERT_EQ(fixture.instance->last_midi.size(), 1U);
+    EXPECT_EQ(fixture.instance->last_midi[0].first, 3);
+}
+
+TEST(JucePluginProcessorTest, KeepsReleaseEventsWhenMidiExceedsTheLimit) {
+    Fixture fixture(0, 2, 0);
+    // 上限より多い Note On の後に、Panic の Note Off が続くブロック。
+    std::vector<audio_core::MidiEvent> events;
+    const std::size_t note_ons = kMaxMidiEventsPerProcess;
+    for (std::size_t i = 0; i < note_ons; ++i) {
+        events.push_back(
+            audio_core::MidiEvent{0, {0x90, static_cast<std::uint8_t>(i % 128), 100}, 3});
+    }
+    constexpr int kNoteOffs = 2064;
+    for (int i = 0; i < kNoteOffs; ++i) {
+        events.push_back(audio_core::make_note_off(static_cast<std::uint8_t>(i / 128),
+                                                   static_cast<std::uint8_t>(i % 128), 10));
+    }
+    EXPECT_EQ(fixture.process(events), audio_core::PluginProcessStatus::kOk);
+    EXPECT_EQ(fixture.instance->last_midi_events, static_cast<int>(kMaxMidiEventsPerProcess));
+    EXPECT_EQ(fixture.instance->last_note_offs, kNoteOffs);
+}
+
+TEST(JucePluginProcessorTest, KeepsOrderOfEventsAtTheSamePositionWhenTrimming) {
+    Fixture fixture(0, 2, 0);
+    // 同じ位置の Note On と Note Off（ごく短い音）の順序を、絞り込みで入れ替えない。
+    std::vector<audio_core::MidiEvent> events;
+    for (std::size_t i = 0; i < kMaxMidiEventsPerProcess / 2 + 1; ++i) {
+        events.push_back(audio_core::MidiEvent{5, {0x90, 60, 100}, 3});
+        events.push_back(audio_core::make_note_off(0, 60, 5));
+    }
+    EXPECT_EQ(fixture.process(events), audio_core::PluginProcessStatus::kOk);
+    const auto& received = fixture.instance->last_midi;
+    ASSERT_FALSE(received.empty());
+    EXPECT_EQ(received.front().second[0], 0x90);
+    // 最後に残る Note On の後には、それを止める Note Off がある。
+    EXPECT_EQ(received.back().second[0], 0x80);
 }
 
 TEST(JucePluginProcessorTest, KeepsFailingAfterPluginThrows) {
