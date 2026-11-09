@@ -123,6 +123,12 @@ export function MixerScreen({
         onCreateSession={() =>
           command.send(session.entity_id, session.revision, { type: "create_session" })
         }
+        onSelectOutput={(deviceId) =>
+          command.send(session.entity_id, session.revision, {
+            type: "select_output",
+            device_id: deviceId,
+          })
+        }
         onEndSession={() => setConfirmEnd(true)}
         onCopyInvite={copyInvite}
         onToggleApproval={() => setApprovalOpen((open) => !open)}

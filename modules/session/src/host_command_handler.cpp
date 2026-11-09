@@ -31,6 +31,8 @@ void HostCommandHandler::handle_ui_message(const cp::UiToEngineMessage& message)
         [this](const auto& m) {
             using M = std::decay_t<decltype(m)>;
             if constexpr (std::is_same_v<M, cp::Hello>) {
+                // 前の接続から抜き差しされたデバイスがあるかもしれないので、列挙し直してから送る。
+                ctx_.refresh_output_devices();
                 ctx_.ports.ui.publish(cp::MixerSnapshotEvent{ctx_.snapshot()});
             } else if constexpr (std::is_same_v<M, cp::DiscreteCommand>) {
                 handle_discrete(m);
@@ -116,6 +118,8 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
                 return id == kRoutingEntityId ? discard_routing() : invalid_state();
             } else if constexpr (std::is_same_v<B, cp::SetRouteMute>) {
                 return set_route_mute(id, body.muted);
+            } else if constexpr (std::is_same_v<B, cp::SelectOutput>) {
+                return id == kSessionEntityId ? select_output(body.device_id) : invalid_state();
             } else if constexpr (std::is_same_v<B, cp::SetLatencyTarget>) {
                 return id == kSessionEntityId ? set_latency_target(body.target_ms)
                                               : invalid_state();
@@ -312,6 +316,39 @@ HostCommandHandler::CommandResult HostCommandHandler::set_latency_target(double 
         detail::bump_revision(ctx_.session.revision);
         ctx_.publish_session();
         ctx_.save_settings();
+    }
+    return ctx_.session.revision;
+}
+
+// --- 出力デバイス ---
+
+HostCommandHandler::CommandResult HostCommandHandler::select_output(
+    const std::optional<std::string>& device_id) {
+    ctx_.refresh_output_devices();
+    const bool already_open = ctx_.session.output_device_state == cp::OutputDeviceState::kOpen &&
+                              ctx_.session.output_device_id == device_id;
+    const bool already_none =
+        !device_id && ctx_.session.output_device_state == cp::OutputDeviceState::kNone;
+    if (already_open || already_none) {
+        // 開き直すと音が途切れるので何もしない。一覧だけは新しくなっているので知らせる。
+        ctx_.publish_session();
+        return ctx_.session.revision;
+    }
+    bool opened = true;
+    if (device_id) {
+        opened = ctx_.open_output(*device_id);
+    } else {
+        ctx_.close_output();
+        ctx_.settings.output_device_id.reset();
+        ctx_.save_settings();
+    }
+    // 開けなかったときも、前のデバイスは閉じて状態が変わっているので revision を進めて知らせる。
+    // Master のミュートは変えない（音を出すかはオペレーターが Master で決める）。
+    detail::bump_revision(ctx_.session.revision);
+    ctx_.publish_session();
+    if (!opened) {
+        ctx_.log(common::LogLevel::kWarning, "選択した出力デバイスを開けませんでした");
+        return common::make_unexpected(ErrorCode::kDeviceUnavailable);
     }
     return ctx_.session.revision;
 }

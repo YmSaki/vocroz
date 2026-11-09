@@ -18,6 +18,7 @@
 #include "fakes/fake_host_link.h"
 #include "fakes/fake_logger.h"
 #include "fakes/fake_mixer_control.h"
+#include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_playout_control.h"
 #include "fakes/fake_rendezvous_client.h"
@@ -158,12 +159,13 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedFromBackup) {
     write_text(host_path(), std::string("\x00\x01garbage", 9));
 
     session::FakeMixerControl mixer;
+    session::FakeOutputDeviceControl outputs;
     session::FakePeerLink peers;
     session::FakeRendezvousClient rendezvous;
     session::FakeSecureRandom random;
     session::FakePlayoutControl playout;
     session::HostSession host{
-        {}, {ui_, mixer, peers, rendezvous, store_, random, clock_, logger_, playout}};
+        {}, {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_, logger_, playout}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());
@@ -175,12 +177,13 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedAndDefaultsWhenNo
     write_text(dir_.path() / "host-settings.json.bak", "garbage");
 
     session::FakeMixerControl mixer;
+    session::FakeOutputDeviceControl outputs;
     session::FakePeerLink peers;
     session::FakeRendezvousClient rendezvous;
     session::FakeSecureRandom random;
     session::FakePlayoutControl playout;
     session::HostSession host{
-        {}, {ui_, mixer, peers, rendezvous, store_, random, clock_, logger_, playout}};
+        {}, {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_, logger_, playout}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());

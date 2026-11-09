@@ -78,6 +78,15 @@ struct SetSendMute {
     friend bool operator==(const SetSendMute&, const SetSendMute&) = default;
 };
 
+/// 出力デバイスを選ぶ（親機）。対象はセッションの entity。
+/// 選んでも Master のミュートは変わらない（音を出すかはオペレーターが Master で決める）。
+/// デバイスを開けなければ DEVICE_UNAVAILABLE で拒否し、ほかのデバイスへは切り替えない。
+struct SelectOutput {
+    /// デバイスの永続 ID。std::nullopt は「出力なし」（出力を止める）。
+    std::optional<std::string> device_id;
+    friend bool operator==(const SelectOutput&, const SelectOutput&) = default;
+};
+
 /// ルーティングの構成をステージングする（親機）。対象は "routing"。
 /// エンジンは構成を検証して結果とともに保持するだけで、音声のグラフはまだ変えない。
 /// 検証で問題が見つかってもステージングは受け付け、理由を RoutingCheck で知らせる。
@@ -116,7 +125,8 @@ struct SetLatencyTarget {
 using DiscreteCommandBody =
     std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
                  RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
-                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SetLatencyTarget>;
+                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput,
+                 SetLatencyTarget>;
 
 /// 離散コマンド。
 struct DiscreteCommand {

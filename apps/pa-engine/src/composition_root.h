@@ -34,6 +34,7 @@
 #include "device_loss_relay.h"
 #include "engine_activity.h"
 #include "engine_mixer.h"
+#include "engine_output_devices.h"
 #include "invite_result_relay.h"
 #include "launch_options.h"
 #include "offline_rendezvous_client.h"
@@ -63,8 +64,6 @@ public:
 private:
     // 起動の段階。失敗したら終了コードを返す。
     [[nodiscard]] std::optional<int> start();
-    void open_saved_output_device();
-    void on_output_device_lost();
     void on_tick();
     void apply_activity();
     void shutdown();
@@ -105,11 +104,13 @@ private:
     std::optional<transport::StaticKeyPair> host_keys_;
     audio_core::Mixer mixer_;
     EngineMixer engine_mixer_;
+    // 抜去の後始末は session に任せる（session が出力を閉じ、Master を SAFETY でミュートする）。
+    DeviceLossRelay device_loss_relay_;
+    // 開いている出力はミキサーと device_loss_relay_ を呼ぶので、それらより後に宣言する。
+    std::unique_ptr<EngineOutputDevices> outputs_;
     std::unique_ptr<UiEventPublisher> ui_publisher_;
     std::unique_ptr<session::HostSession> session_;
     std::unique_ptr<UiMessageReceiver> ui_receiver_;
-    DeviceLossRelay device_loss_relay_;
-    std::unique_ptr<audio_core::AudioOutput> output_;
 
     // --- 周期処理の状態 ---
     IdleShutdownTimer idle_timer_;

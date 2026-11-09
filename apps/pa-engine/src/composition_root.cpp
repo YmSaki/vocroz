@@ -92,7 +92,12 @@ CompositionRoot::CompositionRoot(const LaunchOptions& options)
       offline_rendezvous_(loop_),
       mixer_(mixer_config()),
       engine_mixer_(mixer_, *logger_),
-      device_loss_relay_(mixer_, loop_, [this] { on_output_device_lost(); }),
+      device_loss_relay_(mixer_, loop_,
+                         [this] {
+                             logger_->log(common::LogLevel::kWarning,
+                                          "出力デバイスが抜かれたため、Master をミュートしました");
+                             session_->on_output_device_lost();
+                         }),
       idle_timer_(kIdleShutdownTimeout) {}
 
 CompositionRoot::~CompositionRoot() {
@@ -155,6 +160,10 @@ std::optional<int> CompositionRoot::start() {
     }
     ui_channel_ = std::move(channel).value();
     device_catalog_ = device::make_wasapi_audio_device_catalog(*logger_);
+    outputs_ = std::make_unique<EngineOutputDevices>(
+        *device_catalog_,
+        [this](std::string_view id) { return device::make_wasapi_audio_output(id, *logger_); },
+        mixer_, device_loss_relay_, *logger_);
 
     ui_publisher_ = std::make_unique<UiEventPublisher>(*ui_channel_, *logger_);
     session::HostSession::Config config;
@@ -162,8 +171,8 @@ std::optional<int> CompositionRoot::start() {
     config.invite_base_url = kInviteBaseUrl;
     session_ = std::make_unique<session::HostSession>(
         std::move(config),
-        session::HostSession::Ports{*ui_publisher_, engine_mixer_, peers_, *rendezvous_, *settings_,
-                                    random_, clock_, *logger_, playout_});
+        session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, peers_, *rendezvous_,
+                                    *settings_, random_, clock_, *logger_, playout_});
     const auto on_registered =
         [this](
             const session::InviteToken& token,
@@ -172,8 +181,8 @@ std::optional<int> CompositionRoot::start() {
         };
     invite_relay_.set_registration_handler(on_registered);
     offline_rendezvous_.set_registration_handler(on_registered);
+    // 保存した出力デバイスは session が start() で開く。
     session_->start();
-    open_saved_output_device();
 
     // UI の受け付けは、session が初期状態（全ミュート）になってから始める。
     ui_receiver_ = std::make_unique<UiMessageReceiver>(
@@ -205,48 +214,6 @@ void CompositionRoot::create_rendezvous_client() {
     https_rendezvous_ =
         std::make_unique<network::HttpsRendezvousClient>(*https_transport_, invite_relay_);
     rendezvous_ = https_rendezvous_.get();
-}
-
-void CompositionRoot::open_saved_output_device() {
-    // 保存した ID のデバイスだけを開く。開けなければ未選択のままにし、ほかのデバイスへは
-    // 切り替えない（出力デバイスを暗黙にフォールバックしない）。
-    auto saved = settings_->load_host();
-    if (!saved || !saved.value().output_device_id) {
-        return;
-    }
-    const std::string& id = *saved.value().output_device_id;
-    auto output = device::make_wasapi_audio_output(id, *logger_);
-    if (!output) {
-        logger_->log(common::LogLevel::kWarning, "保存した出力デバイスを開けませんでした");
-        return;
-    }
-    if (const auto started = output.value()->start(mixer_, device_loss_relay_); !started) {
-        logger_->log(common::LogLevel::kWarning,
-                     "保存した出力デバイスで出力を始められませんでした");
-        return;
-    }
-    output_ = std::move(output).value();
-    std::string name = id;
-    if (auto devices = device_catalog_->list(ac::AudioDeviceDirection::kOutput)) {
-        for (const auto& device : devices.value()) {
-            if (device.id == id) {
-                name = device.name;
-            }
-        }
-    }
-    session_->on_output_device_opened(id, name);
-}
-
-void CompositionRoot::on_output_device_lost() {
-    // 安全ミュートは DeviceLossRelay がすでにかけている。ここでは止まったデバイスを片付け、
-    // session に Master の SAFETY ミュートと LOST の表示をさせる。
-    if (output_) {
-        output_->stop();
-        output_.reset();
-    }
-    session_->on_output_device_lost();
-    logger_->log(common::LogLevel::kWarning,
-                 "出力デバイスが抜かれたため、Master をミュートしました");
 }
 
 void CompositionRoot::on_tick() {
@@ -290,9 +257,8 @@ void CompositionRoot::shutdown() {
     if (ui_channel_) {
         ui_channel_->set_listener(nullptr);
     }
-    if (output_) {
-        output_->stop();
-        output_.reset();
+    if (outputs_) {
+        outputs_->close_output();
     }
     sleep_inhibitor_.set_inhibited(false);
     session_lock_.reset();

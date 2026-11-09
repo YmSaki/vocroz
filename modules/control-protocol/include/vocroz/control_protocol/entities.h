@@ -27,6 +27,15 @@ using Sequence = std::uint64_t;
 /// -∞ dB は音量値であり、ミュートとは別に扱う。
 using GainDb = std::optional<double>;
 
+/// 親機で選べる出力デバイス。
+struct OutputDevice {
+    /// デバイス固有の永続 ID（エンドポイント ID）。
+    std::string id;
+    std::string name;
+
+    friend bool operator==(const OutputDevice&, const OutputDevice&) = default;
+};
+
 /// 親機のセッション全体の状態。ステータス帯に表示する。
 struct SessionInfo {
     std::string entity_id;
@@ -41,6 +50,11 @@ struct SessionInfo {
     OutputDeviceState output_device_state = OutputDeviceState::kNone;
     /// OPEN のときのデバイス名。
     std::optional<std::string> output_device_name;
+    /// 選択中の出力デバイスの ID。NONE では std::nullopt。LOST では抜けたデバイスの ID を残す
+    /// （挿し直したデバイスを選び直しやすくするため）。
+    std::optional<std::string> output_device_id;
+    /// 選べる出力デバイス。UI の接続時と、選択や抜去のときにエンジンが列挙し直す。
+    std::vector<OutputDevice> output_devices;
     /// 利用可能な更新のバージョン。なければ std::nullopt。
     std::optional<std::string> update_available;
     /// 全体の目標レイテンシー（ms）。受信するすべてのストリームのジッターバッファの深さの上限で、

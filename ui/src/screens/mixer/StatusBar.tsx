@@ -2,6 +2,7 @@
 // 画面上部のステータス帯。
 // セッション名、状態、接続人数、出力デバイス、警告件数、更新の通知を常に表示する。
 // 出力デバイスの消失は解決するまでここに警告として残す。
+// 出力デバイスはここで選ぶ。選択は ACK を待ってから表示に反映する（リストの値はエンジンの状態だけで決める）。
 // 全チャンネル共通の目標遅延（ジッターバッファの上限）もここで選ぶ。
 
 import { t } from "../../i18n/i18n";
@@ -21,6 +22,11 @@ function latencyOptions(current: number): number[] {
     : [...kLatencyTargetOptionsMs, current].sort((a, b) => a - b);
 }
 
+// リストの「出力なし」と「見つからないデバイス」の値。エンドポイント ID は空にならず、
+// 中かっこで始まるので、どちらとも重ならない。
+const kNoOutput = "";
+const kLostOutput = "\u0000lost";
+
 /** ステータス帯の props。 */
 export interface StatusBarProps {
   session: SessionInfo;
@@ -37,6 +43,8 @@ export interface StatusBarProps {
   /** 目標遅延を選ぶ。 */
   onSetLatencyTarget: (targetMs: number) => void;
   onCreateSession: () => void;
+  /** 出力デバイスを選んだ。null は「出力なし」。 */
+  onSelectOutput: (deviceId: string | null) => void;
   onEndSession: () => void;
   onCopyInvite: () => void;
   onToggleApproval: () => void;
@@ -55,6 +63,7 @@ export function StatusBar({
   historyOpen,
   onSetLatencyTarget,
   onCreateSession,
+  onSelectOutput,
   onEndSession,
   onCopyInvite,
   onToggleApproval,
@@ -66,10 +75,14 @@ export function StatusBar({
       ? `${t("session.ERROR")} (${session.error_code})`
       : t(`session.${session.state}`);
   const deviceLost = session.output_device_state === "LOST";
-  const deviceText =
+  // LOST のときは「見つからないデバイス」を選択中として示す。挿し直したデバイスを選んでも
+  // 値が変わり、選び直しとして送れるようにするため。
+  const selectedOutput =
     session.output_device_state === "OPEN"
-      ? (session.output_device_name ?? "")
-      : t(`output.${session.output_device_state}`);
+      ? (session.output_device_id ?? kNoOutput)
+      : deviceLost
+        ? kLostOutput
+        : kNoOutput;
   const canEnd = session.state === "READY" || session.state === "ACTIVE";
   return (
     <header class="status-bar">
@@ -92,7 +105,29 @@ export function StatusBar({
         role={deviceLost ? "alert" : undefined}
       >
         <span class="status-bar__label">{t("status.output")}</span>
-        <span class="status-bar__value">{deviceText}</span>
+        <select
+          class="status-bar__select"
+          aria-label={t("output.select")}
+          value={selectedOutput}
+          disabled={sessionPending}
+          onChange={(event) => {
+            const value = (event.target as HTMLSelectElement).value;
+            onSelectOutput(value === kNoOutput ? null : value);
+          }}
+        >
+          <option value={kNoOutput}>{t("output.none_option")}</option>
+          {session.output_devices.map((device) => (
+            <option key={device.id} value={device.id}>
+              {device.name}
+            </option>
+          ))}
+          {deviceLost ? (
+            <option value={kLostOutput} disabled>
+              {t("output.lost_option")}
+            </option>
+          ) : null}
+        </select>
+        {deviceLost ? <span class="status-bar__value">{t("output.LOST")}</span> : null}
       </div>
       <div class={`status-bar__item${warningCount > 0 ? " status-bar__item--warning" : ""}`}>
         <span class="status-bar__label">{t("status.warnings")}</span>

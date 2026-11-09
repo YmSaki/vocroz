@@ -46,6 +46,7 @@ private:
     CommandResult commit_routing(bool approve_feedback);
     CommandResult discard_routing();
     CommandResult set_route_mute(const std::string& entity_id, bool muted);
+    CommandResult select_output(const std::optional<std::string>& device_id);
     /// 全体の目標レイテンシーを変え、受信側へ反映して保存する。
     CommandResult set_latency_target(double target_ms);
     void handle_gain(const control_protocol::SetGain& command);

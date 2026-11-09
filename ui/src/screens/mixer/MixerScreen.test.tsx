@@ -128,6 +128,37 @@ describe("ミュートの表示（AT-A04）", () => {
   });
 });
 
+describe("出力デバイスの選択", () => {
+  function outputSelect(): HTMLSelectElement {
+    return screen.getByRole("combobox", { name: "出力デバイスを選ぶ" });
+  }
+
+  it("選んだデバイスは ACK のあとに表示し、Master のミュートは変えない", async () => {
+    expect(outputSelect().value).toBe("usb");
+    fireEvent.change(outputSelect(), { target: { value: "onboard" } });
+    await advance(20);
+    expect(engine.snapshot().session.output_device_id).toBe("onboard");
+    expect(outputSelect().value).toBe("onboard");
+    expect(engine.snapshot().master.master_muted).toBe(true);
+  });
+
+  it("開けないデバイスはトーストで知らせ、出力なしと表示する", async () => {
+    fireEvent.change(outputSelect(), { target: { value: "broken" } });
+    await advance(20);
+    expect(screen.getByText(/出力デバイスを開けません/)).toBeTruthy();
+    expect(outputSelect().value).toBe("");
+  });
+
+  it("消失したあとは、見つからないデバイスを選択中として示し、選び直せる", async () => {
+    act(() => engine.simulateOutputLost());
+    expect(outputSelect().selectedOptions[0]?.textContent).toBe("（見つからないデバイス）");
+    fireEvent.change(outputSelect(), { target: { value: "usb" } });
+    await advance(20);
+    expect(engine.snapshot().session.output_device_state).toBe("OPEN");
+    expect(screen.queryByText("出力デバイス消失")).toBeNull();
+  });
+});
+
 describe("フェーダーの楽観的更新", () => {
   it("ドラッグ中は手元の値を表示し、ACK が 500 ms 来なければ戻して警告する", async () => {
     // エンジンに届かない状況を再現するため、連続値のコマンドだけを捨てる。

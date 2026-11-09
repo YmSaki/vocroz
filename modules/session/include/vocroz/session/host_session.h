@@ -9,6 +9,7 @@
 // - 承認と拒否、再接続トークンによる同じストリップへの復帰、全員 LOST での READY への復帰
 // - コマンドの適用（revision の競合の拒否、重複した request_id の無視）と認可
 // - 初期ミュートと、出力デバイスの抜去時の Master の SAFETY ミュート
+// - 出力デバイスの選択（保存したデバイスだけを開き、ほかのデバイスへフォールバックしない）
 // 副作用（ミキサー、接続、ランデブーサーバー、設定、UI への通知）はすべてポート経由で行う。
 #pragma once
 
@@ -25,6 +26,7 @@
 #include "vocroz/control_protocol/states.h"
 #include "vocroz/session/identifiers.h"
 #include "vocroz/session/ports/mixer_control.h"
+#include "vocroz/session/ports/output_device_control.h"
 #include "vocroz/session/ports/peer_link.h"
 #include "vocroz/session/ports/playout_control.h"
 #include "vocroz/session/ports/rendezvous_client.h"
@@ -52,6 +54,7 @@ public:
     struct Ports {
         UiEventSink& ui;
         MixerControl& mixer;
+        OutputDeviceControl& outputs;
         PeerLink& peers;
         RendezvousClient& rendezvous;
         SettingsStore& settings;
@@ -71,7 +74,8 @@ public:
 
     /// 設定を読み、初期状態（Master ミュート、セッションなし）をミキサーへ反映する。
     /// 設定が読めなくても既定値で始める。ミュートは保存しないので、前回音が出ていても必ず
-    /// ミュートから始まる。起動時に 1 回だけ呼ぶ。
+    /// ミュートから始まる。保存した出力デバイスがあればそのデバイスだけを開き、開けなければ
+    /// 未選択のままにする。起動時に 1 回だけ呼ぶ。
     void start();
 
     /// UI からのメッセージを適用する。応答とイベントは UiEventSink へ送る。
@@ -119,16 +123,9 @@ public:
     /// @param state 新しい信号状態
     void on_signal_state(PeerHandle peer, control_protocol::SignalState state);
 
-    /// 出力デバイスを開いた。Master のミュートは変えない（解除はオペレーターの操作だけ）。
-    /// @param device_id デバイスの永続 ID
-    /// @param name      表示名
-    void on_output_device_opened(const std::string& device_id, const std::string& name);
-
-    /// 使用中の出力デバイスが消えた。Master を SAFETY でミュートし、他のデバイスへは切り替えない。
+    /// 使用中の出力デバイスが消えた。出力を閉じ、Master を SAFETY でミュートし、
+    /// 他のデバイスへは切り替えない。オペレーターが SelectOutput で選び直すまで LOST のまま。
     void on_output_device_lost();
-
-    /// 出力デバイスの選択を解除した。
-    void on_output_device_closed();
 
     /// エンジンの致命的な異常を知らせる。セッションを ERROR にし、Master を SAFETY でミュートする。
     /// @param code 原因

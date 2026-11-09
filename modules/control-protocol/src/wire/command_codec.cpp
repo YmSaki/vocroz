@@ -47,6 +47,13 @@ void read_fields(ObjectReader& r, SelectInput& command) {
     command.device_id = r.nullable_text("device_id", kDeviceIdRule);
 }
 
+void write_fields(nlohmann::json& out, const SelectOutput& command) {
+    out["device_id"] = nullable(command.device_id);
+}
+void read_fields(ObjectReader& r, SelectOutput& command) {
+    command.device_id = r.nullable_text("device_id", kDeviceIdRule);
+}
+
 void write_fields(nlohmann::json& out, const SetSendMute& command) {
     out["muted"] = command.muted;
 }
