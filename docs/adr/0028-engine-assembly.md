@@ -69,6 +69,13 @@ ADR-0020 の名前付きパイプのサーバーは、UI の接続をまたい�
 - 親機の長期鍵（`StaticKeyPair`）は、設定の永続化ができるまで起動のたびに作る。
 - 招待 URL の基底（`/join` を持つランデブーサーバーの URL）は、CMake のキャッシュ変数 `VOCROZ_RENDEZVOUS_URL` から生成するヘッダーで渡す。
 
+**追記（2026-11-09、P1 #55 と招待の HTTPS #56 のマージ後）**: 次のとおり本物に差し替えた。
+
+- ログは persistence の `make_rotating_file_logger()`（`<data-dir>\logs\pa-engine.log`）。データフォルダを決められないときだけ、起動できない理由を `StderrLogger` で標準エラー出力に書く。
+- 設定は `make_json_settings_store()`。`MemorySettingsStore` は消した。
+- 親機の長期鍵は `make_dpapi_secret_store()` に保存し、起動のたびに読み込む（`load_host_keys()`）。ない、壊れている、長さが不正なら作り直して保存する。読み込みが I/O の失敗なら、保存した鍵を上書きしないよう、その起動だけの鍵を使う。秘密鍵から鍵ペアを作り直すため、transport に `StaticKeyPair::from_private_key()` を足した。
+- ランデブーサーバーとの通信は network の `HttpsRendezvousClient`。結果は作業用のスレッドから届くので、`InviteResultRelay` がコントロールスレッドのループに積んで session に渡す。`VOCROZ_RENDEZVOUS_URL` が空か、HTTPS の通信を始められないときは、`OfflineRendezvousClient`（セッションを作れない。オフラインの会場と同じ振る舞い）を使う。
+
 ## 理由
 
 - **UI の接続を送信の成否で推定する理由**: ADR-0020 のパイプのサーバーは、UI の切断を通知しない。通知を足すには ipc の契約を変える必要があるが、エンジンはメーターを 20Hz で送り続けるので、送信の失敗で十分早く（50ms 以内）切断を知ることができる。

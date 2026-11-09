@@ -10,10 +10,14 @@
 
 #include "vocroz/device/factories.h"
 #include "vocroz/ipc/factories.h"
+#include "vocroz/network/factories.h"
+#include "vocroz/persistence/factories.h"
 #include "vocroz/update/session_lock.h"
 
 #include "engine_config.h"
 #include "engine_constants.h"
+#include "host_key_loader.h"
+#include "stderr_logger.h"
 #include "win/console_stop_signal.h"
 #include "win/known_paths.h"
 #include "win/minidump_crash_handler.h"
@@ -48,14 +52,46 @@ namespace ac = audio_core;
     return L"Local\\" + pipe_name.substr(slash == std::wstring::npos ? 0 : slash + 1);
 }
 
+// --data-dir（なければ %LOCALAPPDATA%\VOCROZ）を絶対パスにそろえて作る。
+// パイプとミューテックスの名前はパスから作るので、remote-pa と表記が違っても同じ名前になるように。
+// 決められないか作れなければ空を返す。
+[[nodiscard]] std::filesystem::path resolve_data_dir(const LaunchOptions& options) {
+    const auto base = options.data_dir ? std::optional{std::filesystem::path{std::u8string(
+                                             options.data_dir->begin(), options.data_dir->end())}}
+                                       : win::default_data_dir();
+    if (!base) {
+        return {};
+    }
+    std::error_code error;
+    auto absolute = std::filesystem::absolute(*base, error);
+    if (error || (std::filesystem::create_directories(absolute, error), error)) {
+        return {};
+    }
+    return absolute;
+}
+
+[[nodiscard]] std::unique_ptr<common::Logger> make_logger(const std::filesystem::path& data_dir,
+                                                          common::LogLevel level) {
+    if (data_dir.empty()) {
+        // ログファイルの置き場所がないので、起動できない理由だけでも標準エラー出力に残す。
+        return std::make_unique<StderrLogger>(level);
+    }
+    return persistence::make_rotating_file_logger(
+        persistence::LogOptions{.directory = persistence::log_directory(data_dir),
+                                .base_name = "pa-engine",
+                                .min_level = level});
+}
+
 }  // namespace
 
 CompositionRoot::CompositionRoot(const LaunchOptions& options)
     : options_(options),
-      logger_(options.log_level),
-      rendezvous_(loop_),
+      data_dir_(resolve_data_dir(options)),
+      logger_(make_logger(data_dir_, options.log_level)),
+      invite_relay_(loop_),
+      offline_rendezvous_(loop_),
       mixer_(mixer_config()),
-      engine_mixer_(mixer_, logger_),
+      engine_mixer_(mixer_, *logger_),
       device_loss_relay_(mixer_, loop_, [this] { on_output_device_lost(); }),
       idle_timer_(kIdleShutdownTimeout) {}
 
@@ -68,42 +104,30 @@ int CompositionRoot::run() {
         return *failed;
     }
     win::install_console_stop_signal(loop_);
-    logger_.log(common::LogLevel::kInfo, "エンジンを起動しました");
+    logger_->log(common::LogLevel::kInfo, "エンジンを起動しました");
     loop_.run(kControlTickInterval, [this] { on_tick(); });
     win::uninstall_console_stop_signal();
     shutdown();
-    logger_.log(common::LogLevel::kInfo, "エンジンを終了しました");
+    logger_->log(common::LogLevel::kInfo, "エンジンを終了しました");
     return exit_code_;
 }
 
 std::optional<int> CompositionRoot::start() {
-    // データフォルダは絶対パスにそろえる。パイプとミューテックスの名前はパスから作るので、
-    // remote-pa と表記が違っても同じ名前になるように。
-    std::error_code error;
-    const auto base = options_.data_dir
-                          ? std::optional{std::filesystem::path{std::u8string(
-                                options_.data_dir->begin(), options_.data_dir->end())}}
-                          : win::default_data_dir();
-    if (!base) {
-        logger_.log(common::LogLevel::kError, "データフォルダを決められません");
+    if (data_dir_.empty()) {
+        logger_->log(common::LogLevel::kError, "データフォルダを決められないか、作れません");
         return kExitFatal;
     }
-    data_dir_ = std::filesystem::absolute(*base, error);
-    if (error || (std::filesystem::create_directories(data_dir_, error), error)) {
-        logger_.log(common::LogLevel::kError, "データフォルダを作れません");
-        return kExitFatal;
-    }
-    win::install_minidump_crash_handler(data_dir_ / L"crash", logger_);
+    win::install_minidump_crash_handler(data_dir_ / L"crash", *logger_);
 
     const auto pipe_name = ipc::engine_pipe_name(data_dir_);
     if (!pipe_name) {
-        logger_.log(common::LogLevel::kError, "パイプの名前を決められません");
+        logger_->log(common::LogLevel::kError, "パイプの名前を決められません");
         return kExitFatal;
     }
     // 単一起動。同じデータフォルダのエンジンが動いていれば、remote-pa はそちらにつなげばよい。
     auto instance = win::Win32NamedMutex::create(instance_lock_name(pipe_name.value()), true);
     if (!instance) {
-        logger_.log(common::LogLevel::kInfo, "同じデータフォルダのエンジンがすでに動いています");
+        logger_->log(common::LogLevel::kInfo, "同じデータフォルダのエンジンがすでに動いています");
         return instance.error() == win::NamedMutexError::kAlreadyExists ? kExitAlreadyRunning
                                                                         : kExitFatal;
     }
@@ -111,38 +135,43 @@ std::optional<int> CompositionRoot::start() {
 
     // 乱数が使えないと招待トークンと再接続トークンが推測できる値になるので、起動しない。
     if (!CryptoSecureRandom::is_available()) {
-        logger_.log(common::LogLevel::kError, "暗号ライブラリを初期化できません");
+        logger_->log(common::LogLevel::kError, "暗号ライブラリを初期化できません");
         return kExitFatal;
     }
-    auto keys = transport::StaticKeyPair::generate();
+    settings_ = persistence::make_json_settings_store(data_dir_, *logger_);
+    secrets_ = persistence::make_dpapi_secret_store(data_dir_);
+    auto keys = load_host_keys(*secrets_, *logger_);
     if (!keys) {
-        logger_.log(common::LogLevel::kError, "親機の鍵を生成できません");
+        logger_->log(common::LogLevel::kError, "親機の鍵を用意できません");
         return kExitFatal;
     }
     host_keys_.emplace(std::move(keys).value());
+    create_rendezvous_client();
 
-    auto channel = ipc::make_pipe_server(pipe_name.value(), logger_);
+    auto channel = ipc::make_pipe_server(pipe_name.value(), *logger_);
     if (!channel) {
-        logger_.log(common::LogLevel::kError, "UI の待ち受けを始められません");
+        logger_->log(common::LogLevel::kError, "UI の待ち受けを始められません");
         return channel.error() == ipc::PipeError::kAlreadyExists ? kExitAlreadyRunning : kExitFatal;
     }
     ui_channel_ = std::move(channel).value();
-    device_catalog_ = device::make_wasapi_audio_device_catalog(logger_);
+    device_catalog_ = device::make_wasapi_audio_device_catalog(*logger_);
 
-    ui_publisher_ = std::make_unique<UiEventPublisher>(*ui_channel_, logger_);
+    ui_publisher_ = std::make_unique<UiEventPublisher>(*ui_channel_, *logger_);
     session::HostSession::Config config;
     config.host_public_key = host_keys_->public_key();
     config.invite_base_url = kInviteBaseUrl;
     session_ = std::make_unique<session::HostSession>(
         std::move(config),
-        session::HostSession::Ports{*ui_publisher_, engine_mixer_, peers_, rendezvous_, settings_,
-                                    random_, clock_, logger_});
-    rendezvous_.set_registration_handler(
+        session::HostSession::Ports{*ui_publisher_, engine_mixer_, peers_, *rendezvous_, *settings_,
+                                    random_, clock_, *logger_});
+    const auto on_registered =
         [this](
             const session::InviteToken& token,
             const common::Result<session::RegisteredInvite, control_protocol::ErrorCode>& result) {
             session_->on_invite_registered(token, result);
-        });
+        };
+    invite_relay_.set_registration_handler(on_registered);
+    offline_rendezvous_.set_registration_handler(on_registered);
     session_->start();
     open_saved_output_device();
 
@@ -153,27 +182,47 @@ std::optional<int> CompositionRoot::start() {
             ui_publisher_->note_ui_message_received();
             session_->handle_ui_message(message);
         },
-        logger_);
+        *logger_);
     ui_channel_->set_listener(ui_receiver_.get());
     next_session_tick_ = clock_.now();
     return std::nullopt;
 }
 
+void CompositionRoot::create_rendezvous_client() {
+    const std::string_view url = kInviteBaseUrl;
+    if (url.empty()) {
+        logger_->log(common::LogLevel::kWarning,
+                     "ランデブーサーバーの URL がないため、セッションを作れません");
+        return;
+    }
+    auto transport = network::make_winhttp_https_transport(url);
+    if (!transport) {
+        logger_->log(common::LogLevel::kWarning,
+                     "ランデブーサーバーとの HTTPS 通信を始められないため、セッションを作れません");
+        return;
+    }
+    https_transport_ = std::move(transport).value();
+    https_rendezvous_ =
+        std::make_unique<network::HttpsRendezvousClient>(*https_transport_, invite_relay_);
+    rendezvous_ = https_rendezvous_.get();
+}
+
 void CompositionRoot::open_saved_output_device() {
     // 保存した ID のデバイスだけを開く。開けなければ未選択のままにし、ほかのデバイスへは
     // 切り替えない（出力デバイスを暗黙にフォールバックしない）。
-    auto saved = settings_.load_host();
+    auto saved = settings_->load_host();
     if (!saved || !saved.value().output_device_id) {
         return;
     }
     const std::string& id = *saved.value().output_device_id;
-    auto output = device::make_wasapi_audio_output(id, logger_);
+    auto output = device::make_wasapi_audio_output(id, *logger_);
     if (!output) {
-        logger_.log(common::LogLevel::kWarning, "保存した出力デバイスを開けませんでした");
+        logger_->log(common::LogLevel::kWarning, "保存した出力デバイスを開けませんでした");
         return;
     }
     if (const auto started = output.value()->start(mixer_, device_loss_relay_); !started) {
-        logger_.log(common::LogLevel::kWarning, "保存した出力デバイスで出力を始められませんでした");
+        logger_->log(common::LogLevel::kWarning,
+                     "保存した出力デバイスで出力を始められませんでした");
         return;
     }
     output_ = std::move(output).value();
@@ -196,8 +245,8 @@ void CompositionRoot::on_output_device_lost() {
         output_.reset();
     }
     session_->on_output_device_lost();
-    logger_.log(common::LogLevel::kWarning,
-                "出力デバイスが抜かれたため、Master をミュートしました");
+    logger_->log(common::LogLevel::kWarning,
+                 "出力デバイスが抜かれたため、Master をミュートしました");
 }
 
 void CompositionRoot::on_tick() {
@@ -213,7 +262,7 @@ void CompositionRoot::on_tick() {
     ui_publisher_->publish(control_protocol::Meters{engine_mixer_.read_meters()});
 
     if (idle_timer_.should_exit(now, ui_publisher_->is_ui_connected(), session_exists_)) {
-        logger_.log(common::LogLevel::kInfo, "セッションも UI もないため、エンジンを終了します");
+        logger_->log(common::LogLevel::kInfo, "セッションも UI もないため、エンジンを終了します");
         loop_.request_stop();
     }
 }
@@ -228,8 +277,8 @@ void CompositionRoot::apply_activity() {
         if (lock) {
             session_lock_.emplace(std::move(lock).value());
         } else {
-            logger_.log(common::LogLevel::kWarning,
-                        "セッション中の印を作れないため、本番中の更新を止められません");
+            logger_->log(common::LogLevel::kWarning,
+                         "セッション中の印を作れないため、本番中の更新を止められません");
         }
     } else if (!activity.session_exists && session_lock_) {
         session_lock_.reset();

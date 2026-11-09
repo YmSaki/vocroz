@@ -27,6 +27,16 @@ public:
     /// @return 生成した鍵ペア。暗号ライブラリを初期化できなければ kCryptoUnavailable
     [[nodiscard]] static common::Result<StaticKeyPair, TransportError> generate() noexcept;
 
+    /// 保存しておいた秘密鍵から鍵ペアを作り直す。公開鍵は秘密鍵から計算する。
+    /// 再起動しても同じ鍵で使い続けるため（招待トークンと再接続で同じ親機と確かめる。
+    /// docs/adr/0027-persistence.md）。
+    /// @param private_key 秘密鍵。長さが kPrivateKeyBytes でなければ失敗する。呼び出し側は
+    ///                    使い終えたらゼロで上書きする
+    /// @return 鍵ペア。長さが違えば kInvalidKey、暗号ライブラリを初期化できなければ
+    ///         kCryptoUnavailable
+    [[nodiscard]] static common::Result<StaticKeyPair, TransportError> from_private_key(
+        std::span<const std::uint8_t> private_key) noexcept;
+
     StaticKeyPair(const StaticKeyPair&) = delete;
     StaticKeyPair& operator=(const StaticKeyPair&) = delete;
     /// ムーブ元の秘密鍵はゼロで上書きする。

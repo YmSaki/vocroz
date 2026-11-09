@@ -15,8 +15,9 @@ add_library(pa_engine_core STATIC
   src/device_loss_relay.cpp
   src/engine_activity.cpp
   src/engine_mixer.cpp
+  src/host_key_loader.cpp
+  src/invite_result_relay.cpp
   src/launch_options.cpp
-  src/memory_settings_store.cpp
   src/mixer_graph_builder.cpp
   src/offline_rendezvous_client.cpp
   src/stderr_logger.cpp
@@ -24,6 +25,7 @@ add_library(pa_engine_core STATIC
   src/ui_message_receiver.cpp)
 target_include_directories(pa_engine_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_link_libraries(pa_engine_core PUBLIC
+  vocroz::network
   vocroz::session
   vocroz::transport
   vocroz::audio_core
@@ -45,6 +47,7 @@ if(WIN32)
   target_link_libraries(pa_engine PRIVATE
     vocroz::ipc
     vocroz::device
+    vocroz::persistence
     vocroz::update
     dbghelp
     shell32
@@ -58,8 +61,9 @@ if(VOCROZ_BUILD_TESTS)
     tests/device_loss_relay_test.cpp
     tests/engine_activity_test.cpp
     tests/engine_mixer_test.cpp
+    tests/host_key_loader_test.cpp
+    tests/invite_result_relay_test.cpp
     tests/launch_options_test.cpp
-    tests/memory_settings_store_test.cpp
     tests/mixer_graph_builder_test.cpp
     tests/offline_rendezvous_client_test.cpp
     tests/ui_event_publisher_test.cpp
@@ -68,7 +72,8 @@ if(VOCROZ_BUILD_TESTS)
     pa_engine_core
     vocroz::audio_core_fakes
     vocroz::common_fakes
-    vocroz::control_protocol_fakes)
+    vocroz::control_protocol_fakes
+    vocroz::session_fakes)
 
   # 起動のスモークテスト。pa-engine.exe を別プロセスで起動し、名前付きパイプでつなぐ。
   if(WIN32)
