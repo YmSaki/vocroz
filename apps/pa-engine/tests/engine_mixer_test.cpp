@@ -212,8 +212,8 @@ TEST_F(EngineMixerTest, ReturnCarriesOtherStripsButNotTheOwnOne) {
     add_audible_strip("ch-2");
     auto sink1 = std::make_shared<ac::FakeAudioSink>();
     auto sink2 = std::make_shared<ac::FakeAudioSink>();
-    ASSERT_TRUE(engine_.attach_return("ch-1", sink1));
-    ASSERT_TRUE(engine_.attach_return("ch-2", sink2));
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink1));
+    ASSERT_TRUE(engine_.attach_return(2, {"ch-2"}, sink2));
     (void)render_last_left();
     // それぞれの返送には、相手のストリップだけが入る（自分の声は入らない）。
     EXPECT_NEAR(sink1->last(), kInput, 1e-5F);
@@ -229,7 +229,7 @@ TEST_F(EngineMixerTest, ReturnIsIndependentOfTheMasterMute) {
     add_audible_strip("ch-1");
     add_audible_strip("ch-2");
     auto sink1 = std::make_shared<ac::FakeAudioSink>();
-    ASSERT_TRUE(engine_.attach_return("ch-1", sink1));
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink1));
     engine_.set_master_muted(true);
     // ハウスの出力を止めても、出演者のモニターは止めない。
     EXPECT_EQ(render_last_left(), 0.0F);
@@ -240,18 +240,35 @@ TEST_F(EngineMixerTest, DetachReturnStopsFeedingTheSink) {
     add_audible_strip("ch-1");
     add_audible_strip("ch-2");
     auto sink1 = std::make_shared<ac::FakeAudioSink>();
-    ASSERT_TRUE(engine_.attach_return("ch-1", sink1));
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink1));
     (void)render_last_left();
     const auto received = sink1->received();
-    engine_.detach_return("ch-1");
+    engine_.detach_return(1);
     (void)render_last_left();
     EXPECT_EQ(sink1->received(), received);
 }
 
+TEST_F(EngineMixerTest, ReturnOfAClientWithSeveralInputsCarriesOnlyTheOthers) {
+    // ch-1 と ch-2 は同じ子機の 2 つの入力、ch-3 は別の子機。
+    add_audible_strip("ch-1");
+    add_audible_strip("ch-2");
+    add_audible_strip("ch-3");
+    auto sink = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1", "ch-2"}, sink));
+    (void)render_last_left();
+    EXPECT_NEAR(sink->last(), kInput, 1e-5F);
+
+    // 子機の入力が 1 本に減ったら、同じキーで自分のストリップの一覧を付け替える。
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink));
+    (void)render_last_left();
+    EXPECT_NEAR(sink->last(), 2.0F * kInput, 1e-5F);
+}
+
 TEST_F(EngineMixerTest, AttachReturnFailsForUnknownStripOrNullSink) {
     engine_.add_channel("ch-1");
-    EXPECT_FALSE(engine_.attach_return("ch-unknown", std::make_shared<ac::FakeAudioSink>()));
-    EXPECT_FALSE(engine_.attach_return("ch-1", nullptr));
+    EXPECT_FALSE(engine_.attach_return(1, {"ch-unknown"}, std::make_shared<ac::FakeAudioSink>()));
+    EXPECT_FALSE(engine_.attach_return(1, {}, std::make_shared<ac::FakeAudioSink>()));
+    EXPECT_FALSE(engine_.attach_return(1, {"ch-1"}, nullptr));
 }
 
 }  // namespace

@@ -14,6 +14,7 @@
 // フェーダーとメーターの識別子は EngineMixer が entity ごとに割り当て、ここでは使うだけにする。
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
@@ -35,9 +36,17 @@ struct StripAssignment {
     audio_core::MeterId meter;
     /// 子機の受信ストリーム。まだ受け付けていなければ null（ストリップだけを置いて無音にする）。
     std::shared_ptr<audio_core::AudioSource> source;
-    /// その子機への返送（Minus-Me）の渡し先。子機への送信を組み立てていなければ null
-    /// （返送を作らない）。
-    std::shared_ptr<audio_core::AudioSink> return_sink;
+};
+
+/// 子機 1 台への返送（Minus-Me）の割り当て。返送は子機 1 台に 1 本で、子機が複数の入力を
+/// 送っていれば、そのすべてのストリップを返送から抜く（docs/adr/0036-return-monitor.md）。
+struct ReturnAssignment {
+    /// 返送を区別するキー（その子機との接続）。
+    std::uint64_t key = 0;
+    /// その子機のストリップの entity_id。見つからないものは無視する。
+    std::vector<std::string> own_strip_ids;
+    /// 返送の渡し先（null にしない）。
+    std::shared_ptr<audio_core::AudioSink> sink;
 };
 
 /// グラフを組み立てるのに使う、フェーダーとメーターの割り当て。
@@ -47,6 +56,8 @@ struct MixerAssignments {
     audio_core::MeterId master_meter;
     /// ストリップ。この順にノードを並べる（並び順は処理順に影響しない）。
     std::vector<StripAssignment> strips;
+    /// 子機への返送。
+    std::vector<ReturnAssignment> returns;
     /// バスとセンドの entity_id ごとのフェーダー。
     std::map<std::string, audio_core::FaderId, std::less<>> route_faders;
     /// バスの entity_id ごとのポストフェーダーのメーター。

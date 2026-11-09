@@ -77,11 +77,10 @@ using NodeTable = std::map<std::string, ac::NodeId, std::less<>>;
     return it->second;
 }
 
-// 子機への返送を足す。返送の候補は Master へ入る信号（ストリップ、Master
-// へ送るバスと遅延ノード）で、 親機のメインのミックスと同じバランスにする。Master
-// のフェーダーとミュートは通さない。 Master
-// はハウスの出力の操作で、出演者のモニターまで止めるものではないため。 その子機の声を含む候補は
-// add_minus_me_returns() が除く。
+// 子機への返送を足す。返送の候補は Master へ入る信号（ストリップ、Master へ送るバスと
+// 遅延ノード）で、親機のメインのミックスと同じバランスにする。Master のフェーダーとミュートは
+// 通さない。Master はハウスの出力の操作で、出演者のモニターまで止めるものではないため。
+// その子機の声を含む候補は add_minus_me_returns() が除く。
 void add_returns(ac::GraphDescription& graph, ac::NodeId master,
                  const std::vector<ac::MinusMeReturn>& returns) {
     if (returns.empty()) {
@@ -120,8 +119,14 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
 
     // ストリップと、ストリップから Master への暗黙の結線。
     for (const auto& strip : assignments.strips) {
-        const auto node = writer.add(ac::NodeSpec::make_strip(
-            ac::NodeId{}, strip.fader, strip.meter, input_delay_of(config, strip.strip_id)));
+        // ストリップのチャンネル数は受信ストリームに合わせる。子機のステレオの入力を 1 本の
+        // ストリップで左右を保ったまま Master
+        // へ送るため（docs/adr/0035-client-input-expansion.md）。
+        // ストリームがまだなければモノラルで置く（無音なので違いはない）。
+        const std::size_t channels = strip.source ? strip.source->channel_count() : 1;
+        const auto node =
+            writer.add(ac::NodeSpec::make_strip(ac::NodeId{}, strip.fader, strip.meter,
+                                                input_delay_of(config, strip.strip_id), channels));
         if (strip.source) {
             const auto source = writer.add(ac::NodeSpec::make_source(ac::NodeId{}, strip.source));
             writer.connect(source, node);
@@ -163,10 +168,15 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
 
     BuiltMixerGraph built;
     std::vector<ac::MinusMeReturn> returns;
-    for (const auto& strip : assignments.strips) {
-        if (strip.return_sink) {
-            returns.push_back({{sources_of_sends.at(strip.strip_id)}, strip.return_sink});
+    for (const auto& assignment : assignments.returns) {
+        ac::MinusMeReturn minus_me{{}, assignment.sink};
+        for (const auto& strip_id : assignment.own_strip_ids) {
+            // ストリップの削除と返送の付け替えの間の組み立てでは、なくなったストリップを指しうる。
+            if (const auto node = find(sources_of_sends, strip_id)) {
+                minus_me.own_inputs.push_back(*node);
+            }
         }
+        returns.push_back(std::move(minus_me));
     }
     for (const auto& send : config.sends) {
         const auto from = find(sources_of_sends, send.from);

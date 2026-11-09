@@ -132,9 +132,41 @@ void HostContext::deny(PeerHandle peer, ErrorCode reason) {
 
 // 参加者と接続の結び付きを解く。ストリップと再接続トークンは残す。
 void HostContext::release_peer(Participant& p) {
-    if (p.peer) {
-        ports.peers.close(*p.peer);
-        p.peer.reset();
+    if (!p.peer) {
+        return;
+    }
+    const PeerHandle peer = *p.peer;
+    ports.peers.close(peer);
+    for (Participant* strip : registry.strips_of(p.strip.participant_id)) {
+        if (strip->peer == peer) {
+            strip->peer.reset();
+        }
+    }
+}
+
+void HostContext::admit_streams(PeerHandle peer, const std::string& participant_id) {
+    std::vector<StreamRoute> routes;
+    for (const Participant* strip : registry.strips_of(participant_id)) {
+        routes.push_back(
+            StreamRoute{strip->stream_id, strip->strip.channel_count, strip->strip.entity_id});
+    }
+    ports.peers.admit(peer, routes);
+}
+
+void HostContext::remove_strip(const std::string& strip_id) {
+    ports.mixer.remove_channel(strip_id);
+    registry.remove(strip_id);
+    ports.ui.publish(cp::ChannelRemoved{strip_id});
+    forget_strip_in_routing(strip_id);
+}
+
+void HostContext::remove_participant_strips(const std::string& participant_id) {
+    std::vector<std::string> ids;
+    for (const Participant* strip : registry.strips_of(participant_id)) {
+        ids.push_back(strip->strip.entity_id);
+    }
+    for (const auto& id : ids) {
+        remove_strip(id);
     }
 }
 
@@ -242,6 +274,16 @@ bool HostContext::advance_connection(Participant& p, ConnectionEvent event) {
     return true;
 }
 
+bool HostContext::advance_participant(Participant& p, ConnectionEvent event) {
+    // 遷移で参照が変わらないよう、ストリップの一覧を先に取る（遷移では一覧を変えない）。
+    const auto strips = registry.strips_of(p.strip.participant_id);
+    bool advanced = false;
+    for (Participant* strip : strips) {
+        advanced = advance_connection(*strip, event) || advanced;
+    }
+    return advanced;
+}
+
 // CONNECTED か RECONNECTING の参加者の有無で、READY と ACTIVE を切り替える。
 // 全員が LOST や FAILED になったら READY に戻る。
 void HostContext::update_session_activity() {
@@ -281,8 +323,9 @@ void HostContext::teardown() {
     const auto removed = strip_ids();
     for (auto& p : registry.participants()) {
         if (p.peer) {
+            // 同じ子機のストリップが複数あっても、終了の通知は 1 回だけ送る。
             send(*p.peer, wire::SessionEndedNotice{});
-            ports.peers.close(*p.peer);
+            release_peer(p);
         }
         ports.mixer.remove_channel(p.strip.entity_id);
         ports.ui.publish(cp::ChannelRemoved{p.strip.entity_id});

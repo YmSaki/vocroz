@@ -209,20 +209,27 @@ HostCommandHandler::CommandResult HostCommandHandler::approve(const std::string&
     if (pending == nullptr) {
         return invalid_state();
     }
-    if (ctx_.registry.participants().size() >= kMaxChannelStrips) {
+    // 子機の入力ごとにストリップを作るので、すべての入力のぶんの空きが要る。
+    if (ctx_.registry.participants().size() + pending->streams.size() > kMaxChannelStrips) {
         return invalid_state();
     }
     const auto revision = pending->entry.revision;
     const auto peer = pending->peer;
     const auto token = detail::random_bytes<std::tuple_size_v<ReconnectToken>>(ctx_.ports.random);
-    auto& p = ctx_.registry.add_participant(*pending, token);
+    const std::string participant_id =
+        ctx_.registry.add_participant(*pending, token).strip.participant_id;
     ctx_.registry.remove_pending(entity_id);
-    ctx_.ports.mixer.add_channel(p.strip.entity_id);
-    ctx_.ports.peers.admit(peer, p.strip.entity_id);
-    ctx_.sync_return(p);
+    const auto strips = ctx_.registry.strips_of(participant_id);
+    for (const Participant* strip : strips) {
+        ctx_.ports.mixer.add_channel(strip->strip.entity_id);
+    }
+    ctx_.admit_streams(peer, participant_id);
+    ctx_.sync_return(*strips.front());
     ctx_.send(peer, wire::JoinApproved{token});
     ctx_.publish_pending();
-    ctx_.publish_channel(p);
+    for (const Participant* strip : strips) {
+        ctx_.publish_channel(*strip);
+    }
     return revision;
 }
 
@@ -250,11 +257,11 @@ HostCommandHandler::CommandResult HostCommandHandler::remove_strip(const std::st
         p->strip.connection_state != ConnectionState::kFailed) {
         return invalid_state();
     }
+    // 同じ子機の入力のストリップは接続状態と再接続トークンを共有するので、まとめて削除する。
+    // どれも接続が終わっているので、音を出しうるストリップは消さない。
     const auto revision = p->strip.revision;
-    ctx_.ports.mixer.remove_channel(entity_id);
-    ctx_.registry.remove(entity_id);
-    ctx_.ports.ui.publish(cp::ChannelRemoved{entity_id});
-    ctx_.forget_strip_in_routing(entity_id);
+    const std::string participant_id = p->strip.participant_id;
+    ctx_.remove_participant_strips(participant_id);
     return revision;
 }
 
@@ -265,15 +272,21 @@ HostCommandHandler::CommandResult HostCommandHandler::set_return_mute(const std:
         return invalid_state();
     }
     if (p->strip.return_muted != muted) {
+        // 返送は子機 1 台に 1 本なので、同じ子機のストリップはすべて同じ返送の状態を持つ。
+        // どのストリップから操作しても、その子機のすべてのストリップに反映する。
         // 解除のたびに世代番号を進め、ミュート前に送ったフレームと解除後のフレームを子機が
         // 区別できるようにする（制御メッセージとメディアの到着順は逆転しうる）。
-        if (!muted) {
-            ++p->return_epoch;
+        const std::uint32_t epoch = muted ? p->return_epoch : p->return_epoch + 1;
+        const auto strips = ctx_.registry.strips_of(p->strip.participant_id);
+        for (Participant* strip : strips) {
+            strip->return_epoch = epoch;
+            strip->strip.return_muted = muted;
+            detail::bump_revision(strip->strip.revision);
         }
-        p->strip.return_muted = muted;
         ctx_.sync_return(*p);
-        detail::bump_revision(p->strip.revision);
-        ctx_.publish_channel(*p);
+        for (const Participant* strip : strips) {
+            ctx_.publish_channel(*strip);
+        }
     }
     return p->strip.revision;
 }

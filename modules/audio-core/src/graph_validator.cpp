@@ -4,6 +4,7 @@
 
 #include "graph_validator.h"
 
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <set>
@@ -20,6 +21,13 @@ namespace {
 
 using common::make_unexpected;
 
+// ソースとストリップのチャンネル数を 1〜2 に丸める。
+// 範囲外の値で検証を失敗させるより、近い方に倒してストリップを残すほうが、
+// 再生ノード（PlaybackTrack）と同じ扱いになり、呼び出し側の分岐も増えない。
+std::size_t clamp_channels(std::size_t channels) noexcept {
+    return std::clamp<std::size_t>(channels, 1, kStereoChannels);
+}
+
 // ノードの種類ごとのパラメーター（ソース、フェーダー、遅延）を検証する。
 std::optional<GraphError> validate_node(const NodeSpec& spec, std::size_t fader_capacity,
                                         std::size_t meter_capacity) {
@@ -27,6 +35,12 @@ std::optional<GraphError> validate_node(const NodeSpec& spec, std::size_t fader_
         case NodeKind::kSource:
             if (!spec.source) {
                 return GraphError::kMissingSource;
+            }
+            // ソースは channel_count()
+            // 本のバッファに書くので、丸めると確保した本数を超えて書かれる。
+            if (spec.source->channel_count() == 0 ||
+                spec.source->channel_count() > kStereoChannels) {
+                return GraphError::kChannelMismatch;
             }
             break;
         case NodeKind::kStrip:
@@ -170,8 +184,9 @@ std::optional<GraphError> plan_midi(const GraphDescription& description,
 std::size_t output_channels_of(const NodeSpec& spec) noexcept {
     switch (spec.kind) {
         case NodeKind::kSource:
+            return spec.source ? clamp_channels(spec.source->channel_count()) : 1;
         case NodeKind::kStrip:
-            return 1;
+            return clamp_channels(spec.channels);
         case NodeKind::kBus:
         case NodeKind::kDelay:
         case NodeKind::kLimiter:

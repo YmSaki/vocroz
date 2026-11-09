@@ -6,9 +6,12 @@
 
 #include "host_peer_handler.h"
 
+#include <algorithm>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "detail/text_utils.h"
 #include "detail/token_utils.h"
@@ -44,6 +47,8 @@ void HostPeerHandler::on_peer_message(PeerHandle peer, std::span<const std::uint
                 handle_send_mute(peer, m);
             } else if constexpr (std::is_same_v<M, wire::InputReport>) {
                 handle_input_report(peer, m);
+            } else if constexpr (std::is_same_v<M, wire::StreamsReport>) {
+                handle_streams_report(peer, m);
             } else {
                 static_assert(std::is_same_v<M, wire::LeaveNotice>);
                 handle_peer_left(peer);
@@ -54,13 +59,13 @@ void HostPeerHandler::on_peer_message(PeerHandle peer, std::span<const std::uint
 
 void HostPeerHandler::on_peer_established(PeerHandle peer) {
     if (auto* p = ctx_.registry.find_by_peer(peer)) {
-        ctx_.advance_connection(*p, ConnectionEvent::kEstablished);
+        ctx_.advance_participant(*p, ConnectionEvent::kEstablished);
     }
 }
 
 void HostPeerHandler::on_peer_path_failed(PeerHandle peer) {
     if (auto* p = ctx_.registry.find_by_peer(peer)) {
-        if (ctx_.advance_connection(*p, ConnectionEvent::kPathFailed)) {
+        if (ctx_.advance_participant(*p, ConnectionEvent::kPathFailed)) {
             ctx_.release_peer(*p);
         }
     }
@@ -75,7 +80,7 @@ void HostPeerHandler::on_peer_timeout(PeerHandle peer) {
         return;
     }
     if (auto* p = ctx_.registry.find_by_peer(peer)) {
-        if (ctx_.advance_connection(*p, ConnectionEvent::kReceiveTimeout)) {
+        if (ctx_.advance_participant(*p, ConnectionEvent::kReceiveTimeout)) {
             ctx_.notice(cp::NoticeSeverity::kWarning, "participant_reconnecting", label(p->strip));
         }
     }
@@ -83,7 +88,7 @@ void HostPeerHandler::on_peer_timeout(PeerHandle peer) {
 
 void HostPeerHandler::on_peer_resumed(PeerHandle peer) {
     if (auto* p = ctx_.registry.find_by_peer(peer)) {
-        ctx_.advance_connection(*p, ConnectionEvent::kResumed);
+        ctx_.advance_participant(*p, ConnectionEvent::kResumed);
     }
 }
 
@@ -97,13 +102,19 @@ void HostPeerHandler::on_peer_closed(PeerHandle peer) {
 }
 
 void HostPeerHandler::on_signal_state(PeerHandle peer, cp::SignalState signal) {
-    auto* p = ctx_.registry.find_by_peer(peer);
-    if (p == nullptr || p->strip.connection_state != ConnectionState::kConnected ||
-        p->strip.signal_state == signal) {
+    const auto* first = ctx_.registry.find_by_peer(peer);
+    if (first == nullptr) {
         return;
     }
-    p->strip.signal_state = signal;
-    ctx_.publish_channel(*p);
+    // 信号状態は接続（子機）ごとの判定なので、同じ子機のストリップにそろえて写す。
+    for (Participant* p : ctx_.registry.strips_of(first->strip.participant_id)) {
+        if (p->peer != peer || p->strip.connection_state != ConnectionState::kConnected ||
+            p->strip.signal_state == signal) {
+            continue;
+        }
+        p->strip.signal_state = signal;
+        ctx_.publish_channel(*p);
+    }
 }
 
 // --- 子機からの制御メッセージ ---
@@ -159,13 +170,17 @@ void HostPeerHandler::handle_reconnect(PeerHandle peer, const ReconnectToken& to
 }
 
 // 再接続トークンを持つ子機を、承認なしで元のストリップへ戻す（新しいストリップは作らない）。
+// 入力が変わっていれば、続けて届く入力の申告でストリップをそろえる。
 void HostPeerHandler::rejoin(Participant& p, PeerHandle peer) {
     if (p.peer && *p.peer != peer) {
         ctx_.ports.peers.close(*p.peer);
     }
-    p.peer = peer;
-    ctx_.advance_connection(p, ConnectionEvent::kReconnectStarted);
-    ctx_.ports.peers.admit(peer, p.strip.entity_id);
+    const std::string participant_id = p.strip.participant_id;
+    for (Participant* strip : ctx_.registry.strips_of(participant_id)) {
+        strip->peer = peer;
+    }
+    ctx_.advance_participant(p, ConnectionEvent::kReconnectStarted);
+    ctx_.admit_streams(peer, participant_id);
     // 新しい接続の返送の送信側は初期状態（ミュート）で始まるので、今の状態に合わせる。
     ctx_.sync_return(p);
     ctx_.send(peer, wire::JoinApproved{p.reconnect_token});
@@ -178,18 +193,94 @@ void HostPeerHandler::handle_send_mute(PeerHandle peer, const wire::SendMuteRepo
     }
     // 子機の送信ミュートは観測値なので revision を進めない。親機のチャンネルミュートには
     // 影響しない（親機がミュートしたチャンネルを子機から解除する手段はない）。
+    // 送信ミュートは子機のすべての入力に掛かるので、同じ子機のストリップにそろえて写す。
     ctx_.ports.peers.apply_send_mute(peer, report.send_muted, report.epoch);
-    if (p->strip.send_muted != report.send_muted) {
-        p->strip.send_muted = report.send_muted;
-        ctx_.publish_channel(*p);
+    for (Participant* strip : ctx_.registry.strips_of(p->strip.participant_id)) {
+        if (strip->strip.send_muted != report.send_muted) {
+            strip->strip.send_muted = report.send_muted;
+            ctx_.publish_channel(*strip);
+        }
     }
 }
 
 void HostPeerHandler::handle_input_report(PeerHandle peer, const wire::InputReport& report) {
-    if (auto* p = ctx_.registry.find_by_peer(peer)) {
+    if (const auto* first = ctx_.registry.find_by_peer(peer)) {
         // ストリップの DTO にはまだ入力なしの欄がないので、状態だけを保持する。
-        p->input_missing = report.input_missing;
+        for (Participant* p : ctx_.registry.strips_of(first->strip.participant_id)) {
+            p->input_missing = report.input_missing;
+        }
     }
+}
+
+// 子機の入力の申告に、ストリップをそろえる。
+// 変わらない入力（ストリーム ID、種類、チャンネル数が同じ）のストリップはそのまま残し、
+// フェーダーとミュートとルーティングを保つ。種類かチャンネル数が変わった入力は、別の入力として
+// ストリップを作り直す（チャンネル数の違うストリップでは、ルーティングとミキサーの扱いが変わるため）。
+// 新しいストリップはチャンネルミュートで始める（初期ミュート）。
+void HostPeerHandler::handle_streams_report(PeerHandle peer, const wire::StreamsReport& report) {
+    if (auto* pending = ctx_.registry.find_pending_by_peer(peer)) {
+        // 承認前は申告を覚えるだけで、ストリップは承認のときに作る。
+        pending->streams = report.streams;
+        return;
+    }
+    const auto* first = ctx_.registry.find_by_peer(peer);
+    if (first == nullptr) {
+        return;
+    }
+    const std::string participant_id = first->strip.participant_id;
+    std::vector<std::string> obsolete;
+    std::vector<InputStream> added;
+    const auto strips = ctx_.registry.strips_of(participant_id);
+    for (const Participant* strip : strips) {
+        const bool declared = std::ranges::any_of(report.streams, [&](const InputStream& s) {
+            return s.stream_id == strip->stream_id && s.kind == strip->strip.source_kind &&
+                   s.channels == strip->strip.channel_count;
+        });
+        if (!declared) {
+            obsolete.push_back(strip->strip.entity_id);
+        }
+    }
+    for (const InputStream& stream : report.streams) {
+        const bool exists = std::ranges::any_of(strips, [&](const Participant* strip) {
+            return strip->stream_id == stream.stream_id &&
+                   strip->strip.source_kind == stream.kind &&
+                   strip->strip.channel_count == stream.channels;
+        });
+        if (!exists) {
+            added.push_back(stream);
+        }
+    }
+    // 新しいストリップは、同じ参加者のストリップから名前と接続状態を写すので、古いものを消す前に作る。
+    std::size_t total = ctx_.registry.participants().size() - obsolete.size();
+    std::vector<std::string> created;
+    for (const InputStream& stream : added) {
+        if (total >= kMaxChannelStrips) {
+            // 届いたストリームは対応がないので受信側で捨てられる（音の経路を増やさない側に倒す）。
+            ctx_.log(common::LogLevel::kWarning,
+                     "ストリップの上限に達したため、子機の入力の一部を受け付けませんでした");
+            break;
+        }
+        created.push_back(ctx_.registry.add_stream(participant_id, stream).strip.entity_id);
+        ++total;
+    }
+    for (const auto& id : obsolete) {
+        ctx_.remove_strip(id);
+    }
+    for (const auto& id : created) {
+        ctx_.ports.mixer.add_channel(id);
+    }
+    const auto renumbered = ctx_.registry.renumber(participant_id);
+    for (const auto& id : created) {
+        if (const auto* strip = ctx_.registry.find(id)) {
+            ctx_.publish_channel(*strip);
+        }
+    }
+    for (const Participant* strip : renumbered) {
+        if (std::ranges::find(created, strip->strip.entity_id) == created.end()) {
+            ctx_.publish_channel(*strip);
+        }
+    }
+    ctx_.admit_streams(peer, participant_id);
 }
 
 void HostPeerHandler::handle_peer_left(PeerHandle peer) {
@@ -197,7 +288,7 @@ void HostPeerHandler::handle_peer_left(PeerHandle peer) {
     if (p == nullptr) {
         return;
     }
-    if (ctx_.advance_connection(*p, ConnectionEvent::kPeerLeft)) {
+    if (ctx_.advance_participant(*p, ConnectionEvent::kPeerLeft)) {
         ctx_.notice(cp::NoticeSeverity::kWarning, "participant_lost", label(p->strip));
     }
     ctx_.release_peer(*p);

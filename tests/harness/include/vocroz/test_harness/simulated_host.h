@@ -102,7 +102,7 @@ private:
 
     // session::PeerLink
     void send(session::PeerHandle peer, std::span<const std::uint8_t> message) override;
-    void admit(session::PeerHandle peer, const std::string& strip_id) override;
+    void admit(session::PeerHandle peer, const std::vector<session::StreamRoute>& routes) override;
     void apply_send_mute(session::PeerHandle peer, bool send_muted, std::uint32_t epoch) override;
     void set_return_mute(session::PeerHandle peer, bool muted, std::uint32_t epoch) override;
     void close(session::PeerHandle peer) override;

@@ -64,6 +64,12 @@ struct HostContext {
     /// 接続状態は観測値なので revision は進めない。受け付けないイベントなら false。
     bool advance_connection(Participant& participant, state::ConnectionEvent event);
 
+    /// 参加者のすべてのストリップ（子機のすべての入力）の接続状態を進める。
+    /// 接続状態は子機ごとの値なので、同じ子機のストリップはそろえて進める。
+    /// @param participant 参加者のストリップのどれか
+    /// @return 受け付けたら true。受け付けないイベントなら false
+    bool advance_participant(Participant& participant, state::ConnectionEvent event);
+
     /// CONNECTED か RECONNECTING の参加者の有無で、READY と ACTIVE を切り替える。
     void update_session_activity();
 
@@ -101,7 +107,22 @@ struct HostContext {
     void deny(PeerHandle peer, control_protocol::ErrorCode reason);
 
     /// 参加者と接続の結び付きを解き、接続を閉じる。ストリップと再接続トークンは残す。
+    /// 同じ子機のほかのストリップの結び付きも解く。
     void release_peer(Participant& participant);
+
+    /// 参加者の接続のメディアを受け付け、入力ごとにストリップへ流すよう PeerLink に渡す。
+    /// 入力の申告が変わるたびに呼び、流し込み先の対応を置き換える。
+    /// @param peer           接続
+    /// @param participant_id 参加者
+    void admit_streams(PeerHandle peer, const std::string& participant_id);
+
+    /// 参加者のストリップと、それを参照するミキサーと UI とルーティングを、すべて片付ける。
+    /// @param participant_id 参加者
+    void remove_participant_strips(const std::string& participant_id);
+
+    /// ストリップを 1 本片付ける（ミキサーと UI とルーティングを含む）。
+    /// @param strip_id 片付けるストリップ
+    void remove_strip(const std::string& strip_id);
 
     /// ストリップを削除したあと、そのストリップを参照するルーティングを片付ける。
     /// 適用中の構成が変わったらミキサーへ適用し直し、UI にルーティングを知らせる。
@@ -125,6 +146,8 @@ struct HostContext {
     [[nodiscard]] std::vector<std::string> strip_ids() const;
 
     /// 返送モニターの今の状態を、参加者の接続の送信側と子機へ知らせる。
+    /// 返送は子機 1 台に 1
+    /// 本で、同じ子機のストリップはすべて同じ状態を持つので、どれを渡してもよい。
     /// 承認と再接続で接続を受け付けたとき（JoinApproved
     /// より前）と、ミュートを切り替えたときに呼ぶ。 接続がなければ何もしない。
     void sync_return(const Participant& participant);

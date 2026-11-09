@@ -69,5 +69,42 @@ TEST(OpusFrameEncoderTest, RejectsBitrateOutOfRange) {
     EXPECT_EQ(encoder.error(), CodecError::kCreateFailed);
 }
 
+TEST(OpusFrameEncoderTest, EncodesInterleavedStereoFrame) {
+    OpusEncoderConfig config;
+    config.channels = 2;
+    config.bitrate_bps = kStereoBitrateBps;
+    auto encoder = OpusFrameEncoder::create(config);
+    ASSERT_TRUE(encoder);
+    EXPECT_EQ(encoder.value().channels(), 2U);
+    EXPECT_EQ(encoder.value().frame_samples(), 240U);
+    const std::vector<float> pcm(240 * 2, 0.25F);
+    std::array<std::uint8_t, kMaxOpusPayloadBytes> packet{};
+    const auto bytes = encoder.value().encode(pcm, packet);
+    ASSERT_TRUE(bytes);
+    EXPECT_GT(bytes.value(), 0U);
+}
+
+TEST(OpusFrameEncoderTest, StereoRejectsMonoLengthPcm) {
+    OpusEncoderConfig config;
+    config.channels = 2;
+    auto encoder = OpusFrameEncoder::create(config);
+    ASSERT_TRUE(encoder);
+    const std::vector<float> pcm(240, 0.0F);
+    std::array<std::uint8_t, kMaxOpusPayloadBytes> packet{};
+    const auto bytes = encoder.value().encode(pcm, packet);
+    ASSERT_FALSE(bytes);
+    EXPECT_EQ(bytes.error(), CodecError::kInvalidFrameSize);
+}
+
+TEST(OpusFrameEncoderTest, RejectsChannelCountOtherThanMonoOrStereo) {
+    for (const std::size_t channels : {std::size_t{0}, std::size_t{3}}) {
+        OpusEncoderConfig config;
+        config.channels = channels;
+        const auto encoder = OpusFrameEncoder::create(config);
+        ASSERT_FALSE(encoder);
+        EXPECT_EQ(encoder.error(), CodecError::kCreateFailed);
+    }
+}
+
 }  // namespace
 }  // namespace vocroz::transport

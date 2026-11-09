@@ -8,6 +8,7 @@
 - 状態機械: `SessionState`、`ConnectionState`、`OutputDeviceState`、`ClientState`（`src/state/` の遷移表）
 - 招待コード、招待 URL、`vocroz://` の引数のパースと検証。招待の発行、期限切れでの発行し直し、失効、申請の照合
 - 承認と拒否、再接続トークンによる同じストリップへの復帰、全員 `LOST` での `READY` への復帰
+- 子機の入力（ストリーム）の申告と、入力ごとのストリップの対応（1 台の子機は最大 4 本のストリップになる。`docs/adr/0035-client-input-expansion.md`）
 - 参加者とチャンネルストリップの状態、コマンドの適用（revision の競合の拒否、重複した `request_id` の無視）と認可
 - 初期ミュート、出力デバイスの抜去時の Master の `SAFETY` ミュート、子機の「入力なし」の検知
 - 子機と親機の間の制御メッセージのエンコードとデコード（信頼境界、`src/wire/`）
@@ -74,9 +75,12 @@ host_session_.on_peer_message(peer, body);
 
 ```cpp
 // PeerLink の実装（コンポジションルート）: 承認と切断を MIDI の受け口にも伝える。
-void admit(PeerHandle peer, const std::string& strip_id) override {
-    media_.admit(peer, strip_id);
-    midi_inbox_.admit(peer, strip_id);  // ストリップのキューを返す。グラフの MIDI ソースに使う
+// routes は子機の入力ごとの流し込み先で、ストリップの並び順（先頭が子機のいちばん古いストリップ）。
+void admit(PeerHandle peer, const std::vector<StreamRoute>& routes) override {
+    media_.admit(peer, routes);
+    // MIDI は子機ごとに 1 系統なので、先頭のストリップへ流す。ストリップのキューを返す。
+    // グラフの MIDI ソースに使う
+    midi_inbox_.admit(peer, routes.front().strip_id);
 }
 void close(PeerHandle peer) override { media_.close(peer); midi_inbox_.close(peer); }
 // MixerControl::remove_channel() では midi_inbox_.remove_strip(strip_id)。

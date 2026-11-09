@@ -21,6 +21,13 @@ std::string make_short_id(std::uint64_t number) {
     return "#" + digits;
 }
 
+// 入力の申告をストリップの値に写す。番号は renumber() で振る。
+void apply_stream(Participant& p, const InputStream& stream) {
+    p.stream_id = stream.stream_id;
+    p.strip.source_kind = stream.kind;
+    p.strip.channel_count = stream.channels;
+}
+
 }  // namespace
 
 PendingJoin& ParticipantRegistry::add_pending(PeerHandle peer, std::string name) {
@@ -78,7 +85,59 @@ Participant& ParticipantRegistry::add_participant(const PendingJoin& pending,
     participant.strip.gain_db = 0.0;
     participant.reconnect_token = token;
     participant.peer = pending.peer;
-    return participants_.emplace_back(std::move(participant));
+    const std::string participant_id = participant.strip.participant_id;
+    apply_stream(participant, pending.streams.front());
+    const std::size_t first = participants_.size();
+    participants_.push_back(std::move(participant));
+    for (std::size_t i = 1; i < pending.streams.size(); ++i) {
+        static_cast<void>(add_stream(participant_id, pending.streams[i]));
+    }
+    static_cast<void>(renumber(participant_id));
+    return participants_[first];
+}
+
+Participant& ParticipantRegistry::add_stream(std::string_view participant_id,
+                                             const InputStream& stream) {
+    const auto siblings = strips_of(participant_id);
+    Participant strip = *siblings.front();
+    strip.strip.entity_id = "ch" + std::to_string(next_strip_number_++);
+    strip.strip.revision = 1;
+    // 初期ミュート: 後から足した入力のストリップもチャンネルミュートで始める。
+    strip.strip.channel_muted = true;
+    strip.strip.gain_db = 0.0;
+    strip.last_gain_seq.reset();
+    apply_stream(strip, stream);
+    return participants_.emplace_back(std::move(strip));
+}
+
+std::vector<Participant*> ParticipantRegistry::strips_of(std::string_view participant_id) {
+    std::vector<Participant*> strips;
+    for (auto& p : participants_) {
+        if (p.strip.participant_id == participant_id) {
+            strips.push_back(&p);
+        }
+    }
+    return strips;
+}
+
+std::vector<Participant*> ParticipantRegistry::renumber(std::string_view participant_id) {
+    auto strips = strips_of(participant_id);
+    std::vector<Participant*> by_stream = strips;
+    std::ranges::sort(by_stream, {}, [](const Participant* p) { return p->stream_id; });
+    std::vector<Participant*> changed;
+    std::uint8_t microphones = 0;
+    std::uint8_t application_audio = 0;
+    for (Participant* p : by_stream) {
+        std::uint8_t& count = p->strip.source_kind == control_protocol::InputSourceKind::kMicrophone
+                                  ? microphones
+                                  : application_audio;
+        ++count;
+        if (p->strip.source_number != count) {
+            p->strip.source_number = count;
+            changed.push_back(p);
+        }
+    }
+    return changed;
 }
 
 Participant* ParticipantRegistry::find(std::string_view entity_id) noexcept {
@@ -107,6 +166,11 @@ Participant* ParticipantRegistry::find_by_token(const ReconnectToken& token) noe
 void ParticipantRegistry::remove(std::string_view entity_id) {
     std::erase_if(participants_,
                   [&](const Participant& p) { return p.strip.entity_id == entity_id; });
+}
+
+void ParticipantRegistry::remove_participant(std::string_view participant_id) {
+    std::erase_if(participants_,
+                  [&](const Participant& p) { return p.strip.participant_id == participant_id; });
 }
 
 bool ParticipantRegistry::any_active() const noexcept {

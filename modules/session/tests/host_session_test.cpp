@@ -6,6 +6,7 @@
 
 #include "vocroz/session/host_session.h"
 
+#include <algorithm>
 #include <chrono>
 #include <optional>
 #include <string>
@@ -22,6 +23,7 @@
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
 #include "fakes/fake_ui_event_sink.h"
+#include "session_constants.h"
 #include "wire/peer_message_codec.h"
 
 namespace vocroz::session {
@@ -1032,6 +1034,176 @@ TEST_F(HostSessionTest, DoesNotRestoreARoutingTheMixerRefuses) {
     const auto routing = session().snapshot().routing;
     EXPECT_EQ(routing.applied, cp::RoutingConfig{});
     EXPECT_FALSE(routing.staged);
+}
+
+// --- 子機の複数の入力（ステレオ、複数入力、アプリ音声） ---
+
+constexpr InputStream kMic{0, cp::InputSourceKind::kMicrophone, 1};
+constexpr InputStream kAppAudio{1, cp::InputSourceKind::kApplicationAudio, 2};
+constexpr InputStream kSecondMic{2, cp::InputSourceKind::kMicrophone, 1};
+
+TEST_F(HostSessionTest, ApprovalCreatesAMutedStripForEveryDeclaredInput) {
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+
+    const auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 2U);
+    EXPECT_EQ(channels[0].participant_id, channels[1].participant_id);
+    EXPECT_EQ(channels[0].name, "Vo");
+    EXPECT_EQ(channels[1].name, "Vo");
+    EXPECT_EQ(channels[0].source_kind, cp::InputSourceKind::kMicrophone);
+    EXPECT_EQ(channels[0].channel_count, 1);
+    EXPECT_EQ(channels[1].source_kind, cp::InputSourceKind::kApplicationAudio);
+    EXPECT_EQ(channels[1].channel_count, 2);
+    for (const auto& c : channels) {
+        EXPECT_TRUE(c.channel_muted);  // 初期ミュート
+        EXPECT_TRUE(mixer_.channels().at(c.entity_id).muted);
+    }
+    const auto& routes = peers_.routes().at(7);
+    ASSERT_EQ(routes.size(), 2U);
+    EXPECT_EQ(routes[0], (StreamRoute{0, 1, channels[0].entity_id}));
+    EXPECT_EQ(routes[1], (StreamRoute{1, 2, channels[1].entity_id}));
+}
+
+TEST_F(HostSessionTest, ClientWithoutStreamsReportGetsOneMonoMicrophoneStrip) {
+    create();
+    const auto a = connect(7, "Vo");
+    EXPECT_EQ(session().snapshot().channels.size(), 1U);
+    EXPECT_EQ(peers_.routes().at(7), (std::vector<StreamRoute>{{0, 1, a}}));
+}
+
+TEST_F(HostSessionTest, ConnectionStateAndSendMuteApplyToEveryStripOfTheClient) {
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+    session().on_peer_established(7);
+    const auto channels = session().snapshot().channels;
+
+    send_from(7, wire::SendMuteReport{false, 1});
+    for (const auto& c : channels) {
+        EXPECT_FALSE(strip(c.entity_id).send_muted);
+    }
+    session().on_peer_timeout(7);
+    for (const auto& c : channels) {
+        EXPECT_EQ(strip(c.entity_id).connection_state, ConnectionState::kReconnecting);
+    }
+    clock_.advance(121s);
+    session().tick();
+    for (const auto& c : channels) {
+        EXPECT_EQ(strip(c.entity_id).connection_state, ConnectionState::kLost);
+    }
+    // 同じ子機のストリップがそろって LOST になっても、通知は 1 回だけ。
+    const auto lost =
+        std::count_if(ui_.messages().begin(), ui_.messages().end(), [](const auto& m) {
+            const auto* n = std::get_if<cp::Notice>(&m);
+            return n != nullptr && n->code == "participant_lost";
+        });
+    EXPECT_EQ(lost, 1);
+}
+
+TEST_F(HostSessionTest, AddedInputGetsANewMutedStripAndKeepsTheExistingOne) {
+    create();
+    const auto a = connect(7, "Vo");
+    ASSERT_TRUE(command(a, cp::SetChannelMute{false}));
+
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    const auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 2U);
+    EXPECT_EQ(channels[0].entity_id, a);
+    EXPECT_FALSE(channels[0].channel_muted);  // 変わらない入力の操作者の設定は保つ
+    EXPECT_TRUE(channels[1].channel_muted);
+    EXPECT_EQ(channels[1].connection_state, ConnectionState::kConnected);
+    EXPECT_EQ(channels[1].participant_id, channels[0].participant_id);
+    EXPECT_EQ(peers_.routes().at(7).size(), 2U);
+}
+
+TEST_F(HostSessionTest, InputWhoseChannelCountChangesGetsANewStrip) {
+    create();
+    const auto a = connect(7, "Vo");
+    ASSERT_TRUE(command(a, cp::SetChannelMute{false}));
+
+    send_from(7, wire::StreamsReport{{InputStream{0, cp::InputSourceKind::kMicrophone, 2}}});
+    const auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 1U);
+    EXPECT_NE(channels[0].entity_id, a);
+    EXPECT_EQ(channels[0].channel_count, 2);
+    EXPECT_TRUE(channels[0].channel_muted);
+    EXPECT_FALSE(mixer_.channels().contains(a));
+    EXPECT_TRUE(ui_.last<cp::ChannelRemoved>());
+}
+
+TEST_F(HostSessionTest, NumbersMicrophonesInStreamOrderAndRenumbersWhenOneIsRemoved) {
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio, kSecondMic}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+    auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 3U);
+    EXPECT_EQ(channels[0].source_number, 1);
+    EXPECT_EQ(channels[1].source_number, 1);  // アプリ音声は別に数える
+    EXPECT_EQ(channels[2].source_number, 2);
+
+    send_from(7, wire::StreamsReport{{kAppAudio, kSecondMic}});
+    channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 2U);
+    EXPECT_EQ(channels[1].source_kind, cp::InputSourceKind::kMicrophone);
+    EXPECT_EQ(channels[1].source_number, 1);
+}
+
+TEST_F(HostSessionTest, RemovingAStripRemovesEveryStripOfTheDisconnectedClient) {
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+    session().on_peer_established(7);
+    send_from(7, wire::LeaveNotice{});
+    const auto second = session().snapshot().channels[1].entity_id;
+
+    ASSERT_TRUE(command(second, cp::RemoveStrip{}));
+    EXPECT_TRUE(session().snapshot().channels.empty());
+    EXPECT_TRUE(mixer_.channels().empty());
+}
+
+TEST_F(HostSessionTest, ReturnMuteAppliesToEveryStripOfTheClient) {
+    // 返送は子機 1 台に 1 本なので、どの入力のストリップから操作しても子機全体に効く。
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+    const auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 2U);
+
+    ASSERT_TRUE(command(channels[1].entity_id, cp::SetReturnMute{false}));
+    for (const auto& c : session().snapshot().channels) {
+        EXPECT_FALSE(c.return_muted) << c.entity_id;
+        EXPECT_GT(c.revision, 1U) << c.entity_id;
+    }
+    EXPECT_FALSE(peers_.return_mutes().at(7).send_muted);
+    EXPECT_EQ(peers_.return_mutes().at(7).epoch, 1U);
+
+    // 後から足した入力のストリップも、子機の返送の今の状態を持つ。
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio, kSecondMic}});
+    const auto after = session().snapshot().channels;
+    ASSERT_EQ(after.size(), 3U);
+    EXPECT_FALSE(after[2].return_muted);
+    ASSERT_TRUE(command(after[2].entity_id, cp::SetReturnMute{true}));
+    ASSERT_TRUE(command(after[0].entity_id, cp::SetReturnMute{false}));
+    EXPECT_EQ(peers_.return_mutes().at(7).epoch, 2U);
+}
+
+TEST_F(HostSessionTest, RejectsApprovalWhenTheInputsDoNotFitInTheStripLimit) {
+    create();
+    for (PeerHandle peer = 1; peer < kMaxChannelStrips; ++peer) {
+        static_cast<void>(connect(peer, "p"));
+    }
+    request_join(100, "Vo");
+    send_from(100, wire::StreamsReport{{kMic, kAppAudio}});
+    const auto pending = session().snapshot().pending.back().entity_id;
+    EXPECT_FALSE(command(pending, cp::ApproveParticipant{}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
 }
 
 // --- 返送モニター（Minus-Me） ---

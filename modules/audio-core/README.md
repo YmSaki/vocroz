@@ -47,7 +47,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/ports/audio_device_listener.h` | `AudioDeviceListener`（デバイスの抜去の通知） | 対象外 |
 | `vocroz/audio_core/ports/audio_device_catalog.h` | `AudioDeviceCatalog`（デバイスの一覧。`device` が実装） | 対象外 |
 | `vocroz/audio_core/audio_device_info.h` | `AudioDeviceInfo`、`AudioDeviceDirection` | 対象外 |
-| `vocroz/audio_core/ports/audio_source.h` | `AudioSource`（`transport` のジッターバッファが実装） | 呼び出し可能 |
+| `vocroz/audio_core/ports/audio_source.h` | `AudioSource`（`transport` のジッターバッファが実装。モノラルかステレオで、ストリップのチャンネル数はソースにそろえる。`docs/adr/0035-client-input-expansion.md`） | 呼び出し可能 |
 | `vocroz/audio_core/ports/audio_sink.h` | `AudioSink`（返送タップの渡し先。`transport` の `MediaStreamEncoder` が実装） | 呼び出し可能 |
 | `vocroz/audio_core/ports/midi_source.h` | `MidiSource`、`MidiBlockClock`、`MidiPullResult`（`MidiInputQueue` が実装） | `pull()` だけ呼び出し可能 |
 | `vocroz/audio_core/ports/plugin_processor.h` | `PluginProcessor`、`PluginBusLayout`、`PluginProcessContext`（`plugin-host` が実装） | `process()` だけ呼び出し可能 |

@@ -86,6 +86,17 @@ TEST(MixerGraphBuilderTest, BuildsImplicitPathFromStripsThroughMasterAndLimiter)
     EXPECT_TRUE(is_valid(g));
 }
 
+TEST(MixerGraphBuilderTest, MakesStripStereoWhenItsSourceIsStereo) {
+    MixerAssignments a = two_strips();
+    a.strips[1].source =
+        std::make_shared<ac::FakeAudioSource>(ac::FakeAudioSource::stereo(0.1F, 0.2F));
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+
+    EXPECT_EQ(node_with_fader(built.graph, ac::FaderId{1})->channels, 1U);
+    EXPECT_EQ(node_with_fader(built.graph, ac::FaderId{2})->channels, 2U);
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
 TEST(MixerGraphBuilderTest, AppliesInputDelayOnlyToMatchingStrip) {
     cp::RoutingConfig config;
     config.input_delays.push_back(cp::InputDelay{"ch-2", 10.0});
@@ -200,8 +211,8 @@ TEST(MixerGraphBuilderTest, ReturnCarriesTheMainMixWithoutTheOwnStrip) {
     auto a = two_strips();
     auto sink1 = std::make_shared<ac::FakeAudioSink>();
     auto sink2 = std::make_shared<ac::FakeAudioSink>();
-    a.strips[0].return_sink = sink1;
-    a.strips[1].return_sink = sink2;
+    a.returns.push_back({1, {"ch-1"}, sink1});
+    a.returns.push_back({2, {"ch-2"}, sink2});
     const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
     const auto& g = built.graph;
     const auto* ch1 = node_with_fader(g, ac::FaderId{1});
@@ -224,8 +235,8 @@ TEST(MixerGraphBuilderTest, ReturnExcludesBusesThatCarryTheOwnVoice) {
     a.route_faders.emplace("send-2", ac::FaderId{5});
     auto sink1 = std::make_shared<ac::FakeAudioSink>();
     auto sink2 = std::make_shared<ac::FakeAudioSink>();
-    a.strips[0].return_sink = sink1;
-    a.strips[1].return_sink = sink2;
+    a.returns.push_back({1, {"ch-1"}, sink1});
+    a.returns.push_back({2, {"ch-2"}, sink2});
     // ch-1 → bus-1 → Master（リバーブなどのバス）。
     cp::RoutingConfig config;
     config.buses.push_back(cp::RoutingBus{"bus-1", "Rev"});
@@ -245,6 +256,28 @@ TEST(MixerGraphBuilderTest, ReturnExcludesBusesThatCarryTheOwnVoice) {
     std::sort(expected2.begin(), expected2.end());
     EXPECT_EQ(inputs2, expected2);
     EXPECT_TRUE(is_valid(g));
+}
+
+TEST(MixerGraphBuilderTest, ReturnOfAClientWithSeveralInputsExcludesAllOfItsStrips) {
+    // ch-1 と ch-2 は同じ子機のマイクとアプリ音声。ch-1
+    // しか送っていない別の子機の返送には両方が入る。
+    auto a = two_strips();
+    auto own = std::make_shared<ac::FakeAudioSink>();
+    a.returns.push_back({1, {"ch-1", "ch-2"}, own});
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto& g = built.graph;
+    EXPECT_TRUE(return_inputs(g, return_tap_to(g, own)->id).empty());
+    EXPECT_TRUE(is_valid(g));
+}
+
+TEST(MixerGraphBuilderTest, ReturnIgnoresOwnStripsThatNoLongerExist) {
+    auto a = two_strips();
+    auto sink = std::make_shared<ac::FakeAudioSink>();
+    a.returns.push_back({1, {"ch-1", "ch-gone"}, sink});
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto& g = built.graph;
+    const auto* ch2 = node_with_fader(g, ac::FaderId{2});
+    EXPECT_EQ(return_inputs(g, return_tap_to(g, sink)->id), (std::vector<ac::NodeId>{ch2->id}));
 }
 
 }  // namespace

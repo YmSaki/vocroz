@@ -19,8 +19,6 @@ void OpusFrameEncoder::Deleter::operator()(::OpusEncoder* encoder) const noexcep
 
 namespace {
 
-constexpr int kChannels = 1;
-
 // 低遅延モードの設定を適用する。
 // どれか 1 つでも拒否されたら、意図しない設定で動かさないよう生成を失敗させる。
 bool configure(::OpusEncoder* encoder, const OpusEncoderConfig& config) noexcept {
@@ -38,8 +36,12 @@ bool configure(::OpusEncoder* encoder, const OpusEncoderConfig& config) noexcept
 
 common::Result<OpusFrameEncoder, CodecError> OpusFrameEncoder::create(
     const OpusEncoderConfig& config) noexcept {
+    if (config.channels == 0 || config.channels > kMaxStreamChannels) {
+        return common::make_unexpected(CodecError::kCreateFailed);
+    }
     int error = OPUS_OK;
-    Handle encoder{opus_encoder_create(static_cast<opus_int32>(kSampleRate), kChannels,
+    Handle encoder{opus_encoder_create(static_cast<opus_int32>(kSampleRate),
+                                       static_cast<int>(config.channels),
                                        OPUS_APPLICATION_RESTRICTED_LOWDELAY, &error)};
     if (error != OPUS_OK || encoder == nullptr || !configure(encoder.get(), config)) {
         return common::make_unexpected(CodecError::kCreateFailed);
@@ -50,13 +52,14 @@ common::Result<OpusFrameEncoder, CodecError> OpusFrameEncoder::create(
         return common::make_unexpected(CodecError::kCreateFailed);
     }
     return OpusFrameEncoder{std::move(encoder), transport::frame_samples(config.frame_duration),
-                            static_cast<std::size_t>(lookahead)};
+                            config.channels, static_cast<std::size_t>(lookahead)};
 }
 
-OpusFrameEncoder::OpusFrameEncoder(Handle encoder, std::size_t frame_samples,
+OpusFrameEncoder::OpusFrameEncoder(Handle encoder, std::size_t frame_samples, std::size_t channels,
                                    std::size_t lookahead_samples) noexcept
     : encoder_(std::move(encoder)),
       frame_samples_(frame_samples),
+      channels_(channels),
       lookahead_samples_(lookahead_samples) {}
 
 OpusFrameEncoder::OpusFrameEncoder(OpusFrameEncoder&&) noexcept = default;
@@ -65,7 +68,7 @@ OpusFrameEncoder::~OpusFrameEncoder() = default;
 
 common::Result<std::size_t, CodecError> OpusFrameEncoder::encode(
     std::span<const float> pcm, std::span<std::uint8_t> out) noexcept VOCROZ_NONBLOCKING {
-    if (pcm.size() != frame_samples_) {
+    if (pcm.size() != frame_samples_ * channels_) {
         return common::make_unexpected(CodecError::kInvalidFrameSize);
     }
     const std::size_t capacity = std::min(out.size(), kMaxOpusPayloadBytes);
@@ -73,7 +76,8 @@ common::Result<std::size_t, CodecError> OpusFrameEncoder::encode(
         return common::make_unexpected(CodecError::kBufferTooSmall);
     }
     const opus_int32 bytes =
-        opus_encode_float(encoder_.get(), pcm.data(), static_cast<int>(pcm.size()), out.data(),
+        // libopus のフレーム長は 1 チャンネルあたりのサンプル数で渡す。
+        opus_encode_float(encoder_.get(), pcm.data(), static_cast<int>(frame_samples_), out.data(),
                           static_cast<opus_int32>(capacity));
     if (bytes <= 0) {
         return common::make_unexpected(CodecError::kEncodeFailed);

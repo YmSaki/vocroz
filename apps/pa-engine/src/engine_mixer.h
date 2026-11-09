@@ -65,18 +65,20 @@ public:
     /// ストリームの最後の参照は、古いグラフの破棄（collect()）でオーディオスレッド外で外れる。
     /// @param strip_id ストリップの entity_id
     void detach_source(const std::string& strip_id);
-    /// ストリップの子機への返送（Minus-Me）の渡し先をつなぐ。返送には、その子機の声を含まない
-    /// Master へのミックスが流れる（docs/adr/0036-return-monitor.md）。送信を止めるかどうかは
-    /// 渡し先（MediaStreamEncoder）が返送のミュートで決める。
-    /// @param strip_id ストリップの entity_id
-    /// @param sink     返送の渡し先（null にしない）
-    /// @return ストリップがあり、グラフを差し替えられたら true
-    [[nodiscard]] bool attach_return(const std::string& strip_id,
+    /// 子機への返送（Minus-Me）の渡し先をつなぐ。返送には、その子機のすべてのストリップの声を
+    /// 含まない Master へのミックスが流れる（docs/adr/0036-return-monitor.md）。送信を止めるか
+    /// どうかは渡し先（MediaStreamEncoder）が返送のミュートで決める。同じキーの返送があれば
+    /// 置き換える（子機の入力が増減したときに、自分のストリップの一覧を付け替える）。
+    /// @param key           返送を区別するキー（その子機との接続）
+    /// @param own_strip_ids その子機のストリップの entity_id（1 本以上）
+    /// @param sink          返送の渡し先（null にしない）
+    /// @return 引数が正しく、グラフを差し替えられたら true。失敗したら前の状態のまま
+    [[nodiscard]] bool attach_return(std::uint64_t key, std::vector<std::string> own_strip_ids,
                                      std::shared_ptr<audio_core::AudioSink> sink);
-    /// ストリップから返送の渡し先を外す。渡し先の最後の参照は、古いグラフの破棄（collect()）で
+    /// 返送の渡し先を外す。渡し先の最後の参照は、古いグラフの破棄（collect()）で
     /// オーディオスレッド外で外れる。
-    /// @param strip_id ストリップの entity_id
-    void detach_return(const std::string& strip_id);
+    /// @param key attach_return() に渡したキー
+    void detach_return(std::uint64_t key);
 
     /// 周期処理。キューの満杯で失敗したフェーダーの操作を送り直し、古いグラフを破棄する。
     void collect();

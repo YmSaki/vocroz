@@ -202,26 +202,37 @@ void EngineMixer::detach_source(const std::string& strip_id) {
     }
 }
 
-bool EngineMixer::attach_return(const std::string& strip_id, std::shared_ptr<ac::AudioSink> sink) {
-    auto* strip = find_strip(strip_id);
-    if (strip == nullptr || !sink) {
+bool EngineMixer::attach_return(std::uint64_t key, std::vector<std::string> own_strip_ids,
+                                std::shared_ptr<ac::AudioSink> sink) {
+    if (!sink || own_strip_ids.empty() ||
+        !std::ranges::all_of(own_strip_ids,
+                             [&](const std::string& id) { return find_strip(id) != nullptr; })) {
         return false;
     }
-    auto previous = std::exchange(strip->return_sink, std::move(sink));
+    auto& returns = assignments_.returns;
+    const auto previous = returns;
+    const auto it = std::ranges::find(returns, key, &ReturnAssignment::key);
+    ReturnAssignment assignment{key, std::move(own_strip_ids), std::move(sink)};
+    if (it == returns.end()) {
+        returns.push_back(std::move(assignment));
+    } else {
+        *it = std::move(assignment);
+    }
     if (!rebuild(assignments_, routing_, feedback_approved_)) {
-        strip->return_sink = std::move(previous);
+        returns = previous;
         logger_.log(common::LogLevel::kError, "返送をつないだグラフを適用できませんでした");
         return false;
     }
     return true;
 }
 
-void EngineMixer::detach_return(const std::string& strip_id) {
-    auto* strip = find_strip(strip_id);
-    if (strip == nullptr || !strip->return_sink) {
+void EngineMixer::detach_return(std::uint64_t key) {
+    auto& returns = assignments_.returns;
+    const auto it = std::ranges::find(returns, key, &ReturnAssignment::key);
+    if (it == returns.end()) {
         return;
     }
-    strip->return_sink.reset();
+    returns.erase(it);
     if (!rebuild(assignments_, routing_, feedback_approved_)) {
         logger_.log(common::LogLevel::kError, "返送を外したグラフを適用できませんでした");
     }

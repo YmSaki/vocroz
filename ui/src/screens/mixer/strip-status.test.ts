@@ -15,6 +15,9 @@ const base: ChannelStrip = {
   channel_muted: false,
   gain_db: 0,
   error_code: null,
+  source_kind: "MICROPHONE",
+  channel_count: 1,
+  source_number: 1,
   return_muted: true,
 };
 

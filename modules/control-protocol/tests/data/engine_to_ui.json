@@ -31,7 +31,10 @@
           "channel_muted": true,
           "return_muted": false,
           "gain_db": 0.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch2",
@@ -45,7 +48,10 @@
           "channel_muted": true,
           "return_muted": true,
           "gain_db": 0.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch3",
@@ -59,7 +65,10 @@
           "channel_muted": true,
           "return_muted": true,
           "gain_db": 0.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "APP_AUDIO",
+          "channel_count": 2,
+          "source_number": 1
         },
         {
           "entity_id": "ch4",
@@ -73,7 +82,10 @@
           "channel_muted": true,
           "return_muted": true,
           "gain_db": null,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch5",
@@ -87,7 +99,10 @@
           "channel_muted": true,
           "return_muted": true,
           "gain_db": 0.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch6",
@@ -101,7 +116,10 @@
           "channel_muted": true,
           "return_muted": true,
           "gain_db": 10.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch7",
@@ -115,7 +133,10 @@
           "channel_muted": true,
           "return_muted": true,
           "gain_db": -60.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch8",
@@ -129,7 +150,10 @@
           "channel_muted": true,
           "return_muted": true,
           "gain_db": 0.0,
-          "error_code": "UNREACHABLE"
+          "error_code": "UNREACHABLE",
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         }
       ],
       "master": {
@@ -383,7 +407,10 @@
       "channel_muted": true,
       "return_muted": true,
       "gain_db": -12.3,
-      "error_code": null
+      "error_code": null,
+      "source_kind": "MICROPHONE",
+      "channel_count": 1,
+      "source_number": 1
     }
   },
   {
@@ -697,7 +724,11 @@
         "check": {
           "issue": null,
           "issue_entity_id": null,
-          "looped_entity_ids": ["bus-fx", "delay-echo", "master"],
+          "looped_entity_ids": [
+            "bus-fx",
+            "delay-echo",
+            "master"
+          ],
           "needs_approval": true
         }
       },
@@ -1007,7 +1038,10 @@
         "check": {
           "issue": "UNDELAYED_LOOP",
           "issue_entity_id": "bus-fx",
-          "looped_entity_ids": ["bus-fx", "master"],
+          "looped_entity_ids": [
+            "bus-fx",
+            "master"
+          ],
           "needs_approval": false
         }
       },

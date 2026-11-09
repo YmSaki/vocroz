@@ -87,7 +87,9 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
             assign_buffers(node.pre_fader, node.channel_count, next_buffer);
         }
         if (spec.kind == NodeKind::kStrip && spec.delay_samples > 0) {
-            node.delays.emplace_back(spec.delay_samples);
+            for (std::size_t ch = 0; ch < node.channel_count; ++ch) {
+                node.delays.emplace_back(spec.delay_samples);
+            }
         }
         if (spec.kind == NodeKind::kDelay) {
             for (std::size_t ch = 0; ch < node.channel_count; ++ch) {
@@ -201,12 +203,12 @@ void RenderGraph::process_node(std::size_t position, std::size_t frames, FaderBa
     float* const* channels = node.channels.data();
     switch (node.kind) {
         case NodeKind::kSource:
-            node.source->pull(std::span<float>(node.channels[0], frames));
+            node.source->pull(channels, frames);
             break;
         case NodeKind::kStrip:
             mix_inputs(node, frames, faders);
-            if (!node.delays.empty()) {
-                node.delays[0].process(std::span<float>(node.channels[0], frames));
+            for (std::size_t ch = 0; ch < node.delays.size(); ++ch) {
+                node.delays[ch].process(std::span<float>(node.channels[ch], frames));
             }
             keep_pre_fader(node, frames);
             // チャンネルミュート中も入力を監視できるよう、メーターはフェーダーの前で測る。
