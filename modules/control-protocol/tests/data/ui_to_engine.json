@@ -198,6 +198,13 @@
     "device_id": null
   },
   {
+    "type": "set_return_mute",
+    "request_id": "r-26",
+    "entity_id": "ch1",
+    "expected_revision": 2,
+    "muted": false
+  },
+  {
     "type": "set_gain",
     "entity_id": "send-1",
     "seq": 7,

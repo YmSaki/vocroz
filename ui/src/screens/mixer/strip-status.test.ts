@@ -18,6 +18,7 @@ const base: ChannelStrip = {
   source_kind: "MICROPHONE",
   channel_count: 1,
   source_number: 1,
+  return_muted: true,
 };
 
 describe("stripStatus", () => {

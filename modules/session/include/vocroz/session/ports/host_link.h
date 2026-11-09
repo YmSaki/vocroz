@@ -41,6 +41,10 @@ public:
     /// @param message session がエンコードした制御メッセージ
     virtual void send(std::span<const std::uint8_t> message) = 0;
 
+    /// 親機から通知された返送モニターのミュートを、返送の受信側（世代番号による判定）へ渡す。
+    /// @param muted 通知されたミュート状態
+    /// @param epoch 通知に載っていたミュートの世代番号
+    virtual void apply_return_mute(bool muted, std::uint32_t epoch) = 0;
     /// 接続を閉じ、再接続の試行もやめる。
     virtual void close() = 0;
 };

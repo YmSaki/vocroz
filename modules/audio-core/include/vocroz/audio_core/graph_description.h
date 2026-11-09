@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "vocroz/audio_core/playback_track.h"
+#include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
 #include "vocroz/audio_core/ports/midi_source.h"
 #include "vocroz/audio_core/ports/plugin_processor.h"
@@ -63,6 +64,10 @@ enum class NodeKind {
     /// 再生ノード（メディアプレイヤー）。PlaybackTrack の再生音を出す。入力を持たず、
     /// 出力のチャンネル数は PlaybackTrack で決まる
     kPlayer,
+    /// 返送タップ。ステレオの入力を加算してモノラルにダウンミックスし（L と R の平均）、
+    /// AudioSink に渡す。出力を持たない（後段へつながない）。子機への返送（Minus-Me）に使う
+    /// （minus_me.h、docs/adr/0036-return-monitor.md）
+    kReturnTap,
 };
 
 /// ノードの記述。各種類のファクトリー関数で作る。
@@ -92,6 +97,8 @@ struct NodeSpec {
     std::shared_ptr<RecordingTrack> recording;
     /// kPlayer のときの読み込み元。
     std::shared_ptr<PlaybackTrack> playback;
+    /// kReturnTap のときのサンプルの渡し先。
+    std::shared_ptr<AudioSink> sink;
 
     /// ソースノードを作る。
     /// @param id ノードの識別子
@@ -152,6 +159,11 @@ struct NodeSpec {
     /// @param id ノードの識別子
     /// @param track 読み込み元（null にしない）
     [[nodiscard]] static NodeSpec make_player(NodeId id, std::shared_ptr<PlaybackTrack> track);
+
+    /// 返送タップを作る。通常は add_minus_me_returns()（minus_me.h）が作る。
+    /// @param id ノードの識別子
+    /// @param sink サンプルの渡し先（null にしない）
+    [[nodiscard]] static NodeSpec make_return_tap(NodeId id, std::shared_ptr<AudioSink> sink);
 };
 
 /// 結線が送り元のどの位置から信号を取り出すか。
@@ -245,6 +257,7 @@ enum class GraphError {
     /// MIDI の経路が、存在しない MIDI
     /// ソースかノードを指しているか、送り先がプラグインノードでないか、 同じ経路が重複している
     kInvalidMidiConnection,
+    kMissingSink,  ///< 返送タップに AudioSink がない
 };
 
 }  // namespace vocroz::audio_core

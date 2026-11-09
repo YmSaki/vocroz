@@ -98,11 +98,23 @@ struct SessionEndedNotice {
     friend bool operator==(const SessionEndedNotice&, const SessionEndedNotice&) = default;
 };
 
+/// 親機 → 子機: 返送モニター（Minus-Me）のミュートの通知。
+/// 親機はミュート中に返送の送信を止める。子機は世代番号で、ミュート前の古いフレームと
+/// 解除後の新しいフレームを区別する（docs/adr/0036-return-monitor.md）。
+struct ReturnMuteNotice {
+    bool muted = true;
+    /// ミュートの世代番号。親機が解除のたびに 1 増やす。
+    std::uint32_t epoch = 0;
+
+    friend bool operator==(const ReturnMuteNotice&, const ReturnMuteNotice&) = default;
+};
+
 /// 子機から親機へのメッセージ。
 using ClientToHostMessage = std::variant<JoinRequest, ReconnectRequest, SendMuteReport, InputReport,
                                          LeaveNotice, StreamsReport>;
 
 /// 親機から子機へのメッセージ。
-using HostToClientMessage = std::variant<JoinPending, JoinApproved, JoinDenied, SessionEndedNotice>;
+using HostToClientMessage =
+    std::variant<JoinPending, JoinApproved, JoinDenied, SessionEndedNotice, ReturnMuteNotice>;
 
 }  // namespace vocroz::session::wire

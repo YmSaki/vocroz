@@ -19,6 +19,7 @@ add_library(vocroz_audio_core STATIC
   src/midi_message.cpp
   src/midi_router.cpp
   src/midi_timing.cpp
+  src/minus_me.cpp
   src/mixer.cpp
   src/playback_track.cpp
   src/recording_track.cpp
@@ -55,6 +56,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/midi_message_test.cpp
     tests/midi_routing_test.cpp
     tests/midi_timing_test.cpp
+    tests/minus_me_test.cpp
     tests/mixer_test.cpp
     tests/playback_track_test.cpp
     tests/realtime_sanitizer_test.cpp

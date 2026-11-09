@@ -114,11 +114,20 @@ struct SetRouteMute {
     friend bool operator==(const SetRouteMute&, const SetRouteMute&) = default;
 };
 
+/// 返送モニター（Minus-Me）のミュートを切り替える（親機）。対象はチャンネルストリップ。
+/// ミュート中は、そのストリップの子機への返送の送信を止める（docs/adr/0036-return-monitor.md）。
+struct SetReturnMute {
+    bool muted = true;
+
+    friend bool operator==(const SetReturnMute&, const SetReturnMute&) = default;
+};
+
 /// 離散コマンドの種類ごとの本体。
 using DiscreteCommandBody =
     std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
                  RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
-                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput>;
+                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput,
+                 SetReturnMute>;
 
 /// 離散コマンド。
 struct DiscreteCommand {

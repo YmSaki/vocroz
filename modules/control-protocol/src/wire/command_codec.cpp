@@ -80,6 +80,13 @@ void read_fields(ObjectReader& r, SetRouteMute& command) {
     command.muted = r.boolean("muted");
 }
 
+void write_fields(nlohmann::json& out, const SetReturnMute& command) {
+    out["muted"] = command.muted;
+}
+void read_fields(ObjectReader& r, SetReturnMute& command) {
+    command.muted = r.boolean("muted");
+}
+
 void write_fields(nlohmann::json& out, const SetGain& command) {
     out["entity_id"] = command.entity_id;
     out["seq"] = command.seq;
