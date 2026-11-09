@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // ブロック内の MIDI イベントの値型。
-// プラグインノード（PluginProcessor）に音声と同じブロック単位で渡す。B4 のエフェクトは受け取らず、
-// Beta5 の VSTi がこの型でノートを受け取る。タイムスタンプからサンプルオフセットへの変換と、
-// 発音中のノートの追跡は B5 で audio-core に加える。
+// プラグインノード（PluginProcessor）に音声と同じブロック単位で渡す。VSTi
+// はこの型でノートを受け取る。 タイムスタンプからサンプルオフセットへの変換は
+// MidiInputQueue（midi_input_queue.h）、 メッセージの判定と組み立ては midi_message.h
+// が受け持つ（docs/adr/0029-midi-and-vsti.md）。
 #pragma once
 
 #include <array>

@@ -21,6 +21,7 @@
 #include "delay_line.h"
 #include "fader_bank.h"
 #include "meter_bank.h"
+#include "midi_router.h"
 #include "safety_limiter.h"
 
 namespace vocroz::audio_core {
@@ -56,9 +57,18 @@ public:
     /// @param frames 処理するサンプル数（kBlockSize 以下）
     /// @param faders フェーダーの状態
     /// @param meters メーターの状態
+    /// @param midi_clock このブロックのサンプル位置と時刻の対応（MIDI
+    /// のタイムスタンプの変換に使う）
     /// @return 出力ノードごとの処理結果（出力ノードがなければ空）。次の process() まで有効
     [[nodiscard]] std::span<const OutputBlock> process(
-        std::size_t frames, FaderBank& faders, MeterBank& meters) noexcept VOCROZ_NONBLOCKING;
+        std::size_t frames, FaderBank& faders, MeterBank& meters,
+        const MidiBlockClock& midi_clock = {}) noexcept VOCROZ_NONBLOCKING;
+
+    /// 差し替え前のグラフから、MIDI の発音中のノートを引き継ぐ（MidiRouter::adopt()）。
+    /// グラフを取り込んだ直後、最初の process() の前に呼ぶ。
+    /// @param previous 差し替え前のグラフ
+    /// スレッド安全性: オーディオスレッドから呼び出し可能。
+    void adopt_midi_state(const RenderGraph& previous) noexcept VOCROZ_NONBLOCKING;
 
 private:
     struct Input {
@@ -94,16 +104,18 @@ private:
     RenderGraph() = default;
 
     void mix_inputs(Node& node, std::size_t frames, FaderBank& faders) noexcept VOCROZ_NONBLOCKING;
-    void process_node(Node& node, std::size_t frames, FaderBank& faders,
+    void process_node(std::size_t position, std::size_t frames, FaderBank& faders,
                       MeterBank& meters) noexcept VOCROZ_NONBLOCKING;
     static void keep_pre_fader(Node& node, std::size_t frames) noexcept VOCROZ_NONBLOCKING;
-    static void process_plugin(Node& node, std::size_t frames) noexcept VOCROZ_NONBLOCKING;
+    static void process_plugin(Node& node, std::size_t frames,
+                               std::span<const MidiEvent> midi) noexcept VOCROZ_NONBLOCKING;
 
     std::vector<float>
         storage_;  // 全ノードのバッファ（channels、pre_fader、scratch_ はこの中を指す）
     std::vector<Node> nodes_;               // 処理順
     std::vector<std::size_t> delay_nodes_;  // 遅延ノードの nodes_ 上の位置
     std::vector<OutputBlock> outputs_;
+    MidiRouter midi_;
     std::array<float*, kStereoChannels> scratch_{};  // センドレベルを掛けた信号の作業領域
 };
 
