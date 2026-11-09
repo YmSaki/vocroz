@@ -29,9 +29,6 @@ constexpr std::chrono::milliseconds kSessionTickInterval{100};
 // 経路が途絶えている間も送り続け、戻ったらすぐに張り直せるようにする。
 constexpr std::chrono::milliseconds kHandshakeRetryInterval{200};
 
-// メディアのストリーム ID。子機の送信は 1 本だけ。
-constexpr std::uint16_t kStreamId = 0;
-
 transport::StaticKeyPair generate_keys() {
     auto keys = transport::StaticKeyPair::generate();
     if (!keys) {
@@ -52,20 +49,50 @@ struct SimulatedClient::Link {
           control(owner.clock_, sink, owner),
           liveness(owner.clock_, owner),
           plaintext(transport::kMaxPacketBytes) {
-        auto created = MediaSender::create(channel.sealer, socket, owner.config_.encoder, kStreamId,
-                                           owner.mute_epoch_);
-        if (!created) {
-            std::abort();
-        }
-        sender = std::make_unique<MediaSender>(std::move(created).value());
+        configure(owner);
     }
+
+    // 入力の構成に送信側をそろえる。変わらない入力の送信側（タイムスタンプ）はそのまま残す。
+    void configure(const SimulatedClient& owner) {
+        std::vector<Stream> next;
+        for (const auto& stream : owner.streams_) {
+            const auto it =
+                std::ranges::find_if(streams, [&](const Stream& s) { return s.stream == stream; });
+            if (it != streams.end()) {
+                next.push_back(std::move(*it));
+                continue;
+            }
+            transport::OpusEncoderConfig config = owner.config_.encoder;
+            config.channels = stream.channels;
+            auto created = MediaSender::create(channel.sealer, socket, config, stream.stream_id,
+                                               owner.mute_epoch_);
+            if (!created) {
+                std::abort();
+            }
+            next.push_back(
+                Stream{stream, std::make_unique<MediaSender>(std::move(created).value())});
+        }
+        streams = std::move(next);
+    }
+
+    // 入力の種類の送信側。その入力を送らない構成なら nullptr。
+    MediaSender* sender(control_protocol::InputSourceKind kind) {
+        const auto it =
+            std::ranges::find_if(streams, [&](const Stream& s) { return s.stream.kind == kind; });
+        return it == streams.end() ? nullptr : it->sender.get();
+    }
+
+    struct Stream {
+        session::InputStream stream;
+        std::unique_ptr<MediaSender> sender;
+    };
 
     transport::SecureChannel channel;
     SimulatedDatagramSocket socket;
     transport::SecureControlPacketSink sink;
     transport::ReliableControlChannel control;
     transport::LivenessMonitor liveness;
-    std::unique_ptr<MediaSender> sender;
+    std::vector<Stream> streams;
     std::vector<std::uint8_t> plaintext;
 };
 
@@ -96,12 +123,26 @@ SimulatedClient::~SimulatedClient() {
 }
 
 void SimulatedClient::capture(std::span<const float> block) {
+    capture_input(control_protocol::InputSourceKind::kMicrophone, block);
+}
+
+void SimulatedClient::capture_app_audio(std::span<const float> block) {
+    capture_input(control_protocol::InputSourceKind::kApplicationAudio, block);
+}
+
+void SimulatedClient::capture_input(control_protocol::InputSourceKind kind,
+                                    std::span<const float> block) {
     if (!link_ || (send_muted_ && !config_.ignore_send_mute)) {
         // 送信ミュート中は送らない（親機ではミュートの通知で PAUSED として扱われる）。
         return;
     }
-    link_->sender->capture(block);
-    stats_.media_frames_sent = link_->sender->stats().frames_sent;
+    MediaSender* const sender = link_->sender(kind);
+    if (sender == nullptr) {
+        return;  // その入力を送らない構成
+    }
+    const std::uint64_t before = sender->stats().frames_sent;
+    sender->capture(block);
+    stats_.media_frames_sent += sender->stats().frames_sent - before;
 }
 
 void SimulatedClient::step() {
@@ -142,12 +183,21 @@ void SimulatedClient::set_send_muted(bool muted, std::uint32_t epoch) {
     send_muted_ = muted;
     mute_epoch_ = epoch;
     if (link_) {
-        link_->sender->set_mute_epoch(epoch);
+        for (auto& stream : link_->streams) {
+            stream.sender->set_mute_epoch(epoch);
+        }
     }
 }
 
 void SimulatedClient::set_send_level(double /*level_db*/) {
     // 送信レベルは音の大きさだけの話で、結合テストの判定に使わない。
+}
+
+void SimulatedClient::set_streams(const std::vector<session::InputStream>& streams) {
+    streams_ = streams;
+    if (link_) {
+        link_->configure(*this);
+    }
 }
 
 void SimulatedClient::connect(const session::HostEndpoint& endpoint) {

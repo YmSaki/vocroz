@@ -15,6 +15,8 @@ namespace vocroz::client {
 
 /// エンコード済みのフレーム。
 struct EncodedFrame {
+    /// メディアパケットのストリーム ID（子機の入力ごとに session が振る）。
+    std::uint16_t stream_id = 0;
     /// フレームの先頭のタイムスタンプ（48kHz のサンプル数）。
     std::uint64_t timestamp = 0;
     /// 送信ミュートの世代番号。

@@ -111,7 +111,8 @@ EnsembleSimulation::~EnsembleSimulation() {
     host_.reset();
 }
 
-void EnsembleSimulation::run(std::uint64_t samples, const Source& source, const Sink& sink) {
+void EnsembleSimulation::run(std::uint64_t samples, const Source& source, const Sink& sink,
+                             const Source& app_audio) {
     const std::uint64_t end = now_samples_ + samples;
     while (now_samples_ < end) {
         const std::uint64_t t = now_samples_ + step_samples_;
@@ -119,11 +120,18 @@ void EnsembleSimulation::run(std::uint64_t samples, const Source& source, const 
         if (t % config_.block == 0) {
             // キャプチャのコールバックは、ブロックを録り終えた時刻に呼ばれる。
             for (std::size_t i = 0; i < clients_.size(); ++i) {
-                std::fill(capture_buffer_.begin(), capture_buffer_.end(), 0.0F);
+                // マイクのデバイスは、子機が選んだチャンネル数で録る。
+                const std::size_t channels = clients_[i]->session().snapshot().input_channels;
+                capture_buffer_.assign(config_.block * channels, 0.0F);
                 if (source) {
                     source(i, t - config_.block, capture_buffer_);
                 }
                 clients_[i]->capture(capture_buffer_);
+                if (app_audio) {
+                    capture_buffer_.assign(config_.block * 2, 0.0F);
+                    app_audio(i, t - config_.block, capture_buffer_);
+                    clients_[i]->capture_app_audio(capture_buffer_);
+                }
             }
         }
         network_.deliver_due();

@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -293,6 +294,96 @@ TEST_F(ClientSessionTest, SendLevelIsClampedAndDoesNotAdvanceTheRevision) {
     EXPECT_EQ(capture_.level_db(), -60.0);
     EXPECT_EQ(session().snapshot().revision, revision);
     EXPECT_EQ(ui_.all<cp::GainAck>().size(), 2U);
+}
+
+// --- 入力の構成（docs/adr/0035-client-input-expansion.md） ---
+
+TEST_F(ClientSessionTest, StartsWithAMonoMicrophoneAndNoAppAudio) {
+    session();
+    ASSERT_EQ(capture_.streams().size(), 1U);
+    EXPECT_EQ(capture_.streams()[0], (InputStream{0, cp::InputSourceKind::kMicrophone, 1}));
+    EXPECT_EQ(session().snapshot().input_channels, 1);
+    EXPECT_FALSE(session().snapshot().app_audio);
+}
+
+TEST_F(ClientSessionTest, RestoresTheSavedChannelCountButNotTheAppAudio) {
+    ClientSettings saved{"Vo", "mic-1", 0.0};
+    saved.input_channels = 2;
+    settings_.client() = saved;
+    session();
+    EXPECT_EQ(session().snapshot().input_channels, 2);
+    EXPECT_EQ(capture_.streams(),
+              (std::vector<InputStream>{{0, cp::InputSourceKind::kMicrophone, 2}}));
+}
+
+TEST_F(ClientSessionTest, DeclaresTheInputsRightAfterTheJoinRequest) {
+    ASSERT_TRUE(command(cp::SetInputChannels{2}));
+    ASSERT_TRUE(command(cp::Join{"ABCDE-12345"}));
+    session().on_invite_resolved(parse_invite_code("ABCDE12345").value(), resolved_);
+    session().on_link_established();
+    ASSERT_GE(link_.sent().size(), 2U);
+    const auto request = wire::decode_client_to_host(link_.sent()[link_.sent().size() - 2]).value();
+    EXPECT_TRUE(std::holds_alternative<wire::JoinRequest>(request));
+    const auto sent = last_sent();
+    ASSERT_TRUE(sent);
+    const auto* report = std::get_if<wire::StreamsReport>(&*sent);
+    ASSERT_NE(report, nullptr);
+    EXPECT_EQ(report->streams,
+              (std::vector<InputStream>{{0, cp::InputSourceKind::kMicrophone, 2}}));
+}
+
+TEST_F(ClientSessionTest, SwitchingToStereoReportsTheInputsAndSavesTheChannelCount) {
+    join_and_connect(token(1));
+    ASSERT_TRUE(command(cp::SetSendMute{false}));
+    const auto revision = session().snapshot().revision;
+    const auto applied = command(cp::SetInputChannels{2});
+    ASSERT_TRUE(applied);
+    EXPECT_GT(*applied, revision);
+    EXPECT_EQ(capture_.streams(),
+              (std::vector<InputStream>{{0, cp::InputSourceKind::kMicrophone, 2}}));
+    const auto sent = last_sent();
+    ASSERT_TRUE(sent);
+    const auto* report = std::get_if<wire::StreamsReport>(&*sent);
+    ASSERT_NE(report, nullptr);
+    EXPECT_EQ(report->streams, capture_.streams());
+    EXPECT_EQ(settings_.client()->input_channels, 2);
+    // 送信ミュートはそのまま。親機では作り直したストリップがチャンネルミュートで始まる。
+    EXPECT_FALSE(capture_.send_muted());
+}
+
+TEST_F(ClientSessionTest, AppAudioAddsAStereoStreamWithoutBeingSaved) {
+    join_and_connect(token(1));
+    ASSERT_TRUE(command(cp::SetAppAudio{true}));
+    const std::vector<InputStream> expected{
+        {0, cp::InputSourceKind::kMicrophone, 1},
+        {1, cp::InputSourceKind::kApplicationAudio, 2},
+    };
+    EXPECT_EQ(capture_.streams(), expected);
+    EXPECT_EQ(last_sent_of<wire::StreamsReport>()->streams, expected);
+    EXPECT_TRUE(session().snapshot().app_audio);
+
+    ASSERT_TRUE(command(cp::SetAppAudio{false}));
+    EXPECT_EQ(capture_.streams().size(), 1U);
+    EXPECT_EQ(last_sent_of<wire::StreamsReport>()->streams.size(), 1U);
+}
+
+TEST_F(ClientSessionTest, ChangingInputsWhileDisconnectedSendsNothing) {
+    ASSERT_TRUE(command(cp::SetAppAudio{true}));
+    ASSERT_TRUE(command(cp::SetInputChannels{2}));
+    EXPECT_TRUE(link_.sent().empty());
+    EXPECT_EQ(capture_.streams().size(), 2U);
+}
+
+TEST_F(ClientSessionTest, ReconnectingDeclaresTheInputsAgain) {
+    join_and_connect(token(1));
+    ASSERT_TRUE(command(cp::SetAppAudio{true}));
+    session().on_link_lost();
+    link_.clear_sent();
+    session().on_link_established();
+    receive(wire::JoinApproved{token(1)});
+    const auto report = last_sent_of<wire::StreamsReport>();
+    ASSERT_TRUE(report);
+    EXPECT_EQ(report->streams.size(), 2U);
 }
 
 // --- 再接続（AT-A05 のドメイン部分） ---

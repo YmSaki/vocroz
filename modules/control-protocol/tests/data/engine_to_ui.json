@@ -476,7 +476,9 @@
       "input_missing": false,
       "send_muted": true,
       "send_level_db": 0.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -497,7 +499,9 @@
       "input_missing": false,
       "send_muted": true,
       "send_level_db": 0.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -518,7 +522,9 @@
       "input_missing": false,
       "send_muted": true,
       "send_level_db": 0.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -539,7 +545,9 @@
       "input_missing": false,
       "send_muted": true,
       "send_level_db": 0.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -560,7 +568,9 @@
       "input_missing": false,
       "send_muted": true,
       "send_level_db": 0.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -581,7 +591,9 @@
       "input_missing": false,
       "send_muted": true,
       "send_level_db": 0.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -602,7 +614,9 @@
       "input_missing": false,
       "send_muted": false,
       "send_level_db": 12.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 2,
+      "app_audio": true
     }
   },
   {
@@ -623,7 +637,9 @@
       "input_missing": true,
       "send_muted": true,
       "send_level_db": -60.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -639,7 +655,9 @@
       "input_missing": false,
       "send_muted": true,
       "send_level_db": 0.0,
-      "return_muted": true
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {

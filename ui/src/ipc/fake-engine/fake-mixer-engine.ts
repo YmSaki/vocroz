@@ -219,6 +219,8 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "leave":
       case "select_input":
       case "set_send_mute":
+      case "set_input_channels":
+      case "set_app_audio":
         this.reject(message, "INVALID_STATE");
         return;
     }
@@ -394,6 +396,8 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "leave":
       case "select_input":
       case "set_send_mute":
+      case "set_input_channels":
+      case "set_app_audio":
         this.reject(command, "INVALID_STATE");
         return;
     }

@@ -32,8 +32,11 @@ ClientRuntime::ClientRuntime(ConstructionKey /*key*/, Ports ports, const Config&
     : ports_(ports),
       keys_(std::move(keys)),
       sender_(wakeup_),
-      processor_(std::move(encoder), sender_),
-      capture_(processor_, ports.inputs, ports.logger),
+      capture_(ClientCapture::Ports{.sender = sender_,
+                                    .microphones = ports.inputs,
+                                    .app_audio = ports.app_audio,
+                                    .logger = ports.logger},
+               config.encoder, std::move(encoder)),
       ui_(ports.ui_channel, ports.logger),
       connection_(HostConnection::Ports{.endpoint = ports.endpoint,
                                         .router = ports.router,
@@ -139,7 +142,7 @@ void ClientRuntime::refresh_input_devices() {
 }
 
 void ClientRuntime::publish_meter() {
-    const float peak = processor_.take_input_peak();
+    const float peak = capture_.take_input_peak();
     cp::MeterLevel level;
     level.entity_id = session_.snapshot().entity_id;
     if (peak > 0.0F) {
