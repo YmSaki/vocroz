@@ -20,18 +20,27 @@ endif()
 
 # JUCE のモジュールは、リンクしたターゲットごとにソースがコンパイルされる。複数のアダプターが
 # 別々にリンクすると同じシンボルが重複するので、使うモジュールを静的ライブラリ vocroz::juce に
-# 1 回だけコンパイルし、アダプターはこれをリンクする（docs/adr/0020-ipc-pipe-and-webui-bridge.md）。
+# 1 回だけコンパイルし、JUCE を使うアダプター（webui、plugin-host、device）はすべてこれをリンクする
+# （docs/adr/0020-ipc-pipe-and-webui-bridge.md、docs/adr/0034-single-juce-target.md）。
 # モジュールを足すときは、下の target_link_libraries の PRIVATE に加える。
 if(NOT TARGET vocroz_juce)
   add_library(vocroz_juce STATIC)
   add_library(vocroz::juce ALIAS vocroz_juce)
   target_link_libraries(vocroz_juce
-    PRIVATE juce::juce_gui_extra
+    PRIVATE
+      # webui: WebBrowserComponent
+      juce::juce_gui_extra
+      # plugin-host: VST3 のスキャン、読み込み、処理、エディターのウィンドウ
+      juce::juce_audio_processors
+      # device: MIDI デバイスの列挙、入力、抜去の検知（MidiInput）
+      juce::juce_audio_devices
     PUBLIC juce::juce_recommended_config_flags)
   target_compile_definitions(vocroz_juce PUBLIC
     # ネットワークは network モジュールが Winsock で扱うので、JUCE の curl は使わない。
     JUCE_USE_CURL=0
     JUCE_WEB_BROWSER=1
+    # VST3 のホスト。VST2、AU、LV2 などは扱わない（docs/adr/0009-beta-module-layout.md）。
+    JUCE_PLUGINHOST_VST3=1
     JUCE_STANDALONE_APPLICATION=1
     # WebView2 の読み込み用のライブラリを静的にリンクし、WebView2Loader.dll を配布せずに済ませる。
     JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1)
