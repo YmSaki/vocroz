@@ -44,6 +44,7 @@ beforeEach(async () => {
       optimistic={optimistic}
       meters={new MeterStore(timers)}
       toasts={toasts}
+      onOpenRouting={() => {}}
       writeClipboard={() => Promise.resolve()}
     />,
   );
@@ -157,8 +158,8 @@ describe("開発中のボタン（AT-A09）", () => {
     const send = vi.spyOn(engine, "send");
     const before = JSON.stringify(engine.snapshot());
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-planned]"));
-    // ツールバーの 6 機能と、各ストリップの FX。
-    expect(buttons.length).toBe(6 + engine.snapshot().channels.length);
+    // ツールバーの 5 機能と、各ストリップの FX。
+    expect(buttons.length).toBe(5 + engine.snapshot().channels.length);
     for (const button of buttons) fireEvent.click(button);
     await advance(20);
     expect(open).not.toHaveBeenCalled();

@@ -2,7 +2,7 @@
 // 親機のミキサー画面（Container）。
 // ストアを購読して描画し、操作をコマンドにしてエンジンへ送る。
 //
-// レイアウト: 上部のステータス帯、開発中の機能のツールバー、中央のチャンネル領域（横スクロール）、
+// レイアウト: 上部のステータス帯、ルーティング画面と開発中の機能のツールバー、中央のチャンネル領域（横スクロール）、
 // 必要に応じて承認パネルと通知履歴、右端に固定した Master。
 
 import { useState } from "preact/hooks";
@@ -38,13 +38,14 @@ export interface MixerScreenProps {
   optimistic: OptimisticStore;
   meters: MeterStore;
   toasts: ToastStore;
+  /** ルーティング画面を開く。 */
+  onOpenRouting: () => void;
   /** クリップボードへの書き込み。テストで差し替えられるようにする。 */
   writeClipboard?: (text: string) => Promise<void>;
 }
 
 /** 今後のバージョンで実装する機能。ボタンは置くが、押しても「開発中」と知らせるだけにする。 */
 export const kMixerPlannedFeatures: readonly MessageKey[] = [
-  "feature.routing",
   "feature.media",
   "feature.virtual_device",
   "feature.vst",
@@ -61,6 +62,7 @@ export function MixerScreen({
   optimistic,
   meters,
   toasts,
+  onOpenRouting,
   writeClipboard = defaultWriteClipboard,
 }: MixerScreenProps) {
   const state = useStore(store);
@@ -123,6 +125,9 @@ export function MixerScreen({
         }
       />
       <nav class="mixer-toolbar" aria-label={t("mixer.toolbar")}>
+        <button type="button" class="mixer-toolbar__button" onClick={onOpenRouting}>
+          {t("feature.routing")}
+        </button>
         {kMixerPlannedFeatures.map((feature) => (
           <PlannedButton
             key={feature}

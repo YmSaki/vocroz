@@ -1,7 +1,7 @@
 # session
 
 親機と子機のセッションの規則を持つドメインのモジュールです。依存してよいのは `transport`、`control-protocol`、`audio-core`、`common` で（AGENTS.md 4.2）、今は `control-protocol`、`audio-core`（ルーティングのループの検出だけ）、`common` を使っています。
-分担、制御メッセージの形式、再接続トークンと招待の扱いは `docs/adr/0022-session-domain.md` で、ルーティングのステージングと適用は `docs/adr/0026-routing-staging.md` で決めています。
+分担、制御メッセージの形式、再接続トークンと招待の扱いは `docs/adr/0022-session-domain.md` で、ルーティングのステージングと適用は `docs/adr/0026-routing-staging.md` で、ルーティングの保存と起動時の復元は `docs/adr/0033-routing-persistence.md` で決めています。
 
 ## 責務
 
@@ -12,6 +12,7 @@
 - 初期ミュート、出力デバイスの抜去時の Master の `SAFETY` ミュート、子機の「入力なし」の検知
 - 子機と親機の間の制御メッセージのエンコードとデコード（信頼境界、`src/wire/`）
 - ルーティングのステージング、検証（参照、組み合わせ、値の範囲、ループ）、ループの承認、適用と、バスとセンドのミュートとフェーダー（`src/routing_book`、`src/routing_validator`）
+- ルーティングの保存（ストリップを参照しない部分とフェーダーの値）と、起動時のミュートでの復元（`HostContext::restore_routing()`）
 
 ワイヤーフォーマットの外枠と暗号化（`transport`）、DSP（`audio-core`）、ソケットと HTTP（`network`）、設定ファイルの形式（`persistence`）は持ちません。
 
