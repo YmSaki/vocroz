@@ -14,8 +14,10 @@
 #include <optional>
 #include <vector>
 
+#include "vocroz/audio_core/playback_track.h"
 #include "vocroz/audio_core/ports/audio_source.h"
 #include "vocroz/audio_core/ports/plugin_processor.h"
+#include "vocroz/audio_core/recording_track.h"
 
 namespace vocroz::audio_core {
 
@@ -51,6 +53,12 @@ enum class NodeKind {
     /// プラグイン（VST3 のエフェクトと VSTi）。チャンネル数は PluginBusLayout で決まり、
     /// 報告された遅延はプラグイン遅延補正（PDC）の対象になる
     kPlugin,
+    /// 録音タップ。入力の加算を RecordingTrack に書く。チャンネル数は RecordingTrack で決まり、
+    /// 出力を持たない（後段へつながない）
+    kRecordTap,
+    /// 再生ノード（メディアプレイヤー）。PlaybackTrack の再生音を出す。入力を持たず、
+    /// 出力のチャンネル数は PlaybackTrack で決まる
+    kPlayer,
 };
 
 /// ノードの記述。各種類のファクトリー関数で作る。
@@ -73,6 +81,10 @@ struct NodeSpec {
     /// kPlugin: 処理の遅延（0〜kMaxLatencyCompensationSamples）。make_plugin() が
     /// PluginProcessor::latency_samples() から写す。PDC はこの値で計算する。
     std::size_t latency_samples = 0;
+    /// kRecordTap のときの書き込み先。
+    std::shared_ptr<RecordingTrack> recording;
+    /// kPlayer のときの読み込み元。
+    std::shared_ptr<PlaybackTrack> playback;
 
     /// ソースノードを作る。
     /// @param id ノードの識別子
@@ -118,6 +130,19 @@ struct NodeSpec {
     /// @param plugin 処理の呼び出し先（null にしない）
     /// スレッド安全性: コントロールスレッドから呼ぶ（PluginProcessor の取得関数を呼ぶため）。
     [[nodiscard]] static NodeSpec make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin);
+
+    /// 録音タップを作る。録音したいストリップかバス（またはソース）からつなぐ。
+    /// フェーダーの前を録るなら SendTap::kPreFader でつなぐ。録音タップへのプリフェーダーの結線は、
+    /// 聞こえる音を作らないのでセンドレベルを付けなくてよい。
+    /// 録音の開始と停止は、このノードを含むグラフの適用で表す（recording_track.h）。
+    /// @param id ノードの識別子
+    /// @param track 書き込み先（null にしない）
+    [[nodiscard]] static NodeSpec make_record_tap(NodeId id, std::shared_ptr<RecordingTrack> track);
+
+    /// 再生ノードを作る。出力を任意のバスかストリップへつなぐ。
+    /// @param id ノードの識別子
+    /// @param track 読み込み元（null にしない）
+    [[nodiscard]] static NodeSpec make_player(NodeId id, std::shared_ptr<PlaybackTrack> track);
 };
 
 /// 結線が送り元のどの位置から信号を取り出すか。
@@ -173,7 +198,8 @@ enum class GraphError {
     kDuplicateFader,   ///< 同じフェーダーを複数のノードが使っている
     kDuplicateMeter,   ///< 同じメーターを複数のノードが使っている
     kInvalidSendTap,  ///< プリフェーダーのセンドの送り元がストリップでもバスでもない
-    kMissingSendLevel,         ///< プリフェーダーのセンドにセンドレベルがない
+    /// プリフェーダーのセンドにセンドレベルがない（録音タップへの結線を除く）
+    kMissingSendLevel,
     kDelayOutOfRange,          ///< 手動ディレイか遅延ノードの遅延が範囲外
     kOutputChannelOutOfRange,  ///< 出力ノードのチャンネルが kMaxOutputChannels を超える
     kOverlappingOutputs,  ///< 複数の出力ノードが同じ出力デバイスのチャンネルに書く
@@ -181,6 +207,7 @@ enum class GraphError {
     kInvalidPluginLayout,  ///< プラグインのチャンネル数が範囲外（入力 0〜2、出力 1〜2）
     /// プラグインの遅延か、合流する経路の遅延の差が kMaxLatencyCompensationSamples を超える
     kLatencyOutOfRange,
+    kMissingTrack,  ///< 録音タップに RecordingTrack が、再生ノードに PlaybackTrack がない
 };
 
 }  // namespace vocroz::audio_core

@@ -79,6 +79,8 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
         node.input_channel_count = input_channels_of(spec);
         node.buffer_channel_count = std::max(node.channel_count, node.input_channel_count);
         node.plugin = spec.plugin;
+        node.recording = spec.recording;
+        node.playback = spec.playback;
         assign_buffers(node.channels, node.buffer_channel_count, next_buffer);
         if (plan.has_pre_fader_send[spec_index]) {
             assign_buffers(node.pre_fader, node.channel_count, next_buffer);
@@ -224,6 +226,13 @@ void RenderGraph::process_node(Node& node, std::size_t frames, FaderBank& faders
         case NodeKind::kPlugin:
             mix_inputs(node, frames, faders);
             process_plugin(node, frames);
+            break;
+        case NodeKind::kRecordTap:
+            mix_inputs(node, frames, faders);
+            node.recording->push(channels, frames);
+            break;
+        case NodeKind::kPlayer:
+            node.playback->render(channels, frames);
             break;
     }
 }

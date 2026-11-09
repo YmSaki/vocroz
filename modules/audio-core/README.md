@@ -11,6 +11,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 - グラフのスワップ（オーディオスレッド外で構築し、アトミックなポインター交換で差し替え、古いグラフはオーディオスレッド外で破棄）
 - ミキサー（Alpha はモノラル 8 チャンネル以上 + Master の固定構成を、グラフの 1 構成として記述する）
 - プラグインノードとプラグイン遅延補正（PDC、Beta4、`docs/adr/0024-plugin-node-and-pdc.md`）: `PluginProcessor` ポートを呼ぶノード（入力 0〜2、出力 1〜2。入力 0 は VSTi）、合流する経路にだけ遅延を足す補正、処理の失敗や NaN でそのノードを無音にする扱い
+- 録音タップと再生ノード（Beta2、`docs/adr/0031-recording-and-playback-nodes.md`）: オーディオスレッドはロックフリーのリングバッファを読み書きするだけで、ファイルへの書き出しと先読みはディスク I/O スレッドが行う。書き込みが遅れたら欠落として数えて無音で埋め、ライブ音声を止めない。音声ファイルの書き出しと読み込みのポート（`AudioFileWriter`、`AudioFileReader`）
 - 5〜20ms のゲインランプ、安全リミッター、ピークと RMS のメーター算出
 - 初期ミュート（すべてのフェーダーはミュートで始まる）と、安全ミュート（SAFETY MUTE）の受け口
 - オーディオ入出力のポート（`AudioOutput`、`AudioInput`、デバイスの一覧の `AudioDeviceCatalog`）と、グラフのソースのポート（`AudioSource`）
@@ -43,6 +44,11 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/audio_device_info.h` | `AudioDeviceInfo`、`AudioDeviceDirection` | 対象外 |
 | `vocroz/audio_core/ports/audio_source.h` | `AudioSource`（`transport` のジッターバッファが実装） | 呼び出し可能 |
 | `vocroz/audio_core/ports/plugin_processor.h` | `PluginProcessor`、`PluginBusLayout`、`PluginProcessContext`（`plugin-host` が実装） | `process()` だけ呼び出し可能 |
+| `vocroz/audio_core/recording_track.h` | `RecordingTrack`（録音タップの書き込み先。ディスク I/O スレッドが `drain()` と `finish()` で書き出す） | `push()` だけ呼び出し可能 |
+| `vocroz/audio_core/playback_track.h` | `PlaybackTrack`（再生ノードの読み込み元。ディスク I/O スレッドが `fill()` で先読みする） | `render()` だけ呼び出し可能 |
+| `vocroz/audio_core/audio_file_error.h` | `AudioFileError` | 対象外 |
+| `vocroz/audio_core/ports/audio_file_writer.h` | `AudioFileWriter`（`media` が実装） | 対象外（ディスク I/O スレッド） |
+| `vocroz/audio_core/ports/audio_file_reader.h` | `AudioFileReader`（`media` が実装） | 対象外（ディスク I/O スレッド） |
 
 ### 使い方（親機の固定ミキサー）
 
@@ -124,6 +130,39 @@ if (auto latency = analyze_latency(graph)) { /* latency.value().node_latency_sam
 
 プラグインの遅延が変わったら、記述し直して適用します。処理が失敗したプラグインノードは、そのグラフの間は無音になります。
 
+### 使い方（録音と再生）
+
+```cpp
+using namespace vocroz::audio_core;
+
+// 録音: ストリップのフェーダーの前から録る（録音タップへのプリフェーダーの結線はセンドレベル不要）。
+auto vocal = std::make_shared<RecordingTrack>(1);
+std::unique_ptr<AudioFileWriter> vocal_file = ...;  // media が開いた WAV / FLAC
+graph.nodes.push_back(NodeSpec::make_record_tap(NodeId{10}, vocal));
+graph.connections.push_back({NodeId{2}, NodeId{10}, SendTap::kPreFader});
+(void)mixer.apply_graph(graph);  // このブロックから録音が始まる（同じグラフのタップはそろって始まる）
+
+// 再生: ファイルを Main バスへ流す。play() を呼ぶまで鳴らない。
+auto bgm = std::make_shared<PlaybackTrack>(2);
+std::unique_ptr<AudioFileReader> bgm_file = ...;  // media が開いたファイル
+graph.nodes.push_back(NodeSpec::make_player(NodeId{11}, bgm));
+graph.connections.push_back({NodeId{11}, NodeId{3}});
+(void)mixer.apply_graph(graph);
+bgm->play();
+
+// ディスク I/O スレッドの周期処理。オーディオスレッドはこれを待たない。
+if (auto written = vocal->drain(*vocal_file); !written) { /* AudioFileError を session へ */ }
+if (auto read = bgm->fill(*bgm_file); !read) { /* AudioFileError を session へ */ }
+
+// 録音の停止: タップを外したグラフを適用し、古いグラフが破棄されてから閉じる。
+(void)mixer.apply_graph(graph_without_tap);
+mixer.collect_garbage();
+if (mixer.is_graph_settled()) { (void)vocal->finish(*vocal_file); }
+```
+
+書き込みが遅れて溢れたブロックは `dropped_frames()` に数え、ファイルには同じ長さの無音を書きます。トラック間の時間軸はずれません。
+書き出しが失敗したトラック（`failure()`）は以降書き出しを止めますが、ライブ音声と他のトラックには影響しません。
+
 ### グラフとフェーダーの関係
 
 フェーダーとメーターの状態はグラフの外（`Mixer`）にあり、`FaderId` と `MeterId` で参照します。
@@ -135,7 +174,7 @@ if (auto latency = analyze_latency(graph)) { /* latency.value().node_latency_sam
 
 ## テストダブル
 
-`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog`、`FakePluginProcessor`（報告した遅延のぶん実際に遅らせる）は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
+`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog`、`FakePluginProcessor`（報告した遅延のぶん実際に遅らせる）、`FakeAudioFileWriter`（書き込みの遅延と容量不足を模擬する）、`FakeAudioFileReader`（位置から値が決まるサンプルを返す）は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
 
 ```cmake
 target_link_libraries(device_tests PRIVATE vocroz::device vocroz::audio_core_fakes)

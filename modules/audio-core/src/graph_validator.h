@@ -29,12 +29,14 @@ struct GraphPlan {
 };
 
 /// ノードの出力チャンネル数を返す。モノラルの入力（ソース）とストリップは 1、
-/// バスから後段はステレオ。プラグインは PluginBusLayout::output_channels。
+/// バスから後段はステレオ。プラグインは PluginBusLayout::output_channels、再生ノードは
+/// PlaybackTrack のチャンネル数、録音タップは 0（後段を持たない）。
 /// @param spec ノードの記述
 [[nodiscard]] std::size_t output_channels_of(const NodeSpec& spec) noexcept;
 
 /// ノードが入力の加算で受け取るチャンネル数を返す。プラグインは PluginBusLayout::input_channels
-/// （0 なら音声入力を受け付けない）、それ以外は出力チャンネル数と同じ。
+/// （0 なら音声入力を受け付けない）、録音タップは RecordingTrack のチャンネル数、再生ノードは 0、
+/// それ以外は出力チャンネル数と同じ。
 /// @param spec ノードの記述
 [[nodiscard]] std::size_t input_channels_of(const NodeSpec& spec) noexcept;
 
