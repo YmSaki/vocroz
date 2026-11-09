@@ -5,6 +5,7 @@
 
 #include "engine_mixer.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -153,6 +154,28 @@ TEST_F(EngineMixerTest, ReappliedSendKeepsItsFaderState) {
     config.buses.push_back(cp::RoutingBus{"bus-2", "B"});
     ASSERT_TRUE(engine_.apply_routing(config, false));
     EXPECT_GT(render_last_left(), 0.0F);
+}
+
+TEST_F(EngineMixerTest, RemovingStripMutesItsSendsBeforeRoutingIsReapplied) {
+    add_audible_strip("ch-1");
+    ASSERT_TRUE(engine_.apply_routing(prefader_send_through_bus(), false));
+    for (const char* id : {"send-1", "send-2", "bus-1"}) {
+        engine_.set_route_muted(id, false);
+    }
+
+    // session が参照を外した構成を適用し直す前（または適用し直しに失敗したとき）でも、
+    // 削除したストリップを送り元にするセンドはグラフから外れてミュートされ、警告が残る。
+    engine_.remove_channel("ch-1");
+    EXPECT_EQ(render_last_left(), 0.0F);
+    const auto entries = logger_.entries();
+    EXPECT_TRUE(std::any_of(entries.begin(), entries.end(), [](const auto& entry) {
+        return entry.level == common::LogLevel::kWarning;
+    }));
+
+    // 同じ ID のストリップが戻っても、外したセンドはミュートのまま（初期ミュート）。
+    add_audible_strip("ch-1");
+    engine_.set_channel_muted("ch-1", true);
+    EXPECT_EQ(render_last_left(), 0.0F);
 }
 
 TEST_F(EngineMixerTest, RejectsRoutingWithLoopWithoutDelay) {
