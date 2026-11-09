@@ -4,20 +4,23 @@
 # スキャン結果のスキーマ（pa-plugin-scanner との間のメッセージ）は JUCE を使わないので、
 # VOCROZ_WITH_JUCE が OFF でもビルドして Linux の CI でテストする。
 add_library(vocroz_plugin_host STATIC
+  src/plugin_file_finder.cpp
   src/scan_messages.cpp)
 add_library(vocroz::plugin_host ALIAS vocroz_plugin_host)
 target_include_directories(vocroz_plugin_host PUBLIC include PRIVATE src)
 target_link_libraries(vocroz_plugin_host
-  PUBLIC vocroz::audio_core vocroz::common
+  PUBLIC vocroz::audio_core vocroz::common vocroz::session
   PRIVATE nlohmann_json::nlohmann_json)
 vocroz_set_warnings(vocroz_plugin_host)
 
 if(VOCROZ_WITH_JUCE)
   target_sources(vocroz_plugin_host PRIVATE
+    src/juce/juce_helper_plugin_scanner.cpp
     src/juce/juce_helper_scan.cpp
     src/juce/juce_plugin_description.cpp
+    src/juce/juce_plugin_instance.cpp
     src/juce/juce_plugin_processor.cpp
-    src/juce/juce_vst3_loader.cpp
+    src/juce/juce_vst3_plugin_loader.cpp
     src/juce/juce_vst3_scanner.cpp)
   # JUCE のモジュールのソースはこのライブラリの中で 1 回だけコンパイルする（PRIVATE）。
   # 利用側（pa-engine、pa-plugin-scanner、テスト）でもう一度コンパイルすると、シンボルが重複するため。
@@ -37,7 +40,10 @@ if(VOCROZ_WITH_JUCE)
 endif()
 
 if(VOCROZ_BUILD_TESTS)
-  vocroz_add_unit_test(plugin_host_tests tests/scan_messages_test.cpp)
+  vocroz_add_unit_test(plugin_host_tests
+    tests/plugin_file_finder_test.cpp
+    tests/scan_messages_test.cpp)
+  target_include_directories(plugin_host_tests PRIVATE src)
   target_link_libraries(plugin_host_tests PRIVATE vocroz::plugin_host)
 
   if(VOCROZ_WITH_JUCE)
@@ -46,10 +52,11 @@ if(VOCROZ_BUILD_TESTS)
     target_link_libraries(fake_plugin_scanner PRIVATE vocroz::plugin_host)
 
     target_sources(plugin_host_tests PRIVATE
+      tests/juce_helper_plugin_scanner_test.cpp
       tests/juce_helper_scan_test.cpp
+      tests/juce_plugin_instance_test.cpp
       tests/juce_plugin_processor_test.cpp)
-    target_include_directories(plugin_host_tests PRIVATE src)
-    target_link_libraries(plugin_host_tests PRIVATE vocroz::audio_core_fakes)
+    target_link_libraries(plugin_host_tests PRIVATE vocroz::audio_core_fakes vocroz::session_fakes)
     add_dependencies(plugin_host_tests fake_plugin_scanner)
     target_compile_definitions(plugin_host_tests PRIVATE
       "VOCROZ_FAKE_PLUGIN_SCANNER=\"$<TARGET_FILE:fake_plugin_scanner>\"")

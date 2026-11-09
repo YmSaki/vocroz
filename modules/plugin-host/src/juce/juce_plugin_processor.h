@@ -32,6 +32,13 @@ public:
     [[nodiscard]] audio_core::PluginProcessStatus process(
         const audio_core::PluginProcessContext& context) noexcept VOCROZ_NONBLOCKING override;
 
+    /// 状態の保存と復元、エディターのために、包んでいるインスタンスを返す。
+    /// @return インスタンス
+    /// スレッド安全性: JUCE のメッセージスレッドから呼ぶ。
+    [[nodiscard]] juce::AudioPluginInstance& instance() noexcept {
+        return *instance_;
+    }
+
 private:
     std::unique_ptr<juce::AudioPluginInstance> instance_;
     audio_core::PluginBusLayout layout_;
