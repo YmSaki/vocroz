@@ -92,7 +92,7 @@ struct EnumNames<ClientState> {
 
 template <>
 struct EnumNames<ErrorCode> {
-    static constexpr std::array<EnumName<ErrorCode>, 11> kTable{{
+    static constexpr std::array<EnumName<ErrorCode>, 12> kTable{{
         {ErrorCode::kRejected, "REJECTED"},
         {ErrorCode::kInviteExpired, "INVITE_EXPIRED"},
         {ErrorCode::kInviteRevoked, "INVITE_REVOKED"},
@@ -104,6 +104,7 @@ struct EnumNames<ErrorCode> {
         {ErrorCode::kNotFound, "NOT_FOUND"},
         {ErrorCode::kInvalidState, "INVALID_STATE"},
         {ErrorCode::kEngineError, "ENGINE_ERROR"},
+        {ErrorCode::kDeviceUnavailable, "DEVICE_UNAVAILABLE"},
     }};
 };
 

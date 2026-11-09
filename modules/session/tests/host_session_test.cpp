@@ -17,6 +17,7 @@
 #include "fakes/fake_clock.h"
 #include "fakes/fake_logger.h"
 #include "fakes/fake_mixer_control.h"
+#include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secure_random.h"
@@ -43,7 +44,7 @@ protected:
 
     HostSession& session() {
         if (!session_) {
-            session_.emplace(config_, HostSession::Ports{ui_, mixer_, peers_, rendezvous_,
+            session_.emplace(config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_,
                                                          settings_, random_, clock_, logger_});
             session_->start();
         }
@@ -181,6 +182,7 @@ protected:
     HostSession::Config config_;
     FakeUiEventSink ui_;
     FakeMixerControl mixer_;
+    FakeOutputDeviceControl outputs_;
     FakePeerLink peers_;
     FakeRendezvousClient rendezvous_;
     FakeSettingsStore settings_;
@@ -592,17 +594,124 @@ TEST_F(HostSessionTest, MasterFaderIsSavedWithTheSettings) {
     EXPECT_EQ(settings_.host()->master_gain_db, cp::GainDb{-3.0});
 }
 
-// --- 出力デバイスの抜去 ---
+// --- 出力デバイス ---
+
+TEST_F(HostSessionTest, OpensOnlyTheSavedOutputDeviceAtStart) {
+    outputs_.add("dev-1", "スピーカー");
+    outputs_.add("dev-2", "USB Audio");
+    settings_.host() = HostSettings{.output_device_id = "dev-2"};
+
+    const auto s = session().snapshot();
+    EXPECT_EQ(outputs_.opened(), "dev-2");
+    EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kOpen);
+    EXPECT_EQ(s.session.output_device_id, "dev-2");
+    EXPECT_EQ(s.session.output_device_name, "USB Audio");
+    EXPECT_EQ(s.session.output_devices.size(), 2U);
+    // 出力デバイスを開いても、Master はミュートのまま始める。
+    EXPECT_TRUE(mixer_.master_muted());
+}
+
+TEST_F(HostSessionTest, DoesNotFallBackWhenTheSavedOutputDeviceIsGone) {
+    outputs_.add("dev-1", "スピーカー");
+    settings_.host() = HostSettings{.output_device_id = "dev-gone"};
+
+    const auto s = session().snapshot();
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
+    EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kNone);
+    EXPECT_EQ(s.session.output_device_id, std::nullopt);
+    // 次の起動でもまた試せるよう、保存した ID は消さない。
+    EXPECT_EQ(settings_.host()->output_device_id, "dev-gone");
+}
+
+TEST_F(HostSessionTest, SelectOutputOpensTheDeviceAndSavesIt) {
+    outputs_.add("dev-1", "スピーカー");
+    outputs_.add("dev-2", "USB Audio");
+
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-1"}));
+    EXPECT_EQ(outputs_.opened(), "dev-1");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-2"}));
+    EXPECT_EQ(outputs_.opened(), "dev-2");
+    EXPECT_FALSE(outputs_.opened_while_open());
+
+    const auto s = session().snapshot();
+    EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kOpen);
+    EXPECT_EQ(s.session.output_device_name, "USB Audio");
+    EXPECT_EQ(settings_.host()->output_device_id, "dev-2");
+    EXPECT_EQ(ui_.last<cp::SessionUpdated>()->session.output_device_id, "dev-2");
+    // 選んでも Master のミュートは変えない。
+    EXPECT_TRUE(mixer_.master_muted());
+}
+
+TEST_F(HostSessionTest, SelectingTheOpenDeviceAgainKeepsItOpen) {
+    outputs_.add("dev-1", "スピーカー");
+    const auto opened = command("session", cp::SelectOutput{"dev-1"});
+    ASSERT_TRUE(opened);
+    const auto saves = settings_.save_count();
+
+    EXPECT_EQ(command("session", cp::SelectOutput{"dev-1"}), opened);
+    EXPECT_EQ(outputs_.opened(), "dev-1");
+    EXPECT_EQ(settings_.save_count(), saves);
+}
+
+TEST_F(HostSessionTest, SelectOutputRejectsADeviceThatCannotBeOpened) {
+    outputs_.add("dev-1", "スピーカー");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-1"}));
+
+    EXPECT_FALSE(command("session", cp::SelectOutput{"dev-missing"}));
+    EXPECT_EQ(last_reject_, ErrorCode::kDeviceUnavailable);
+    // 前のデバイスは閉じ、ほかのデバイスへは切り替えない。
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
+    const auto s = session().snapshot();
+    EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kNone);
+    EXPECT_EQ(s.session.output_device_id, std::nullopt);
+    EXPECT_EQ(ui_.last<cp::SessionUpdated>()->session.output_device_state,
+              cp::OutputDeviceState::kNone);
+}
+
+TEST_F(HostSessionTest, SelectingNoOutputClosesTheDeviceAndForgetsIt) {
+    outputs_.add("dev-1", "スピーカー");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-1"}));
+
+    ASSERT_TRUE(command("session", cp::SelectOutput{std::nullopt}));
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
+    EXPECT_EQ(session().snapshot().session.output_device_state, cp::OutputDeviceState::kNone);
+    EXPECT_EQ(settings_.host()->output_device_id, std::nullopt);
+}
+
+TEST_F(HostSessionTest, SelectOutputTargetsOnlyTheSessionEntity) {
+    outputs_.add("dev-1", "スピーカー");
+    EXPECT_FALSE(command("master", cp::SelectOutput{"dev-1"}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
+}
+
+TEST_F(HostSessionTest, HelloListsTheOutputDevicesAgain) {
+    session();
+    outputs_.add("dev-new", "挿したデバイス");
+    session().handle_ui_message(cp::Hello{});
+    const auto snapshot = ui_.last<cp::MixerSnapshotEvent>();
+    ASSERT_TRUE(snapshot);
+    const auto& devices = snapshot->snapshot.session.output_devices;
+    ASSERT_EQ(devices.size(), 1U);
+    EXPECT_EQ(devices[0].id, "dev-new");
+}
 
 TEST_F(HostSessionTest, LosingTheOutputDeviceSafetyMutesTheMaster) {
-    session().on_output_device_opened("dev-1", "スピーカー");
+    outputs_.add("dev-1", "スピーカー");
+    outputs_.add("dev-2", "USB Audio");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-1"}));
     ASSERT_TRUE(command("master", cp::SetMasterMute{false}));
     EXPECT_FALSE(mixer_.master_muted());
     const auto stale = revision_of("master");
 
+    outputs_.remove("dev-1");
     session().on_output_device_lost();
     const auto s = session().snapshot();
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
     EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kLost);
+    // 挿し直したデバイスを選び直しやすいよう、ID は残す。
+    EXPECT_EQ(s.session.output_device_id, "dev-1");
+    EXPECT_EQ(s.session.output_devices.size(), 1U);
     EXPECT_TRUE(s.master.master_muted);
     EXPECT_EQ(s.master.master_mute_reason, cp::MasterMuteReason::kSafety);
     EXPECT_TRUE(mixer_.master_muted());
@@ -614,7 +723,8 @@ TEST_F(HostSessionTest, LosingTheOutputDeviceSafetyMutesTheMaster) {
     EXPECT_TRUE(mixer_.master_muted());
 
     // 新しいデバイスを開いても、ミュートはオペレーターが解除するまで続く。
-    session().on_output_device_opened("dev-2", "USB Audio");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-2"}));
+    EXPECT_EQ(outputs_.opened(), "dev-2");
     EXPECT_TRUE(mixer_.master_muted());
     ASSERT_TRUE(command("master", cp::SetMasterMute{false}));
     EXPECT_FALSE(mixer_.master_muted());

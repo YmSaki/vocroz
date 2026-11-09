@@ -249,6 +249,19 @@ TEST(JsonCodecTest, RejectsInviteAndDeviceIdOutOfRange) {
                                    {"expected_revision", 1},
                                    {"device_id", ""}};
     EXPECT_EQ(ui_error(select), (DecodeError{DecodeErrorCode::kOutOfRange, "device_id"}));
+
+    auto select_output = select;
+    select_output["type"] = "select_output";
+    select_output["entity_id"] = "session";
+    EXPECT_EQ(ui_error(select_output), (DecodeError{DecodeErrorCode::kOutOfRange, "device_id"}));
+}
+
+TEST(JsonCodecTest, DecodesSelectOutputWithNullAsNoOutput) {
+    const auto decoded = decode_ui_to_engine(R"({"type":"select_output","request_id":"r1",
+        "entity_id":"session","expected_revision":2,"device_id":null})");
+    ASSERT_TRUE(decoded);
+    const auto& command = std::get<DiscreteCommand>(decoded.value());
+    EXPECT_EQ(std::get<SelectOutput>(command.body).device_id, std::nullopt);
 }
 
 TEST(JsonCodecTest, RejectsInvalidEngineMessages) {

@@ -88,6 +88,18 @@ struct HostContext {
     /// REVISION_CONFLICT で拒否できるようにする。
     void mute_master(control_protocol::MasterMuteReason reason);
 
+    /// 開いている出力デバイスを閉じ、出力デバイスを未選択（NONE）にする。
+    void close_output();
+
+    /// 開いている出力デバイスを閉じてから、指定したデバイスを開く。開けたら設定に保存する。
+    /// 開けなければ未選択（NONE）のままにし、保存した設定は変えない。UI には知らせない。
+    /// @param device_id デバイスの永続 ID
+    /// @return 開けたら true
+    bool open_output(const std::string& device_id);
+
+    /// 選べる出力デバイスの一覧を列挙し直す。UI には知らせない。
+    void refresh_output_devices();
+
     /// 設定を保存する。失敗はログに残して続行する。
     void save_settings();
 

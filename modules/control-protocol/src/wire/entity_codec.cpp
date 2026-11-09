@@ -178,6 +178,22 @@ nlohmann::json write_array(const std::vector<T>& items) {
 
 }  // namespace
 
+nlohmann::json write_json(const OutputDevice& device) {
+    return {
+        {"id", device.id},
+        {"name", device.name},
+    };
+}
+
+common::Result<OutputDevice, DecodeError> read_output_device(const nlohmann::json& value) {
+    return read_object<OutputDevice>(value, [](ObjectReader& r) {
+        OutputDevice device;
+        device.id = r.text("id", kDeviceIdRule);
+        device.name = r.text("name", kTextRule);
+        return device;
+    });
+}
+
 nlohmann::json write_json(const SessionInfo& session) {
     return {
         {"entity_id", session.entity_id},
@@ -188,6 +204,8 @@ nlohmann::json write_json(const SessionInfo& session) {
         {"invite_url", nullable(session.invite_url)},
         {"output_device_state", enum_json(session.output_device_state)},
         {"output_device_name", nullable(session.output_device_name)},
+        {"output_device_id", nullable(session.output_device_id)},
+        {"output_devices", write_array(session.output_devices)},
         {"update_available", nullable(session.update_available)},
     };
 }
@@ -203,6 +221,8 @@ common::Result<SessionInfo, DecodeError> read_session_info(const nlohmann::json&
         session.invite_url = r.nullable_text("invite_url", kUrlRule);
         session.output_device_state = r.enumeration<OutputDeviceState>("output_device_state");
         session.output_device_name = r.nullable_text("output_device_name", kTextRule);
+        session.output_device_id = r.nullable_text("output_device_id", kDeviceIdRule);
+        session.output_devices = r.list<OutputDevice>("output_devices", read_output_device);
         session.update_available = r.nullable_text("update_available", kTextRule);
         return session;
     });

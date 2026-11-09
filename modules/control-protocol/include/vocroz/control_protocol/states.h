@@ -82,6 +82,7 @@ enum class ErrorCode {
     kNotFound,      ///< NOT_FOUND: コマンドの対象の entity がない
     kInvalidState,  ///< INVALID_STATE: 今の状態ではそのコマンドを適用できない
     kEngineError,   ///< ENGINE_ERROR: エンジン内部のエラー
+    kDeviceUnavailable,  ///< DEVICE_UNAVAILABLE: 選んだデバイスがないか、開けない
 };
 
 /// エンジンからの通知の重要度。
