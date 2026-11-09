@@ -4,6 +4,7 @@
 
 #include "vocroz/transport/media_stream_encoder.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace vocroz::transport {
@@ -29,12 +30,35 @@ void MediaStreamEncoder::apply_pending_params() noexcept VOCROZ_NONBLOCKING {
 void MediaStreamEncoder::push(std::span<const float> samples) noexcept VOCROZ_NONBLOCKING {
     apply_pending_params();
     for (const float sample : samples) {
-        frame_[filled_] = sample * ramp_.next();
-        ++filled_;
-        if (filled_ == encoder_.frame_samples()) {
-            finish_frame();
-            filled_ = 0;
-        }
+        append(sample, sample);
+    }
+}
+
+void MediaStreamEncoder::push_stereo(std::span<const float> left,
+                                     std::span<const float> right) noexcept VOCROZ_NONBLOCKING {
+    apply_pending_params();
+    const std::size_t frames = std::min(left.size(), right.size());
+    for (std::size_t i = 0; i < frames; ++i) {
+        append(left[i], right[i]);
+    }
+}
+
+void MediaStreamEncoder::append(float left, float right) noexcept VOCROZ_NONBLOCKING {
+    // ランプは L と R で同じ値を使う。チャンネルごとに進めると定位がずれる。
+    const float gain = ramp_.next();
+    if (encoder_.channels() == 2) {
+        // Opus はインターリーブした PCM を受け取る。
+        frame_[filled_ * 2] = left * gain;
+        frame_[filled_ * 2 + 1] = right * gain;
+    } else {
+        // モノラルで送るときは L と R の平均を取る。モノラルの入力（push()）は L と R
+        // が同じ値なので そのまま通る。
+        frame_[filled_] = (left + right) * 0.5F * gain;
+    }
+    ++filled_;
+    if (filled_ == encoder_.frame_samples()) {
+        finish_frame();
+        filled_ = 0;
     }
 }
 
@@ -47,7 +71,8 @@ void MediaStreamEncoder::finish_frame() noexcept VOCROZ_NONBLOCKING {
         // ミュートのランプが終わったら送らない。返送のミュート中は不要な通信をしない。
         return;
     }
-    const auto pcm = std::span<const float>(frame_).first(encoder_.frame_samples());
+    const auto pcm =
+        std::span<const float>(frame_).first(encoder_.frame_samples() * encoder_.channels());
     const auto encoded = encoder_.encode(pcm, encoded_.payload);
     if (!encoded) {
         dropped_frames_.fetch_add(1, std::memory_order_relaxed);

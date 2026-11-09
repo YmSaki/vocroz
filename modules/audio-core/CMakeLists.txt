@@ -64,6 +64,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/recording_track_test.cpp
     tests/render_graph_test.cpp
     tests/safety_limiter_test.cpp
+    tests/stream_tap_test.cpp
     tests/sample_ring_buffer_test.cpp)
   # 内部クラス（src/ のヘッダー）も対象と同じモジュールのテストとして直接検証する。
   target_include_directories(audio_core_tests PRIVATE src)

@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 送信側のオーディオスレッドの処理。受け取ったモノラルのサンプルに送信レベルとミュートを
+// 送信側のオーディオスレッドの処理。受け取ったサンプルに送信レベルとミュートを
 // ゲインランプで掛け、1 フレームぶん溜まるごとに Opus でエンコードして MediaFrameSink へ渡す。
-// 親機から子機への返送（下りストリーム）で使う（docs/adr/0036-return-monitor.md）。
+// 親機から子機への返送（下りストリーム、モノラル。docs/adr/0036-return-monitor.md）と、
+// SRTP 外部出力（モノラルかステレオ。docs/adr/0040-srtp-external-output.md）で使う。
+// 入力のチャンネル数とエンコーダーのチャンネル数が違うときは、ここでそろえる
+// （モノラルの入力をステレオで送るなら L と R に同じ音を入れ、ステレオの入力をモノラルで
+// 送るなら L と R の平均を取る）。
 //
 // ミュートの規則（方向別のデータフロー規則）:
 // - ミュートしたら、ランプで無音にしてから送信を止める。止めている間はエンコードもしない。
@@ -20,6 +24,7 @@
 
 #include "vocroz/audio_core/gain_ramp.h"
 #include "vocroz/audio_core/ports/audio_sink.h"
+#include "vocroz/audio_core/ports/audio_stream_sink.h"
 #include "vocroz/audio_core/realtime.h"
 #include "vocroz/common/spsc_queue.h"
 #include "vocroz/transport/constants.h"
@@ -44,8 +49,9 @@ struct StreamSendParams {
 };
 
 /// 1 本のストリームのエンコードと送信の判断。
-/// スレッド安全性: 生成と set_params() はコントロールスレッド、push() はオーディオスレッド。
-class MediaStreamEncoder final : public audio_core::AudioSink {
+/// スレッド安全性: 生成と set_params() はコントロールスレッド、push() と push_stereo() は
+/// オーディオスレッド。1 つのオブジェクトには push() か push_stereo() のどちらか一方だけを使う。
+class MediaStreamEncoder final : public audio_core::AudioSink, public audio_core::AudioStreamSink {
 public:
     /// @param encoder エンコーダー
     /// @param sink    エンコード済みのフレームの渡し先。このオブジェクトより長く生存させる
@@ -65,6 +71,12 @@ public:
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
     void push(std::span<const float> samples) noexcept VOCROZ_NONBLOCKING override;
 
+    /// 1 ブロックのステレオのサンプルを受け取る（AudioStreamSink）。
+    /// エラー時の振る舞いは push() と同じ。left と right の短い方の長さだけを使う。
+    /// スレッド安全性: オーディオスレッドから呼び出し可能。
+    void push_stereo(std::span<const float> left,
+                     std::span<const float> right) noexcept VOCROZ_NONBLOCKING override;
+
     /// 捨てたフレームの数を返す（エンコードの失敗と、送信待ちの満杯）。
     /// スレッド安全性: どのスレッドからも呼び出し可能。
     [[nodiscard]] std::uint64_t dropped_frames() const noexcept {
@@ -74,9 +86,11 @@ public:
 private:
     // 設定の変更はオペレーターの操作の間に数回届く程度なので、この数で溢れない。
     static constexpr std::size_t kParamQueueCapacity = 64;
-    static constexpr std::size_t kMaxFrameSamples = frame_samples(FrameDuration::k5000Us);
+    // 5ms のステレオ（2 チャンネル）が最大。
+    static constexpr std::size_t kMaxFrameSamples = frame_samples(FrameDuration::k5000Us) * 2;
 
     void apply_pending_params() noexcept VOCROZ_NONBLOCKING;
+    void append(float left, float right) noexcept VOCROZ_NONBLOCKING;
     void finish_frame() noexcept VOCROZ_NONBLOCKING;
 
     OpusFrameEncoder encoder_;
@@ -88,7 +102,7 @@ private:
     audio_core::GainRamp ramp_{kStreamMuteRampSamples};
     StreamSendParams current_;
     std::array<float, kMaxFrameSamples> frame_{};
-    std::size_t filled_ = 0;
+    std::size_t filled_ = 0;  // フレームに溜めたサンプル時刻の数（チャンネル数を掛けない）
     std::uint64_t next_timestamp_ = 0;
     MediaFrame encoded_;
 };
