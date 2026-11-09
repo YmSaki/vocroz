@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "vocroz/session/entity_ids.h"
+
 #include "detail/revision_utils.h"
 #include "routing_validator.h"
 #include "session_constants.h"
@@ -117,6 +119,23 @@ bool RoutingBook::forget_strip(const std::string& strip_id,
         info_.staged->check = check_routing(info_.staged->config, strip_ids);
     }
     return changed;
+}
+
+cp::RoutingConfig without_strip_references(cp::RoutingConfig config) {
+    // ストリップの entity_id には決まった接頭辞がないので、構成の中で定義されていない端点を
+    // ストリップとみなす。
+    const auto defined = [&](const std::string& id) {
+        const auto has = [&](const auto& items) {
+            return std::any_of(items.begin(), items.end(),
+                               [&](const auto& item) { return item.entity_id == id; });
+        };
+        return id == kMasterEntityId || has(config.buses) || has(config.outputs) ||
+               has(config.delays);
+    };
+    std::erase_if(config.sends,
+                  [&](const auto& send) { return !defined(send.from) || !defined(send.to); });
+    config.input_delays.clear();
+    return config;
 }
 
 }  // namespace vocroz::session

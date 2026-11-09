@@ -6,6 +6,10 @@
 
 #include "settings_codec.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 #include <nlohmann/json.hpp>
 
 #include "persistence_constants.h"
@@ -82,6 +86,194 @@ json optional_to_json(const std::optional<std::string>& value) {
     return value ? json(*value) : json(nullptr);
 }
 
+json gain_to_json(const control_protocol::GainDb& gain) {
+    return gain ? json(*gain) : json(nullptr);
+}
+
+// --- ルーティング ---
+// 列挙型の名前は設定ファイルの形式として固定する。control-protocol の名前とは変更の理由が
+// 違う（UI との形式を変えても保存済みのファイルは読めなければならない）ので、ここで別に持つ。
+
+const char* bus_kind_name(control_protocol::BusKind kind) {
+    switch (kind) {
+        case control_protocol::BusKind::kUser:
+            return "user";
+        case control_protocol::BusKind::kCue:
+            return "cue";
+    }
+    return "user";
+}
+
+std::optional<control_protocol::BusKind> read_bus_kind(const json& object) {
+    const auto name = read_string(object, "kind");
+    if (name == "user") {
+        return control_protocol::BusKind::kUser;
+    }
+    if (name == "cue") {
+        return control_protocol::BusKind::kCue;
+    }
+    return std::nullopt;
+}
+
+const char* send_tap_name(control_protocol::SendTap tap) {
+    switch (tap) {
+        case control_protocol::SendTap::kPostFader:
+            return "post_fader";
+        case control_protocol::SendTap::kPreFader:
+            return "pre_fader";
+    }
+    return "post_fader";
+}
+
+std::optional<control_protocol::SendTap> read_send_tap(const json& object) {
+    const auto name = read_string(object, "tap");
+    if (name == "post_fader") {
+        return control_protocol::SendTap::kPostFader;
+    }
+    if (name == "pre_fader") {
+        return control_protocol::SendTap::kPreFader;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::uint64_t> read_unsigned(const json& object, const char* key) {
+    const auto it = object.find(key);
+    if (it == object.end() || !it->is_number_unsigned()) {
+        return std::nullopt;
+    }
+    return it->get<std::uint64_t>();
+}
+
+json routing_to_json(const control_protocol::RoutingConfig& config) {
+    json buses = json::array();
+    for (const auto& bus : config.buses) {
+        buses.push_back(
+            {{"entity_id", bus.entity_id}, {"name", bus.name}, {"kind", bus_kind_name(bus.kind)}});
+    }
+    json outputs = json::array();
+    for (const auto& output : config.outputs) {
+        outputs.push_back({{"entity_id", output.entity_id},
+                           {"name", output.name},
+                           {"device_channel", output.device_channel}});
+    }
+    json sends = json::array();
+    for (const auto& send : config.sends) {
+        sends.push_back({{"entity_id", send.entity_id},
+                         {"from", send.from},
+                         {"to", send.to},
+                         {"tap", send_tap_name(send.tap)}});
+    }
+    json delays = json::array();
+    for (const auto& delay : config.delays) {
+        delays.push_back({{"entity_id", delay.entity_id}, {"delay_ms", delay.delay_ms}});
+    }
+    json input_delays = json::array();
+    for (const auto& delay : config.input_delays) {
+        input_delays.push_back({{"strip_id", delay.strip_id}, {"delay_ms", delay.delay_ms}});
+    }
+    return {{"buses", buses},
+            {"outputs", outputs},
+            {"sends", sends},
+            {"delays", delays},
+            {"input_delays", input_delays}};
+}
+
+// 配列の要素を 1 つずつ読む。要素が 1 つでも読めなければ、配列全体を読めなかったものとする。
+template <typename T, typename ReadElement>
+bool read_array(const json& object, const char* key, std::vector<T>& out, ReadElement read) {
+    const auto it = object.find(key);
+    if (it == object.end() || !it->is_array()) {
+        return false;
+    }
+    for (const auto& element : *it) {
+        if (!element.is_object()) {
+            return false;
+        }
+        auto value = read(element);
+        if (!value) {
+            return false;
+        }
+        out.push_back(std::move(*value));
+    }
+    return true;
+}
+
+std::optional<control_protocol::RoutingConfig> read_routing(const json& object) {
+    namespace cp = control_protocol;
+    cp::RoutingConfig config;
+    const bool ok =
+        read_array(object, "buses", config.buses,
+                   [](const json& e) -> std::optional<cp::RoutingBus> {
+                       auto id = read_string(e, "entity_id");
+                       auto name = read_string(e, "name");
+                       const auto kind = read_bus_kind(e);
+                       if (!id || !name || !kind) {
+                           return std::nullopt;
+                       }
+                       return cp::RoutingBus{std::move(*id), std::move(*name), *kind};
+                   }) &&
+        read_array(object, "outputs", config.outputs,
+                   [](const json& e) -> std::optional<cp::RoutingOutput> {
+                       auto id = read_string(e, "entity_id");
+                       auto name = read_string(e, "name");
+                       const auto channel = read_unsigned(e, "device_channel");
+                       if (!id || !name || !channel) {
+                           return std::nullopt;
+                       }
+                       return cp::RoutingOutput{std::move(*id), std::move(*name), *channel};
+                   }) &&
+        read_array(object, "sends", config.sends,
+                   [](const json& e) -> std::optional<cp::RoutingSend> {
+                       auto id = read_string(e, "entity_id");
+                       auto from = read_string(e, "from");
+                       auto to = read_string(e, "to");
+                       const auto tap = read_send_tap(e);
+                       if (!id || !from || !to || !tap) {
+                           return std::nullopt;
+                       }
+                       return cp::RoutingSend{std::move(*id), std::move(*from), std::move(*to),
+                                              *tap};
+                   }) &&
+        read_array(object, "delays", config.delays,
+                   [](const json& e) -> std::optional<cp::RoutingDelay> {
+                       auto id = read_string(e, "entity_id");
+                       const auto delay_ms = read_number(e, "delay_ms");
+                       if (!id || !delay_ms) {
+                           return std::nullopt;
+                       }
+                       return cp::RoutingDelay{std::move(*id), *delay_ms};
+                   }) &&
+        read_array(object, "input_delays", config.input_delays,
+                   [](const json& e) -> std::optional<cp::InputDelay> {
+                       auto id = read_string(e, "strip_id");
+                       const auto delay_ms = read_number(e, "delay_ms");
+                       if (!id || !delay_ms) {
+                           return std::nullopt;
+                       }
+                       return cp::InputDelay{std::move(*id), *delay_ms};
+                   });
+    if (!ok) {
+        return std::nullopt;
+    }
+    return config;
+}
+
+std::optional<std::vector<session::SavedRouteGain>> read_route_gains(const json& root) {
+    std::vector<session::SavedRouteGain> gains;
+    if (!read_array(root, "route_gains", gains,
+                    [](const json& e) -> std::optional<session::SavedRouteGain> {
+                        auto id = read_string(e, "entity_id");
+                        const auto gain = read_gain(e, "gain_db");
+                        if (!id || !gain) {
+                            return std::nullopt;
+                        }
+                        return session::SavedRouteGain{std::move(*id), *gain};
+                    })) {
+        return std::nullopt;
+    }
+    return gains;
+}
+
 // 表示名などに不正な UTF-8 が入っていても保存は止めず、置換文字にして書く。
 std::string dump(const json& root) {
     return root.dump(2, ' ', false, json::error_handler_t::replace) + "\n";
@@ -94,8 +286,13 @@ std::string encode_host_settings(const session::HostSettings& settings) {
     root[kSchemaVersionKey] = kSettingsSchemaVersion;
     root["session_name"] = settings.session_name;
     root["output_device_id"] = optional_to_json(settings.output_device_id);
-    root["master_gain_db"] =
-        settings.master_gain_db ? json(*settings.master_gain_db) : json(nullptr);
+    root["master_gain_db"] = gain_to_json(settings.master_gain_db);
+    root["routing"] = routing_to_json(settings.routing);
+    json gains = json::array();
+    for (const auto& gain : settings.route_gains) {
+        gains.push_back({{"entity_id", gain.entity_id}, {"gain_db", gain_to_json(gain.gain_db)}});
+    }
+    root["route_gains"] = std::move(gains);
     return dump(root);
 }
 
@@ -114,6 +311,21 @@ std::optional<session::HostSettings> decode_host_settings(std::string_view text)
     settings.session_name = std::move(*session_name);
     settings.output_device_id = std::move(*output_device_id);
     settings.master_gain_db = *master_gain_db;
+    // ルーティングを保存する前のバージョンのファイルには routing と route_gains がない。
+    // その場合は既定の結線（構成なし）として読み、ほかの設定は引き継ぐ。
+    if (root->contains("routing") || root->contains("route_gains")) {
+        const auto routing = root->find("routing");
+        if (routing == root->end() || !routing->is_object()) {
+            return std::nullopt;
+        }
+        auto config = read_routing(*routing);
+        auto gains = read_route_gains(*root);
+        if (!config || !gains) {
+            return std::nullopt;
+        }
+        settings.routing = std::move(*config);
+        settings.route_gains = std::move(*gains);
+    }
     return settings;
 }
 
