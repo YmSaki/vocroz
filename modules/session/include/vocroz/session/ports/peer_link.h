@@ -8,9 +8,10 @@
 
 #include <cstdint>
 #include <span>
-#include <string>
+#include <vector>
 
 #include "vocroz/session/identifiers.h"
+#include "vocroz/session/input_stream.h"
 
 namespace vocroz::session {
 
@@ -25,11 +26,14 @@ public:
     /// @param message session がエンコードした制御メッセージ
     virtual void send(PeerHandle peer, std::span<const std::uint8_t> message) = 0;
 
-    /// 承認した接続のメディアを受け付け、ストリップのチャンネルへ流し始める。
-    /// 承認前の接続から届いたメディアは、受信側で捨てる（承認前遮断）。
-    /// @param peer     接続
-    /// @param strip_id 流し込むチャンネルストリップの entity_id
-    virtual void admit(PeerHandle peer, const std::string& strip_id) = 0;
+    /// 承認した接続のメディアを受け付け、ストリーム ID ごとにストリップのチャンネルへ流し始める。
+    /// 子機の入力の申告が変わるたびに呼び直し、前回の対応を置き換える。対応にないストリームの
+    /// メディアと、承認前の接続から届いたメディアは、受信側で捨てる（承認前遮断）。
+    /// 実装は、ストリームのチャンネル数で再生（Opus のデコーダー）とミキサーのソースを作る。
+    /// @param peer   接続
+    /// @param routes ストリームと流し込み先のストリップの対応（1 本以上）。並びはストリップの順で、
+    ///               先頭は子機のいちばん古いストリップ（子機ごとに 1 系統の MIDI の流し先に使う）
+    virtual void admit(PeerHandle peer, const std::vector<StreamRoute>& routes) = 0;
 
     /// 子機の送信ミュートの通知を、メディアの受信側（信号状態の判定）へ渡す。
     /// @param peer       接続

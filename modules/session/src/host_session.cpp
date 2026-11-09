@@ -171,7 +171,8 @@ public:
         for (auto& p : ctx.registry.participants()) {
             if (p.strip.connection_state == ConnectionState::kReconnecting &&
                 p.reconnecting_since && now - *p.reconnecting_since >= kReconnectGrace) {
-                ctx.advance_connection(p, ConnectionEvent::kGraceExpired);
+                // 同じ子機のストリップはそろって LOST になるので、通知は 1 回だけになる。
+                ctx.advance_participant(p, ConnectionEvent::kGraceExpired);
                 ctx.release_peer(p);
                 ctx.notice(cp::NoticeSeverity::kWarning, "participant_lost", label(p.strip));
             }

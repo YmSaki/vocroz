@@ -224,15 +224,21 @@ void SimulatedHost::send(session::PeerHandle peer, std::span<const std::uint8_t>
     }
 }
 
-void SimulatedHost::admit(session::PeerHandle peer, const std::string& strip_id) {
+void SimulatedHost::admit(session::PeerHandle peer,
+                          const std::vector<session::StreamRoute>& routes) {
     Peer* const found = find(peer);
-    if (found == nullptr) {
+    if (found == nullptr || routes.empty()) {
         return;
     }
-    found->strip = strip_id;
-    // 製品では再生側の準備（ミキサーへの組み込み）が済んでから知らせる。ここでは次の step()
-    // で知らせる。
-    defer([this, peer] { session_->on_peer_established(peer); });
+    // この試験基盤の子機はモノラルのマイク 1 本（ストリーム 0）だけを送るので、1
+    // 本目の対応だけを使う。
+    const bool first_admission = !found->strip;
+    found->strip = routes.front().strip_id;
+    if (first_admission) {
+        // 製品では再生側の準備（ミキサーへの組み込み）が済んでから知らせる。ここでは次の step()
+        // で知らせる。
+        defer([this, peer] { session_->on_peer_established(peer); });
+    }
 }
 
 void SimulatedHost::apply_send_mute(session::PeerHandle peer, bool send_muted,

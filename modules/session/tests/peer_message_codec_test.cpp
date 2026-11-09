@@ -44,6 +44,11 @@ TEST(PeerMessageCodecTest, RoundTripsEveryClientToHostMessage) {
     EXPECT_EQ(round_trip(mute), ClientToHostMessage{mute});
     EXPECT_EQ(round_trip(InputReport{true}), ClientToHostMessage{InputReport{true}});
     EXPECT_EQ(round_trip(LeaveNotice{}), ClientToHostMessage{LeaveNotice{}});
+    const StreamsReport streams{{
+        InputStream{0, control_protocol::InputSourceKind::kMicrophone, 1},
+        InputStream{0x0102, control_protocol::InputSourceKind::kApplicationAudio, 2},
+    }};
+    EXPECT_EQ(round_trip(streams), ClientToHostMessage{streams});
 }
 
 TEST(PeerMessageCodecTest, RoundTripsEveryHostToClientMessage) {
@@ -94,6 +99,31 @@ TEST(PeerMessageCodecTest, RejectsDisplayNamesThatAreNotDisplayableUtf8) {
         encode(ClientToHostMessage{JoinRequest{filled<InviteToken>(1), std::nullopt, "ab"}});
     bytes.back() = '\n';
     EXPECT_EQ(decode_client_to_host(bytes).error(), PeerMessageError::kMalformed);
+}
+
+TEST(PeerMessageCodecTest, EncodesStreamsReportWithBigEndianStreamIds) {
+    const StreamsReport report{{
+        InputStream{0x0102, control_protocol::InputSourceKind::kApplicationAudio, 2},
+    }};
+    EXPECT_EQ(encode(ClientToHostMessage{report}),
+              (std::vector<std::uint8_t>{0x06, 0x01, 0x01, 0x02, 0x02, 0x02}));
+}
+
+TEST(PeerMessageCodecTest, RejectsStreamsReportsOutsideTheLimits) {
+    // 入力の数（1〜4）、種類、チャンネル数（1 か 2）、ストリーム ID の重複を信頼境界で検証する。
+    const std::vector<std::vector<std::uint8_t>> invalid{
+        {0x06, 0x00},
+        {0x06, 0x05, 0, 0, 1, 1, 0, 1, 1, 1, 0, 2, 1, 1, 0, 3, 1, 1, 0, 4, 1, 1},
+        {0x06, 0x02, 0, 7, 1, 1, 0, 7, 2, 2},
+        {0x06, 0x01, 0, 0, 1, 0},
+        {0x06, 0x01, 0, 0, 1, 3},
+        {0x06, 0x01, 0, 0, 0, 1},
+        {0x06, 0x01, 0, 0, 3, 1},
+        {0x06, 0x01, 0, 0, 1},
+    };
+    for (const auto& bytes : invalid) {
+        EXPECT_EQ(decode_client_to_host(bytes).error(), PeerMessageError::kMalformed);
+    }
 }
 
 TEST(PeerMessageCodecTest, RejectsUnknownDenyReasons) {

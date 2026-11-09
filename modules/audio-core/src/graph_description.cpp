@@ -17,13 +17,14 @@ NodeSpec NodeSpec::make_source(NodeId id, std::shared_ptr<AudioSource> source) {
 }
 
 NodeSpec NodeSpec::make_strip(NodeId id, FaderId fader, std::optional<MeterId> meter,
-                              std::size_t delay_samples) {
+                              std::size_t delay_samples, std::size_t channels) {
     NodeSpec spec;
     spec.id = id;
     spec.kind = NodeKind::kStrip;
     spec.fader = fader;
     spec.meter = meter;
     spec.delay_samples = delay_samples;
+    spec.channels = channels;
     return spec;
 }
 

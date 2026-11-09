@@ -4,6 +4,7 @@
 
 #include "wire/peer_message_codec.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <optional>
@@ -13,6 +14,8 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+
+#include "vocroz/control_protocol/constants.h"
 
 #include "detail/text_utils.h"
 #include "session_constants.h"
@@ -30,6 +33,7 @@ enum class Type : std::uint8_t {
     kSendMuteReport = 0x03,
     kInputReport = 0x04,
     kLeaveNotice = 0x05,
+    kStreamsReport = 0x06,
     kJoinPending = 0x81,
     kJoinApproved = 0x82,
     kJoinDenied = 0x83,
@@ -44,6 +48,12 @@ enum class DenyReason : std::uint8_t {
     kInviteInvalid = 4,
     kReconnectTimeout = 5,
     kSessionEnded = 6,
+};
+
+// 入力の種類の値。InputSourceKind の宣言順に依存させず、ワイヤー上の値を固定する。
+enum class SourceKind : std::uint8_t {
+    kMicrophone = 1,
+    kApplicationAudio = 2,
 };
 
 // 真偽値のバイトは 0 か 1 だけを受け付ける。それ以外は改変か不具合なので不正とする。
@@ -62,6 +72,11 @@ public:
 
     void boolean(bool value) {
         out_.push_back(value ? kTrue : kFalse);
+    }
+
+    void u16(std::uint16_t value) {
+        out_.push_back(static_cast<std::uint8_t>(value >> 8));
+        out_.push_back(static_cast<std::uint8_t>(value));
     }
 
     void u32(std::uint32_t value) {
@@ -107,6 +122,20 @@ public:
             ok_ = false;
         }
         return value == kTrue;
+    }
+
+    std::uint16_t u16() {
+        if (!need(2)) {
+            return 0;
+        }
+        const auto value = static_cast<std::uint16_t>((bytes_[pos_] << 8) | bytes_[pos_ + 1]);
+        pos_ += 2;
+        return value;
+    }
+
+    // 読んだ値が不正なときに、読み出しの失敗として記録する。
+    void reject() noexcept {
+        ok_ = false;
     }
 
     std::uint32_t u32() {
@@ -207,6 +236,54 @@ std::optional<ErrorCode> from_wire(std::uint8_t value) noexcept {
     return std::nullopt;
 }
 
+SourceKind to_wire(control_protocol::InputSourceKind kind) noexcept {
+    switch (kind) {
+        case control_protocol::InputSourceKind::kMicrophone:
+            return SourceKind::kMicrophone;
+        case control_protocol::InputSourceKind::kApplicationAudio:
+            return SourceKind::kApplicationAudio;
+    }
+    return SourceKind::kMicrophone;
+}
+
+std::optional<control_protocol::InputSourceKind> source_kind_from_wire(
+    std::uint8_t value) noexcept {
+    switch (static_cast<SourceKind>(value)) {
+        case SourceKind::kMicrophone:
+            return control_protocol::InputSourceKind::kMicrophone;
+        case SourceKind::kApplicationAudio:
+            return control_protocol::InputSourceKind::kApplicationAudio;
+    }
+    return std::nullopt;
+}
+
+// 入力の一覧を読む。数、種類、チャンネル数、ストリーム ID の重複をここで検証し、
+// 内側（HostPeerHandler）には検証済みの一覧だけを渡す。
+StreamsReport read_streams(Reader& r) {
+    StreamsReport m;
+    const std::size_t count = r.u8();
+    if (count == 0 || count > control_protocol::kMaxInputStreams) {
+        r.reject();
+        return m;
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        InputStream stream;
+        stream.stream_id = r.u16();
+        const auto kind = source_kind_from_wire(r.u8());
+        stream.channels = r.u8();
+        const bool duplicate = std::ranges::any_of(
+            m.streams, [&](const InputStream& s) { return s.stream_id == stream.stream_id; });
+        if (!kind || stream.channels == 0 ||
+            stream.channels > control_protocol::kMaxInputChannels || duplicate) {
+            r.reject();
+            return m;
+        }
+        stream.kind = *kind;
+        m.streams.push_back(stream);
+    }
+    return m;
+}
+
 template <typename T>
 common::Result<T, PeerMessageError> finish(const Reader& reader, T message) {
     if (!reader.finished()) {
@@ -242,6 +319,16 @@ std::vector<std::uint8_t> encode(const ClientToHostMessage& message) {
             } else if constexpr (std::is_same_v<M, InputReport>) {
                 Writer w{Type::kInputReport};
                 w.boolean(m.input_missing);
+                return std::move(w).finish();
+            } else if constexpr (std::is_same_v<M, StreamsReport>) {
+                // 数は呼び出し側で 1〜kMaxInputStreams に収めてあること。
+                Writer w{Type::kStreamsReport};
+                w.u8(static_cast<std::uint8_t>(m.streams.size()));
+                for (const InputStream& stream : m.streams) {
+                    w.u16(stream.stream_id);
+                    w.u8(static_cast<std::uint8_t>(to_wire(stream.kind)));
+                    w.u8(stream.channels);
+                }
                 return std::move(w).finish();
             } else {
                 static_assert(std::is_same_v<M, LeaveNotice>);
@@ -304,6 +391,10 @@ common::Result<ClientToHostMessage, PeerMessageError> decode_client_to_host(
             return finish<ClientToHostMessage>(r, InputReport{r.boolean()});
         case Type::kLeaveNotice:
             return finish<ClientToHostMessage>(r, LeaveNotice{});
+        case Type::kStreamsReport: {
+            auto m = read_streams(r);
+            return finish<ClientToHostMessage>(r, std::move(m));
+        }
         case Type::kJoinPending:
         case Type::kJoinApproved:
         case Type::kJoinDenied:
@@ -339,6 +430,7 @@ common::Result<HostToClientMessage, PeerMessageError> decode_host_to_client(
         case Type::kSendMuteReport:
         case Type::kInputReport:
         case Type::kLeaveNotice:
+        case Type::kStreamsReport:
             break;
     }
     return common::make_unexpected(PeerMessageError::kUnknownType);

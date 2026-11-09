@@ -23,8 +23,11 @@ public:
     ~CountingSource() override {
         destroyed_.fetch_add(1);
     }
-    void pull(std::span<float> out) noexcept VOCROZ_NONBLOCKING override {
-        std::fill(out.begin(), out.end(), 0.0F);
+    [[nodiscard]] std::size_t channel_count() const noexcept override {
+        return 1;
+    }
+    void pull(float* const* channels, std::size_t frames) noexcept VOCROZ_NONBLOCKING override {
+        std::fill(channels[0], channels[0] + frames, 0.0F);
     }
 
 private:

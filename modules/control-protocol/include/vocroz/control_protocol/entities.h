@@ -84,6 +84,12 @@ struct ChannelStrip {
     GainDb gain_db = 0.0;
     /// FAILED のときの原因。
     std::optional<ErrorCode> error_code;
+    /// 子機の入力の種類。1 台の子機の入力ごとに 1 本のストリップになる。
+    InputSourceKind source_kind = InputSourceKind::kMicrophone;
+    /// 入力のチャンネル数（1 か 2）。2 はステレオのストリップ。
+    std::uint8_t channel_count = 1;
+    /// 同じ子機の同じ種類の入力の中での番号（1 から）。「マイク 2」のような表示に使う。
+    std::uint8_t source_number = 1;
 
     friend bool operator==(const ChannelStrip&, const ChannelStrip&) = default;
 };

@@ -7,6 +7,7 @@
 //   途絶が続けば無音になり、古い音を遅れて鳴らし続けない
 // - ±100ppm のクロックドリフトがあっても、長時間にわたってバッファが溢れも枯渇もしない
 // - ミュート解除後の新しい区間では、停止前のフレームを再生しない
+// - ステレオのストリームは左右を分けたまま再生する
 
 #include "vocroz/transport/playout_stream.h"
 
@@ -333,6 +334,84 @@ TEST(PlayoutStreamTest, HandlesVariableCallbackLengths) {
     const PlayoutStats stats = stream->stats();
     EXPECT_TRUE(stats.playing);
     EXPECT_EQ(stats.rebuffers, 0U);
+}
+
+// L に 1kHz、R に無音のステレオのフレームを作る。
+std::vector<std::vector<std::uint8_t>> stereo_payloads(std::size_t frames) {
+    OpusEncoderConfig config;
+    config.channels = 2;
+    config.bitrate_bps = kStereoBitrateBps;
+    auto encoder = OpusFrameEncoder::create(config);
+    EXPECT_TRUE(encoder);
+    std::vector<std::vector<std::uint8_t>> payloads;
+    std::vector<float> pcm(kFrame * 2);
+    std::array<std::uint8_t, kMaxOpusPayloadBytes> packet{};
+    for (std::size_t f = 0; f < frames; ++f) {
+        for (std::size_t i = 0; i < kFrame; ++i) {
+            const double t = static_cast<double>(f * kFrame + i) / kSampleRate;
+            pcm[i * 2] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 1000.0 * t));
+            pcm[(i * 2) + 1] = 0.0F;
+        }
+        const auto bytes = encoder.value().encode(pcm, packet);
+        EXPECT_TRUE(bytes);
+        payloads.emplace_back(packet.begin(),
+                              packet.begin() + static_cast<std::ptrdiff_t>(bytes.value()));
+    }
+    return payloads;
+}
+
+TEST(PlayoutStreamTest, StereoStreamKeepsLeftAndRightSeparate) {
+    const auto payloads = stereo_payloads(400);
+    PlayoutConfig config;
+    config.channels = 2;
+    auto stream = make_stream(config);
+    EXPECT_EQ(stream->channels(), 2U);
+    std::vector<float> left(kBlock);
+    std::vector<float> right(kBlock);
+    std::uint64_t next = 0;
+    double left_energy = 0.0;
+    double right_energy = 0.0;
+    for (int i = 0; i < 600; ++i) {
+        while (next * kFrame < static_cast<std::uint64_t>(i + 1) * kBlock + 2 * kFrame &&
+               next < payloads.size()) {
+            auto frame = make_media_frame(next * kFrame, 1, payloads[next]);
+            ASSERT_TRUE(frame);
+            ASSERT_TRUE(stream->enqueue(frame.value()));
+            ++next;
+        }
+        stream->render(left, right);
+        if (i > 100 && i < 500) {
+            left_energy += rms(left);
+            right_energy += rms(right);
+        }
+    }
+    EXPECT_TRUE(stream->stats().playing);
+    EXPECT_GT(left_energy / 399.0, 0.3);
+    EXPECT_LT(right_energy / 399.0, 0.05);
+}
+
+TEST(PlayoutStreamTest, RenderWithWrongChannelCountOutputsSilence) {
+    PlayoutConfig stereo;
+    stereo.channels = 2;
+    auto stereo_stream = make_stream(stereo);
+    std::vector<float> mono(kBlock, 1.0F);
+    stereo_stream->render(mono);
+    EXPECT_EQ(rms(mono), 0.0);
+
+    auto mono_stream = make_stream();
+    std::vector<float> left(kBlock, 1.0F);
+    std::vector<float> right(kBlock, 1.0F);
+    mono_stream->render(left, right);
+    EXPECT_EQ(rms(left), 0.0);
+    EXPECT_EQ(rms(right), 0.0);
+}
+
+TEST(PlayoutStreamTest, RejectsChannelCountOtherThanMonoOrStereo) {
+    PlayoutConfig config;
+    config.channels = 3;
+    const auto stream = PlayoutStream::create(config);
+    ASSERT_FALSE(stream);
+    EXPECT_EQ(stream.error(), PlayoutError::kInvalidConfig);
 }
 
 }  // namespace

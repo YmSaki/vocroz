@@ -33,6 +33,15 @@ inline constexpr double kMaxRoutingDelayMs = 2000.0;
 inline constexpr double kMinLatencyTargetMs = 10.0;
 inline constexpr double kMaxLatencyTargetMs = 250.0;
 
+/// 1 台の子機が送れる入力（ストリーム）の数の上限。親機では 1 本ずつ別のストリップになる。
+/// マイク 2 本とアプリ音声のような使い方に足り、子機の CPU（ストリームごとの Opus のエンコード）と
+/// 回線（1 本あたり
+/// 128〜192kbps）の負荷を抑えられる値にする（docs/adr/0035-client-input-expansion.md）。
+inline constexpr std::size_t kMaxInputStreams = 4;
+
+/// 1 つの入力のチャンネル数の上限（ステレオ）。
+inline constexpr std::size_t kMaxInputChannels = 2;
+
 /// revision とシーケンス番号の最大値。UI（JavaScript）の数値で正確に表せる最大の整数（2^53 - 1）。
 inline constexpr std::uint64_t kMaxCounter = (std::uint64_t{1} << 53) - 1;
 
