@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 
 #include "vocroz/common/cli.h"
@@ -58,6 +59,12 @@ struct LaunchError {
 /// @return 検証済みのオプションか、誤りの説明
 /// スレッド安全性: 純粋関数で、どのスレッドからも呼び出し可能。
 [[nodiscard]] std::variant<LaunchOptions, LaunchError> parse_launch_options(common::Args args);
+
+/// ログの段階を、--log-level の値の文字列にする（パースの逆）。pa-engine に同じ段階を渡すため。
+/// @param level ログの段階
+/// @return error、warn、info、debug のいずれか
+/// スレッド安全性: 純粋関数で、どのスレッドからも呼び出し可能。
+[[nodiscard]] std::string_view log_level_argument(common::LogLevel level) noexcept;
 
 /// --help で表示する引数の一覧を返す。
 [[nodiscard]] std::string launch_options_help();

@@ -44,4 +44,13 @@ void InviteInbox::drain(const Handler& handler) {
     }
 }
 
+void InviteInbox::on_invite_registered(
+    const session::InviteToken& /*token*/,
+    const common::Result<session::RegisteredInvite, control_protocol::ErrorCode>& /*result*/) {}
+
+void InviteInbox::on_invite_resolved(const session::InviteCode& code, const ResolveResult& result) {
+    // 入らなかった結果は捨てる。出演者の画面は解決中のまま残るが、参加をやり直せば解決し直す。
+    static_cast<void>(push(code, result));
+}
+
 }  // namespace vocroz::client

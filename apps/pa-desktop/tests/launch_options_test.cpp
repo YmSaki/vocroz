@@ -96,5 +96,13 @@ TEST(LaunchOptionsTest, RejectsDuplicates) {
     EXPECT_TRUE(fails({"--lang=ja", "--lang=en"}));
 }
 
+TEST(LaunchOptionsTest, LogLevelArgumentRoundTrips) {
+    // pa-engine に渡す --log-level の値は、remote-pa が受け取った値と同じ書き方にする。
+    EXPECT_EQ(log_level_argument(ok({"--log-level=error"}).log_level), "error");
+    EXPECT_EQ(log_level_argument(ok({"--log-level=warn"}).log_level), "warn");
+    EXPECT_EQ(log_level_argument(ok({"--log-level=info"}).log_level), "info");
+    EXPECT_EQ(log_level_argument(ok({"--log-level=debug"}).log_level), "debug");
+}
+
 }  // namespace
 }  // namespace vocroz::pa_desktop
