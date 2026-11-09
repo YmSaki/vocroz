@@ -17,7 +17,7 @@ UI（`ui/`）を JUCE の `WebBrowserComponent`（Windows では WebView2）で�
 | ヘッダー | 内容 |
 | --- | --- |
 | `vocroz/webui/factories.h` | `make_juce_web_ui_host()`（`VOCROZ_WITH_JUCE` が ON のときだけ） |
-| `vocroz/webui/web_ui_host.h` | `WebUiHost`、`WebUiHostOptions`、`WebUiWindowOptions`、`WebUiLaunchData`、`UiMode` |
+| `vocroz/webui/web_ui_host.h` | `WebUiHost`、`WebUiHostOptions`、`WebUiWindowOptions`、`WebUiLaunchData`、`UiMode`、`UiScreen`（窓に表示する画面。ルーティングの窓は docs/adr/0038-routing-window.md） |
 | `vocroz/webui/ui_assets.h` | `UiAsset`、`UiAssetTable`（埋め込んだファイル） |
 | `vocroz/webui/ui_resource.h` | `find_ui_resource()`、`mime_type_for()` |
 

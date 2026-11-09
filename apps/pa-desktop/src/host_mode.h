@@ -2,8 +2,11 @@
 //
 // 親機モードの組み立て（Windows で JUCE を使うビルドだけ）。
 // webui の MessageChannel と ipc のクライアントを ChannelRelay でつなぎ、pa-engine へ中継する
-// （AGENTS.md 5.4）。エンジンの起動と再アタッチは EngineAttacher の手順で行い、
+// （AGENTS.md 5.4）。
+// エンジンの起動と再アタッチは EngineAttacher の手順で行い、
 // 接続が切れたら同じ手順でつなぎ直す（docs/adr/0030-remote-pa-assembly.md）。
+// ルーティング画面は別の窓で開き、ミキサーの窓と ChannelGroup でまとめてパイプを共有する
+// （docs/adr/0038-routing-window.md）。
 //
 // スレッド:
 // - JUCE のメッセージスレッド: 生成、破棄、接続の手順、閉じるときの確認
@@ -19,6 +22,7 @@
 #include "vocroz/common/ports/logger.h"
 #include "vocroz/common/result.h"
 #include "vocroz/common/steady_clock.h"
+#include "vocroz/control_protocol/channel_group.h"
 #include "vocroz/control_protocol/channel_relay.h"
 #include "vocroz/control_protocol/ports/message_channel.h"
 #include "vocroz/webui/ui_assets.h"
@@ -81,6 +85,8 @@ private:
     class AttachTimer;
 
     void open_window();
+    void open_routing_window();
+    void close_routing_window();
     void on_relay_closed(control_protocol::ChannelRelay::Side side);
     void on_engine_lost();
     void ask_to_retry();
@@ -95,7 +101,11 @@ private:
     EngineAttacher attacher_;
 
     std::unique_ptr<webui::WebUiHost> web_ui_;
-    // エンジンとの経路。tap_ が engine_ を包み、relay_ が web_ui_ と tap_ をつなぐ。
+    // ルーティングの窓。開いている間だけある。
+    std::unique_ptr<webui::WebUiHost> routing_ui_;
+    // 開いている窓の経路をまとめたもの。窓より後に宣言し、窓より先に破棄されるようにする。
+    control_protocol::ChannelGroup windows_;
+    // エンジンとの経路。tap_ が engine_ を包み、relay_ が windows_ と tap_ をつなぐ。
     std::unique_ptr<control_protocol::MessageChannel> engine_;
     std::unique_ptr<SessionActivityTap> tap_;
     std::unique_ptr<control_protocol::ChannelRelay> relay_;
