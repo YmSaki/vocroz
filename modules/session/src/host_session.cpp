@@ -62,6 +62,7 @@ public:
                                      ? latency
                                      : kDefaultLatencyTargetMs);
         ctx.restore_routing();
+        ctx.restore_external_output();
         ctx.refresh_output_devices();
         open_saved_output_device();
     }
@@ -238,6 +239,13 @@ void HostSession::on_output_device_lost() {
 
 void HostSession::on_engine_fault(control_protocol::ErrorCode code) {
     impl_->on_engine_fault(code);
+}
+
+void HostSession::on_external_output_test_finished(control_protocol::ExternalOutputResult result) {
+    auto& ctx = impl_->ctx;
+    if (ctx.external_output.finish_test(result)) {
+        ctx.publish_external_output();
+    }
 }
 
 void HostSession::revoke_invite() {

@@ -46,6 +46,11 @@ struct HostSettings {
     std::vector<SavedRouteGain> route_gains;
     /// 全体の目標レイテンシー（ms）。回線の状態に合わせてオペレーターが選んだ値を次の起動でも使う。
     double latency_target_ms = kDefaultLatencyTargetMs;
+    /// SRTP 外部出力の設定（宛先、送り出すバス、プロファイル）。送信中かどうかは保存しない。
+    /// 起動時は必ず止めた状態から始め、送信はオペレーターの操作でだけ始める（初期ミュートの
+    /// 製品要件）。鍵は秘密情報なので SecretStore に分けて保存する
+    /// （docs/adr/0040-srtp-external-output.md）。
+    control_protocol::ExternalOutputConfig external_output;
 
     friend bool operator==(const HostSettings&, const HostSettings&) = default;
 };

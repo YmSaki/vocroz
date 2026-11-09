@@ -126,4 +126,31 @@ enum class InputSourceKind {
     kApplicationAudio,  ///< APP_AUDIO: PC 内のアプリ音声（WASAPI のループバック）
 };
 
+/// SRTP 外部出力の送信の状態（docs/adr/0040-srtp-external-output.md）。
+/// 起動時と再起動時は必ず STOPPED から始める（初期ミュートの製品要件）。
+enum class ExternalOutputState {
+    kStopped,  ///< STOPPED: 送っていない
+    kRunning,  ///< RUNNING: 送り出すバスの音を送信中
+    kTesting,  ///< TESTING: 接続テストの試験音を送信中
+};
+
+/// SRTP 外部出力のコーデックのプロファイル。どちらも Opus の 5 ms フレーム。
+enum class ExternalOutputProfile {
+    kOpusStereo,  ///< OPUS_STEREO: Opus のステレオ
+    kOpusMono,    ///< OPUS_MONO: Opus のモノラル（128 kbps）
+};
+
+/// SRTP の暗号スイート。名前は SDES（RFC 4568）の a=crypto 属性の表記に合わせる。
+enum class SrtpSuite {
+    kAesCm128HmacSha1_80,  ///< AES_CM_128_HMAC_SHA1_80: 既定。ほぼすべての受信機が対応する
+    kAesCm128HmacSha1_32,  ///< AES_CM_128_HMAC_SHA1_32: 認証タグが 32 ビットの短い形
+};
+
+/// SRTP 外部出力の開始か接続テストの結果。
+enum class ExternalOutputResult {
+    kOk,  ///< OK: 送信できた（受信機に届いたかまでは確かめられない）
+    kResolveFailed,  ///< RESOLVE_FAILED: 宛先のホスト名を解決できなかった
+    kSendFailed,     ///< SEND_FAILED: ソケットを開けないか、送信に失敗した
+};
+
 }  // namespace vocroz::control_protocol

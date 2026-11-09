@@ -10,8 +10,12 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
+
+#include "vocroz/transport/srtp_master_key.h"
 
 #include "detail/revision_utils.h"
 #include "detail/token_utils.h"
@@ -58,6 +62,7 @@ cp::MixerSnapshot HostContext::snapshot() const {
     }
     snapshot.pending = registry.pending_entries();
     snapshot.routing = routing.info();
+    snapshot.external_output = external_output.info();
     return snapshot;
 }
 
@@ -93,7 +98,49 @@ common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_
         return common::make_unexpected(ErrorCode::kEngineError);
     }
     routing.commit();
+    stop_external_output_without_source();
     return {};
+}
+
+bool HostContext::is_external_output_source(const std::string& entity_id) const {
+    if (entity_id == kMasterEntityId) {
+        return true;
+    }
+    const auto& buses = routing.info().applied.buses;
+    return std::any_of(buses.begin(), buses.end(),
+                       [&](const cp::RoutingBus& bus) { return bus.entity_id == entity_id; });
+}
+
+void HostContext::restore_external_output() {
+    std::optional<transport::SrtpMasterKey> key;
+    if (auto stored = ports.secrets.load(SecretSlot::kExternalOutputKey)) {
+        auto& bytes = stored.value();
+        const std::string text(bytes.begin(), bytes.end());
+        std::fill(bytes.begin(), bytes.end(), std::uint8_t{0});
+        if (auto parsed = transport::parse_srtp_master_key(text)) {
+            key = std::move(parsed).value();
+        } else {
+            log(common::LogLevel::kWarning,
+                "保存した外部出力の鍵が壊れているため、鍵を未設定にして起動します");
+        }
+    } else if (stored.error() != SecretError::kNotFound) {
+        log(common::LogLevel::kWarning,
+            "外部出力の鍵を読めなかったため、鍵を未設定にして起動します");
+    }
+    external_output.restore(settings.external_output, std::move(key));
+}
+
+void HostContext::stop_external_output_without_source() {
+    const auto& info = external_output.info();
+    if (info.state != cp::ExternalOutputState::kRunning ||
+        is_external_output_source(info.config.source_id)) {
+        return;
+    }
+    // 送り出すバスがなくなったら送信を止める。別のバスへ黙って切り替えない。
+    ports.external_output.stop();
+    external_output.record_stop();
+    publish_external_output();
+    notice(cp::NoticeSeverity::kWarning, "external_output_source_removed", {});
 }
 
 void HostContext::apply_latency_target(double target_ms) {
@@ -403,6 +450,10 @@ void HostContext::publish_routing() {
 
 void HostContext::publish_route_level(const cp::RouteLevel& level) {
     ports.ui.publish(cp::RouteLevelUpdated{level});
+}
+
+void HostContext::publish_external_output() {
+    ports.ui.publish(cp::ExternalOutputUpdated{external_output.info()});
 }
 
 void HostContext::notice(cp::NoticeSeverity severity, const char* code, const std::string& name) {

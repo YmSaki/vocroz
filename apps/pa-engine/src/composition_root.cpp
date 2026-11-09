@@ -182,14 +182,28 @@ std::optional<int> CompositionRoot::start() {
         [this](std::string_view id) { return device::make_wasapi_audio_output(id, *logger_); },
         mixer_, device_loss_relay_, *logger_);
 
+    external_sockets_ = std::make_unique<NetworkExternalSocketOpener>(
+        *network_environment_, [](network::DatagramListener& listener) {
+            // 宛先ごとに OS が選ぶポートで開く。子機との接続のソケットとは分け、外部出力を
+            // 独自トランスポートの経路から独立させる。
+            return network::make_winsock_udp_endpoint(0, listener);
+        });
+    external_output_ = std::make_unique<ExternalOutputDriver>(
+        engine_mixer_, *external_sockets_, network_random_,
+        [this](control_protocol::ExternalOutputResult result) {
+            // 送信スレッドから呼ばれるので、コントロールスレッドへ移して session に渡す。
+            loop_.post([this, result] { session_->on_external_output_test_finished(result); });
+        });
+
     ui_publisher_ = std::make_unique<UiEventPublisher>(*ui_channel_, *logger_);
     session::HostSession::Config config;
     config.host_public_key = host_keys_->public_key();
     config.invite_base_url = kInviteBaseUrl;
     session_ = std::make_unique<session::HostSession>(
-        std::move(config), session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_,
-                                                       *peer_links_, *rendezvous_tap_, *settings_,
-                                                       random_, clock_, *logger_, *peer_links_});
+        std::move(config),
+        session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, *peer_links_,
+                                    *rendezvous_tap_, *settings_, random_, clock_, *logger_,
+                                    *peer_links_, *external_output_, *secrets_});
     peer_events_.bind(session_.get());
     const auto on_registered =
         [this](
@@ -347,6 +361,10 @@ void CompositionRoot::shutdown() {
         ui_channel_->set_listener(nullptr);
     }
     stop_midi();
+    // 外部出力の送信スレッドを止める（宛先のソケットはドライバーと一緒に閉じる）。
+    if (external_output_) {
+        external_output_->stop();
+    }
     if (outputs_) {
         outputs_->close_output();
     }

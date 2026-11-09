@@ -63,6 +63,9 @@ export class MixerStore extends Store<MixerState> {
         this.set({ ...current, routing: { ...current.routing, levels } });
         return;
       }
+      case "external_output_updated":
+        this.set({ ...current, external_output: message.external_output });
+        return;
       case "client_snapshot":
       case "client_updated":
       case "ack":

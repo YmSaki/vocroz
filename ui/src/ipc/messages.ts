@@ -83,6 +83,18 @@ export type RoutingIssue =
   | "OVERLAPPING_OUTPUTS"
   | "UNDELAYED_LOOP";
 
+/** SRTP 外部出力の状態。起動時は STOPPED（docs/adr/0040-srtp-external-output.md）。 */
+export type ExternalOutputState = "STOPPED" | "RUNNING" | "TESTING";
+
+/** 外部出力のコーデックのプロファイル。どちらも Opus の 5 ms フレーム。 */
+export type ExternalOutputProfile = "OPUS_STEREO" | "OPUS_MONO";
+
+/** SRTP の暗号スイート。SDES の a=crypto の名前に合わせる。 */
+export type SrtpSuite = "AES_CM_128_HMAC_SHA1_80" | "AES_CM_128_HMAC_SHA1_32";
+
+/** 外部出力の開始か接続テストの結果。 */
+export type ExternalOutputResult = "OK" | "RESOLVE_FAILED" | "SEND_FAILED";
+
 // ---------------------------------------------------------------------------
 // 親機モードの状態
 // ---------------------------------------------------------------------------
@@ -245,6 +257,31 @@ export interface RoutingInfo {
   levels: RouteLevel[];
 }
 
+/** 外部出力の設定。鍵は秘密情報なので含めない。 */
+export interface ExternalOutputConfig {
+  /** 宛先のホスト名か IP アドレス。未設定は空文字列。 */
+  host: string;
+  port: number;
+  /** 送り出すバスの entity_id か "master"。 */
+  source_id: string;
+  profile: ExternalOutputProfile;
+  /** RTP のペイロードタイプ（96〜127）。 */
+  payload_type: number;
+  crypto_suite: SrtpSuite;
+}
+
+/** SRTP 外部出力の状態。entity_id は "external_output"。 */
+export interface ExternalOutput {
+  entity_id: string;
+  revision: number;
+  config: ExternalOutputConfig;
+  /** 鍵を設定済みか。鍵そのものはエンジンから UI へ送らない。 */
+  key_configured: boolean;
+  state: ExternalOutputState;
+  /** 直前の開始か接続テストの結果。まだなければ null。 */
+  last_result: ExternalOutputResult | null;
+}
+
 /** 親機モードの全状態。接続時にエンジンから届く。 */
 export interface MixerSnapshot {
   session: SessionInfo;
@@ -252,6 +289,7 @@ export interface MixerSnapshot {
   master: MasterStrip;
   pending: PendingParticipant[];
   routing: RoutingInfo;
+  external_output: ExternalOutput;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +366,11 @@ export type DiscreteCommandBody =
   | { type: "set_route_mute"; muted: boolean }
   | { type: "select_output"; device_id: string | null }
   | { type: "set_return_mute"; muted: boolean }
-  | { type: "set_latency_target"; target_ms: number };
+  | { type: "set_latency_target"; target_ms: number }
+  | { type: "set_external_output_config"; config: ExternalOutputConfig }
+  | { type: "set_external_output_key"; key: string }
+  | { type: "set_external_output_running"; running: boolean }
+  | { type: "test_external_output" };
 
 /** 離散コマンド。 */
 export type DiscreteCommand = DiscreteCommandBase & DiscreteCommandBody;
@@ -421,6 +463,7 @@ export type EngineToUiMessage =
   | { type: "client_updated"; client: ClientSnapshot }
   | { type: "routing_updated"; routing: RoutingInfo }
   | { type: "route_level_updated"; level: RouteLevel }
+  | { type: "external_output_updated"; external_output: ExternalOutput }
   | AckMessage
   | RejectMessage
   | GainAckMessage

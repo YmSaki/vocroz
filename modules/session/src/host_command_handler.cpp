@@ -6,9 +6,16 @@
 
 #include "host_command_handler.h"
 
+#include <cstdint>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
+
+#include "vocroz/session/entity_ids.h"
+#include "vocroz/session/ports/secret_store.h"
+#include "vocroz/transport/srtp_master_key.h"
 
 #include "detail/revision_utils.h"
 #include "detail/token_utils.h"
@@ -75,6 +82,9 @@ std::optional<cp::Revision> HostCommandHandler::revision_of(const std::string& e
     if (entity_id == kRoutingEntityId) {
         return ctx_.routing.info().revision;
     }
+    if (entity_id == kExternalOutputEntityId) {
+        return ctx_.external_output.info().revision;
+    }
     if (const auto* level = ctx_.routing.find_level(entity_id)) {
         return level->revision;
     }
@@ -125,6 +135,17 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
             } else if constexpr (std::is_same_v<B, cp::SetLatencyTarget>) {
                 return id == kSessionEntityId ? set_latency_target(body.target_ms)
                                               : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetExternalOutputConfig>) {
+                return id == kExternalOutputEntityId ? set_external_output_config(body.config)
+                                                     : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetExternalOutputKey>) {
+                return id == kExternalOutputEntityId ? set_external_output_key(body.key)
+                                                     : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetExternalOutputRunning>) {
+                return id == kExternalOutputEntityId ? set_external_output_running(body.running)
+                                                     : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::TestExternalOutput>) {
+                return id == kExternalOutputEntityId ? test_external_output() : invalid_state();
             } else {
                 static_assert(
                     std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
@@ -388,6 +409,93 @@ HostCommandHandler::CommandResult HostCommandHandler::select_output(
         return common::make_unexpected(ErrorCode::kDeviceUnavailable);
     }
     return ctx_.session.revision;
+}
+
+// --- SRTP 外部出力 ---
+
+HostCommandHandler::CommandResult HostCommandHandler::set_external_output_config(
+    const cp::ExternalOutputConfig& config) {
+    if (!ctx_.is_external_output_source(config.source_id)) {
+        return common::make_unexpected(ErrorCode::kNotFound);
+    }
+    const auto before = ctx_.external_output.info().revision;
+    if (auto set = ctx_.external_output.set_config(config); !set) {
+        return common::make_unexpected(set.error());
+    }
+    if (ctx_.external_output.info().revision != before) {
+        ctx_.settings.external_output = config;
+        ctx_.save_settings();
+        ctx_.publish_external_output();
+    }
+    return ctx_.external_output.info().revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::set_external_output_key(
+    const std::string& text) {
+    // 鍵の形式の検証は transport の信頼境界（parse_srtp_master_key()）に任せる。
+    auto key = transport::parse_srtp_master_key(text);
+    if (!key) {
+        return invalid_state();
+    }
+    if (auto set = ctx_.external_output.set_key(key.value()); !set) {
+        return common::make_unexpected(set.error());
+    }
+    // 保存するのは受信機に貼り付けるのと同じ形式の文字列。読み込みでも同じパーサーで検証する。
+    const std::string formatted = transport::format_srtp_master_key(key.value());
+    const std::vector<std::uint8_t> bytes(formatted.begin(), formatted.end());
+    if (!ctx_.ports.secrets.save(SecretSlot::kExternalOutputKey, bytes)) {
+        // 保存できなくても今回の起動では使える。次の起動では未設定に戻るので記録だけ残す。
+        ctx_.log(common::LogLevel::kWarning, "外部出力の鍵を保存できませんでした");
+    }
+    ctx_.publish_external_output();
+    return ctx_.external_output.info().revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::set_external_output_running(bool running) {
+    auto& book = ctx_.external_output;
+    const auto state = book.info().state;
+    if (!running) {
+        if (state != cp::ExternalOutputState::kStopped) {
+            ctx_.ports.external_output.stop();
+            book.record_stop();
+            ctx_.publish_external_output();
+        }
+        return book.info().revision;
+    }
+    if (state == cp::ExternalOutputState::kRunning) {
+        return book.info().revision;
+    }
+    if (state == cp::ExternalOutputState::kTesting ||
+        !ctx_.is_external_output_source(book.info().config.source_id)) {
+        return invalid_state();
+    }
+    // 宛先か鍵がなければ始めない（平文では送らない）。
+    const auto plan = book.plan();
+    if (!plan) {
+        return common::make_unexpected(plan.error());
+    }
+    const auto started = ctx_.ports.external_output.start(plan.value(), *book.key());
+    book.record_start(started);
+    ctx_.publish_external_output();
+    if (!started) {
+        ctx_.notice(cp::NoticeSeverity::kWarning, "external_output_failed", {});
+    }
+    return book.info().revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::test_external_output() {
+    auto& book = ctx_.external_output;
+    // 接続テストは止めている間だけ行う。送信中に試験音を混ぜない。
+    if (book.info().state != cp::ExternalOutputState::kStopped) {
+        return invalid_state();
+    }
+    const auto plan = book.plan();
+    if (!plan) {
+        return common::make_unexpected(plan.error());
+    }
+    book.record_test_start(ctx_.ports.external_output.start_test(plan.value(), *book.key()));
+    ctx_.publish_external_output();
+    return book.info().revision;
 }
 
 // --- 連続値のコマンド ---

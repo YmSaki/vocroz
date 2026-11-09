@@ -6,6 +6,7 @@
 add_library(vocroz_session STATIC
   src/client_session.cpp
   src/detail/text_utils.cpp
+  src/external_output_book.cpp
   src/host_command_handler.cpp
   src/host_context.cpp
   src/host_peer_handler.cpp
@@ -31,7 +32,7 @@ target_include_directories(vocroz_session
   PUBLIC include
   PRIVATE src)
 target_link_libraries(vocroz_session
-  PUBLIC vocroz::audio_core vocroz::common vocroz::control_protocol)
+  PUBLIC vocroz::audio_core vocroz::common vocroz::control_protocol vocroz::transport)
 vocroz_set_warnings(vocroz_session)
 
 if(VOCROZ_BUILD_TESTS)
@@ -46,6 +47,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/client_session_test.cpp
     tests/client_state_machine_test.cpp
     tests/connection_state_machine_test.cpp
+    tests/host_external_output_test.cpp
     tests/host_session_test.cpp
     tests/invite_book_test.cpp
     tests/invite_code_test.cpp

@@ -1,7 +1,7 @@
 # session
 
-親機と子機のセッションの規則を持つドメインのモジュールです。依存してよいのは `transport`、`control-protocol`、`audio-core`、`common` で（AGENTS.md 4.2）、今は `control-protocol`、`audio-core`（ルーティングのループの検出、プラグインの処理の型、子機の MIDI のキュー）、`common` を使っています。
-分担、制御メッセージの形式、再接続トークンと招待の扱いは `docs/adr/0022-session-domain.md` で、ルーティングのステージングと適用は `docs/adr/0026-routing-staging.md` で、ルーティングの保存と起動時の復元は `docs/adr/0033-routing-persistence.md` で、子機の MIDI は `docs/adr/0029-midi-and-vsti.md` で決めています。
+親機と子機のセッションの規則を持つドメインのモジュールです。依存してよいのは `transport`、`control-protocol`、`audio-core`、`common` で（AGENTS.md 4.2）、今は `transport`（SRTP 外部出力の鍵の型と検証）、`control-protocol`、`audio-core`（ルーティングのループの検出、プラグインの処理の型、子機の MIDI のキュー）、`common` を使っています。
+分担、制御メッセージの形式、再接続トークンと招待の扱いは `docs/adr/0022-session-domain.md` で、ルーティングのステージングと適用は `docs/adr/0026-routing-staging.md` で、ルーティングの保存と起動時の復元は `docs/adr/0033-routing-persistence.md` で、子機の MIDI は `docs/adr/0029-midi-and-vsti.md` で、SRTP 外部出力は `docs/adr/0040-srtp-external-output.md` で決めています。
 
 ## 責務
 
@@ -16,6 +16,7 @@
 - ルーティングの保存（ストリップを参照しない部分とフェーダーの値）と、起動時のミュートでの復元（`HostContext::restore_routing()`）
 - 返送モニター（Minus-Me）のミュート（`return_muted`）と世代番号、接続の送信側（`PeerLink::set_return_mute()`）と子機（`ReturnMuteNotice`）への通知、再接続での送り直し（`docs/adr/0036-return-monitor.md`）
 - 子機の MIDI: MIDI レーンのメッセージのデコード（`src/wire/midi_message_codec`）、子機の時刻から親機の時刻への写し方（`src/midi_timeline`）、承認済みの接続だけを受け付けてストリップごとのキューに積む受け口と、途絶、切断、ストリップの削除での Panic（`PeerMidiInbox`）
+- SRTP 外部出力: 設定（宛先、送り出すバス、プロファイル、ペイロードタイプ、暗号スイート）と鍵の検証と保存、開始と停止と接続テストの状態（`src/external_output_book`）。起動時は停止から始め、鍵と宛先がなければ始めない。送り出すバスがルーティングの適用でなくなったら止める
 - プラグインの一覧: スキャンの記録のキャッシュ、読み込み不可のファイルの記録、スキャンの進行（`PluginCatalog`、`docs/adr/0032-plugin-catalog-and-loader.md`）
 
 ワイヤーフォーマットの外枠と暗号化（`transport`）、DSP（`audio-core`）、ソケットと HTTP（`network`）、設定ファイルの形式（`persistence`）は持ちません。
@@ -36,11 +37,12 @@
 | `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作。返送のミュートの受信側への反映を含む） |
 | `vocroz/session/ports/capture_control.h` | `CaptureControl`（子機のキャプチャと送信への反映） |
 | `vocroz/session/ports/rendezvous_client.h` | `RendezvousClient`（招待の登録、解決、失効） |
-| `vocroz/session/ports/secret_store.h` | `SecretStore`、`SecretSlot`、`SecretError`（親機と子機の静的秘密鍵の保存。`persistence` が DPAPI で実装する） |
+| `vocroz/session/ports/secret_store.h` | `SecretStore`、`SecretSlot`、`SecretError`（親機と子機の静的秘密鍵と、SRTP 外部出力の鍵の保存。`persistence` が DPAPI で実装する） |
 | `vocroz/session/ports/settings_store.h` | `SettingsStore`（設定の読み込みと保存） |
 | `vocroz/session/ports/secure_random.h` | `SecureRandom`（トークンの生成） |
 | `vocroz/session/ports/ui_event_sink.h` | `UiEventSink`（UI へのメッセージ） |
 | `vocroz/session/ports/playout_control.h` | `PlayoutControl`（全チャンネルの目標遅延の反映。`pa-engine` が受信ストリームに配る） |
+| `vocroz/session/ports/external_output_control.h` | `ExternalOutputControl`、`ExternalOutputPlan`（SRTP 外部出力の開始、停止、接続テスト。`pa-engine` が送信スレッドを組み立てる） |
 | `vocroz/session/peer_midi_inbox.h` | `PeerMidiInbox`（子機の MIDI の受け口。ストリップごとの `MidiInputQueue` を持つ） |
 | `vocroz/session/plugin_catalog.h` | `PluginCatalog`、`PluginScanProgress`（プラグインの一覧とスキャンの進行） |
 | `vocroz/session/plugin_description.h` | `PluginDescription`（スキャンで見つけたプラグインの記述） |

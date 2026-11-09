@@ -236,6 +236,31 @@ bool EngineMixer::attach_return(std::uint64_t key, std::vector<std::string> own_
     return true;
 }
 
+bool EngineMixer::attach_external_stream(std::string source_id,
+                                         std::shared_ptr<ac::AudioStreamSink> sink) {
+    if (!sink || source_id.empty()) {
+        return false;
+    }
+    const auto previous = assignments_.external_stream;
+    assignments_.external_stream = ExternalStreamAssignment{std::move(source_id), std::move(sink)};
+    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+        assignments_.external_stream = previous;
+        logger_.log(common::LogLevel::kError, "外部出力をつないだグラフを適用できませんでした");
+        return false;
+    }
+    return true;
+}
+
+void EngineMixer::detach_external_stream() {
+    if (!assignments_.external_stream) {
+        return;
+    }
+    assignments_.external_stream.reset();
+    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+        logger_.log(common::LogLevel::kError, "外部出力を外したグラフを適用できませんでした");
+    }
+}
+
 void EngineMixer::detach_return(std::uint64_t key) {
     auto& returns = assignments_.returns;
     const auto it = std::ranges::find(returns, key, &ReturnAssignment::key);

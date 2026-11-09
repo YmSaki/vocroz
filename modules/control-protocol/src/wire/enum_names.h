@@ -157,6 +157,40 @@ struct EnumNames<InputSourceKind> {
     }};
 };
 
+template <>
+struct EnumNames<ExternalOutputState> {
+    static constexpr std::array<EnumName<ExternalOutputState>, 3> kTable{{
+        {ExternalOutputState::kStopped, "STOPPED"},
+        {ExternalOutputState::kRunning, "RUNNING"},
+        {ExternalOutputState::kTesting, "TESTING"},
+    }};
+};
+
+template <>
+struct EnumNames<ExternalOutputProfile> {
+    static constexpr std::array<EnumName<ExternalOutputProfile>, 2> kTable{{
+        {ExternalOutputProfile::kOpusStereo, "OPUS_STEREO"},
+        {ExternalOutputProfile::kOpusMono, "OPUS_MONO"},
+    }};
+};
+
+template <>
+struct EnumNames<SrtpSuite> {
+    static constexpr std::array<EnumName<SrtpSuite>, 2> kTable{{
+        {SrtpSuite::kAesCm128HmacSha1_80, "AES_CM_128_HMAC_SHA1_80"},
+        {SrtpSuite::kAesCm128HmacSha1_32, "AES_CM_128_HMAC_SHA1_32"},
+    }};
+};
+
+template <>
+struct EnumNames<ExternalOutputResult> {
+    static constexpr std::array<EnumName<ExternalOutputResult>, 3> kTable{{
+        {ExternalOutputResult::kOk, "OK"},
+        {ExternalOutputResult::kResolveFailed, "RESOLVE_FAILED"},
+        {ExternalOutputResult::kSendFailed, "SEND_FAILED"},
+    }};
+};
+
 /// 対応表が列挙子の宣言順（0, 1, 2, ...）に並んでいるかを確かめる。
 /// 列挙子を追加したのに表を更新し忘れると、途中の抜けはここで、末尾の抜けは往復のテストで見つかる。
 template <typename E>
@@ -182,6 +216,10 @@ static_assert(is_in_declaration_order<BusKind>());
 static_assert(is_in_declaration_order<SendTap>());
 static_assert(is_in_declaration_order<RoutingIssue>());
 static_assert(is_in_declaration_order<InputSourceKind>());
+static_assert(is_in_declaration_order<ExternalOutputState>());
+static_assert(is_in_declaration_order<ExternalOutputProfile>());
+static_assert(is_in_declaration_order<SrtpSuite>());
+static_assert(is_in_declaration_order<ExternalOutputResult>());
 
 /// 列挙子の JSON での名前を返す。
 template <typename E>

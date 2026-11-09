@@ -16,6 +16,7 @@
 
 #include "fakes/fake_audio_sink.h"
 #include "fakes/fake_audio_source.h"
+#include "fakes/fake_audio_stream_sink.h"
 #include "fakes/fake_midi_source.h"
 
 namespace vocroz::engine {
@@ -297,6 +298,65 @@ TEST(MixerGraphBuilderTest, MidiSourcesKeepTheirIdsAndHaveNoConnectionsYet) {
     // 送り先のプラグインノードはまだグラフにないので、経路は作らない。
     EXPECT_TRUE(built.graph.midi_connections.empty());
     EXPECT_TRUE(is_valid(built.graph));
+}
+
+// ストリームタップと、その手前のリミッターへ入る送り元。
+struct StreamTapPath {
+    const ac::NodeSpec* tap = nullptr;
+    std::vector<ac::NodeId> sources;
+};
+
+StreamTapPath stream_tap_path(const ac::GraphDescription& g) {
+    StreamTapPath path;
+    const auto it = std::find_if(g.nodes.begin(), g.nodes.end(), [](const ac::NodeSpec& n) {
+        return n.kind == ac::NodeKind::kStreamTap;
+    });
+    if (it == g.nodes.end()) {
+        return path;
+    }
+    path.tap = &*it;
+    path.sources = return_inputs(g, it->id);
+    return path;
+}
+
+TEST(MixerGraphBuilderTest, ExternalStreamTapsTheMasterThroughALimiter) {
+    auto a = two_strips();
+    const auto sink = std::make_shared<ac::FakeAudioStreamSink>();
+    a.external_stream = ExternalStreamAssignment{kMaster, sink};
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto path = stream_tap_path(built.graph);
+    ASSERT_NE(path.tap, nullptr);
+    EXPECT_EQ(path.tap->stream_sink, sink);
+    const auto* master = node_with_fader(built.graph, ac::FaderId{0});
+    ASSERT_NE(master, nullptr);
+    EXPECT_EQ(path.sources, std::vector<ac::NodeId>{master->id});
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, ExternalStreamTapsABusPostFader) {
+    auto a = two_strips();
+    a.route_faders.emplace("bus-1", ac::FaderId{3});
+    a.external_stream =
+        ExternalStreamAssignment{"bus-1", std::make_shared<ac::FakeAudioStreamSink>()};
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-1", "配信"});
+    const auto built = build_mixer_graph(a, kMaster, config, false);
+    const auto path = stream_tap_path(built.graph);
+    ASSERT_NE(path.tap, nullptr);
+    const auto* bus = node_with_fader(built.graph, ac::FaderId{3});
+    ASSERT_NE(bus, nullptr);
+    EXPECT_EQ(path.sources, std::vector<ac::NodeId>{bus->id});
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, ExternalStreamIsNotTappedFromMissingBusesOrStrips) {
+    for (const char* source : {"bus-missing", "ch-1"}) {
+        auto a = two_strips();
+        a.external_stream =
+            ExternalStreamAssignment{source, std::make_shared<ac::FakeAudioStreamSink>()};
+        const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+        EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kStreamTap), 0U) << source;
+    }
 }
 
 }  // namespace

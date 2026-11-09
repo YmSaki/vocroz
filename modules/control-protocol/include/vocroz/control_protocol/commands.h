@@ -148,12 +148,45 @@ struct SetLatencyTarget {
     friend bool operator==(const SetLatencyTarget&, const SetLatencyTarget&) = default;
 };
 
+/// SRTP 外部出力の設定を変える（親機）。対象は "external_output"。
+/// 送信中と接続テスト中は INVALID_STATE で拒否する（設定は止めてから変える）。
+/// 送り出すバスがなければ NOT_FOUND で拒否する。
+struct SetExternalOutputConfig {
+    ExternalOutputConfig config;
+    friend bool operator==(const SetExternalOutputConfig&,
+                           const SetExternalOutputConfig&) = default;
+};
+
+/// SRTP 外部出力の鍵を設定する（親機）。対象は "external_output"。
+/// 形式は SDES（RFC 4568）の inline: の鍵（30 バイトの Base64）。形式が正しくなければ
+/// INVALID_STATE で拒否する。送信中と接続テスト中も INVALID_STATE で拒否する。
+/// 鍵はエンジンが DPAPI で保存し、スナップショットとイベントには設定済みかどうかだけを載せる。
+struct SetExternalOutputKey {
+    std::string key;
+    friend bool operator==(const SetExternalOutputKey&, const SetExternalOutputKey&) = default;
+};
+
+/// SRTP 外部出力の送信を開始か停止する（親機）。対象は "external_output"。
+/// 宛先か鍵が未設定なら、開始は INVALID_STATE で拒否する（平文では送らない）。
+struct SetExternalOutputRunning {
+    bool running = false;
+    friend bool operator==(const SetExternalOutputRunning&,
+                           const SetExternalOutputRunning&) = default;
+};
+
+/// SRTP 外部出力の接続テストを始める（親機）。対象は "external_output"。
+/// 停止中だけ行える。同じ SRTP の経路で試験音を数秒送り、結果を ExternalOutput::last_result で
+/// 知らせる。
+struct TestExternalOutput {
+    friend bool operator==(const TestExternalOutput&, const TestExternalOutput&) = default;
+};
+
 /// 離散コマンドの種類ごとの本体。
-using DiscreteCommandBody =
-    std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
-                 RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
-                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput,
-                 SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget>;
+using DiscreteCommandBody = std::variant<
+    CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant, RejectParticipant,
+    RemoveStrip, Join, Leave, SelectInput, SetSendMute, StageRouting, CommitRouting, DiscardRouting,
+    SetRouteMute, SelectOutput, SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget,
+    SetExternalOutputConfig, SetExternalOutputKey, SetExternalOutputRunning, TestExternalOutput>;
 
 /// 離散コマンド。
 struct DiscreteCommand {

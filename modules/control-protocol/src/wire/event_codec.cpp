@@ -90,6 +90,13 @@ void read_fields(ObjectReader& r, RouteLevelUpdated& event) {
     event.level = r.nested<RouteLevel>("level", read_route_level);
 }
 
+void write_fields(nlohmann::json& out, const ExternalOutputUpdated& event) {
+    out["external_output"] = write_json(event.external_output);
+}
+void read_fields(ObjectReader& r, ExternalOutputUpdated& event) {
+    event.external_output = r.nested<ExternalOutput>("external_output", read_external_output);
+}
+
 void write_fields(nlohmann::json& out, const Ack& event) {
     out["request_id"] = event.request_id;
     out["applied_revision"] = event.applied_revision;

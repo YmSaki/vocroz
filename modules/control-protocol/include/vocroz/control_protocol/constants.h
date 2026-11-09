@@ -42,6 +42,23 @@ inline constexpr std::size_t kMaxInputStreams = 4;
 /// 1 つの入力のチャンネル数の上限（ステレオ）。
 inline constexpr std::size_t kMaxInputChannels = 2;
 
+/// SRTP 外部出力の RTP のペイロードタイプの範囲（RFC 3551 の動的な範囲）と既定値。
+/// 既定の 111 は WebRTC など多くの実装が Opus に使う値で、受信機の SDP と合わせやすい
+/// （docs/adr/0040-srtp-external-output.md）。transport の kMinDynamicPayloadType と同じ値にする。
+inline constexpr std::uint8_t kMinExternalOutputPayloadType = 96;
+inline constexpr std::uint8_t kMaxExternalOutputPayloadType = 127;
+inline constexpr std::uint8_t kDefaultExternalOutputPayloadType = 111;
+
+/// SRTP 外部出力の宛先のポートの既定値。RTP/AVP の慣例的なポート（RFC 3551）。
+inline constexpr std::uint16_t kDefaultExternalOutputPort = 5004;
+
+/// SRTP 外部出力の宛先のホスト名の最大バイト数（DNS の名前の上限）。
+inline constexpr std::size_t kMaxExternalOutputHostBytes = 253;
+
+/// SRTP 外部出力の鍵の文字列の最大バイト数。30 バイトの Base64（40 文字）に "inline:" を付けた
+/// 長さに、前後の空白の余裕を足す。形式の検証は session が行う。
+inline constexpr std::size_t kMaxSrtpKeyBytes = 64;
+
 /// revision とシーケンス番号の最大値。UI（JavaScript）の数値で正確に表せる最大の整数（2^53 - 1）。
 inline constexpr std::uint64_t kMaxCounter = (std::uint64_t{1} << 53) - 1;
 

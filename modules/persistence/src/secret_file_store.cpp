@@ -23,6 +23,8 @@ std::string_view slot_name(SecretSlot slot) noexcept {
             return "host-static-key";
         case SecretSlot::kClientStaticKey:
             return "client-static-key";
+        case SecretSlot::kExternalOutputKey:
+            return "external-output-key";
     }
     return "unknown";
 }

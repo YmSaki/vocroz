@@ -1,7 +1,7 @@
 # persistence
 
 設定、ログ、秘密情報をディスクに保存するアダプターのモジュールです。依存してよいのは `session` と `common` です（AGENTS.md 4.2）。
-置き場所、保存の手順、伏せる規則は `docs/adr/0027-persistence.md` で、親機の設定に足したルーティングの欄の形は `docs/adr/0033-routing-persistence.md` で決めています。
+置き場所、保存の手順、伏せる規則は `docs/adr/0027-persistence.md` で、親機の設定に足したルーティングの欄の形は `docs/adr/0033-routing-persistence.md` で、SRTP 外部出力の欄と鍵の保存は `docs/adr/0040-srtp-external-output.md` で決めています。
 
 ## 責務
 
@@ -9,7 +9,7 @@
 - `common::Logger` の実装。`<data-dir>/logs` のファイルに 1 件 1 行で書き、大きさでローテーションする（既定 10MB × 5）
 - ログと診断レポートの秘密情報（鍵、トークン、招待コード）と個人情報（グローバルな IP アドレス、ユーザー名、セッション名、バスと出力の名前）の伏せ字
 - マスキング済みの診断レポートの書き出し
-- `session::SecretStore` の実装。秘密情報を DPAPI で暗号化して `<data-dir>/secrets` に保存する（Windows だけ）
+- `session::SecretStore` の実装。秘密情報（静的秘密鍵、SRTP 外部出力の鍵）を DPAPI で暗号化して `<data-dir>/secrets` に保存する（Windows だけ）
 
 設定値の意味づけ（既定値、値の範囲、起動時のミュート）は `session` が持ちます。
 
