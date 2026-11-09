@@ -120,6 +120,8 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
                 return set_route_mute(id, body.muted);
             } else if constexpr (std::is_same_v<B, cp::SelectOutput>) {
                 return id == kSessionEntityId ? select_output(body.device_id) : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetReturnMute>) {
+                return set_return_mute(id, body.muted);
             } else if constexpr (std::is_same_v<B, cp::SetLatencyTarget>) {
                 return id == kSessionEntityId ? set_latency_target(body.target_ms)
                                               : invalid_state();
@@ -225,6 +227,7 @@ HostCommandHandler::CommandResult HostCommandHandler::approve(const std::string&
         ctx_.ports.mixer.add_channel(strip->strip.entity_id);
     }
     ctx_.admit_streams(peer, participant_id);
+    ctx_.sync_return(*strips.front());
     ctx_.send(peer, wire::JoinApproved{token});
     ctx_.publish_pending();
     for (const Participant* strip : strips) {
@@ -263,6 +266,32 @@ HostCommandHandler::CommandResult HostCommandHandler::remove_strip(const std::st
     const std::string participant_id = p->strip.participant_id;
     ctx_.remove_participant_strips(participant_id);
     return revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::set_return_mute(const std::string& entity_id,
+                                                                      bool muted) {
+    auto* p = ctx_.registry.find(entity_id);
+    if (p == nullptr) {
+        return invalid_state();
+    }
+    if (p->strip.return_muted != muted) {
+        // 返送は子機 1 台に 1 本なので、同じ子機のストリップはすべて同じ返送の状態を持つ。
+        // どのストリップから操作しても、その子機のすべてのストリップに反映する。
+        // 解除のたびに世代番号を進め、ミュート前に送ったフレームと解除後のフレームを子機が
+        // 区別できるようにする（制御メッセージとメディアの到着順は逆転しうる）。
+        const std::uint32_t epoch = muted ? p->return_epoch : p->return_epoch + 1;
+        const auto strips = ctx_.registry.strips_of(p->strip.participant_id);
+        for (Participant* strip : strips) {
+            strip->return_epoch = epoch;
+            strip->strip.return_muted = muted;
+            detail::bump_revision(strip->strip.revision);
+        }
+        ctx_.sync_return(*p);
+        for (const Participant* strip : strips) {
+            ctx_.publish_channel(*strip);
+        }
+    }
+    return p->strip.revision;
 }
 
 // --- ルーティング ---

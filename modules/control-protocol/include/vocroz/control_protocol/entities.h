@@ -90,6 +90,10 @@ struct ChannelStrip {
     std::uint8_t channel_count = 1;
     /// 同じ子機の同じ種類の入力の中での番号（1 から）。「マイク 2」のような表示に使う。
     std::uint8_t source_number = 1;
+    /// 親機から子機への返送モニター（Minus-Me）のミュート。ミュート中は返送の送信を止める。
+    /// 設定と解除は親機だけができる。返送は初期値で OFF なので既定値は true
+    /// （docs/adr/0036-return-monitor.md）。
+    bool return_muted = true;
 
     friend bool operator==(const ChannelStrip&, const ChannelStrip&) = default;
 };
@@ -269,6 +273,8 @@ struct ClientSnapshot {
     bool send_muted = true;
     /// 送信レベル（-60〜+12 dB）。
     double send_level_db = 0.0;
+    /// 親機が返送モニターをミュート（OFF）にしている。子機からは解除できない。
+    bool return_muted = true;
 
     friend bool operator==(const ClientSnapshot&, const ClientSnapshot&) = default;
 };

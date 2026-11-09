@@ -198,8 +198,15 @@
     "device_id": null
   },
   {
-    "type": "set_latency_target",
+    "type": "set_return_mute",
     "request_id": "r-26",
+    "entity_id": "ch1",
+    "expected_revision": 2,
+    "muted": false
+  },
+  {
+    "type": "set_latency_target",
+    "request_id": "r-27",
     "entity_id": "session",
     "expected_revision": 3,
     "target_ms": 40

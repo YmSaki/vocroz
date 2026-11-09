@@ -181,6 +181,8 @@ void HostPeerHandler::rejoin(Participant& p, PeerHandle peer) {
     }
     ctx_.advance_participant(p, ConnectionEvent::kReconnectStarted);
     ctx_.admit_streams(peer, participant_id);
+    // 新しい接続の返送の送信側は初期状態（ミュート）で始まるので、今の状態に合わせる。
+    ctx_.sync_return(p);
     ctx_.send(peer, wire::JoinApproved{p.reconnect_token});
 }
 

@@ -58,6 +58,8 @@ inline constexpr std::string_view kMessageType<SetRouteMute> = "set_route_mute";
 template <>
 inline constexpr std::string_view kMessageType<SelectOutput> = "select_output";
 template <>
+inline constexpr std::string_view kMessageType<SetReturnMute> = "set_return_mute";
+template <>
 inline constexpr std::string_view kMessageType<SetLatencyTarget> = "set_latency_target";
 
 // エンジンから UI へ。

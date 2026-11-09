@@ -87,4 +87,12 @@ NodeSpec NodeSpec::make_player(NodeId id, std::shared_ptr<PlaybackTrack> track) 
     return spec;
 }
 
+NodeSpec NodeSpec::make_return_tap(NodeId id, std::shared_ptr<AudioSink> sink) {
+    NodeSpec spec;
+    spec.id = id;
+    spec.kind = NodeKind::kReturnTap;
+    spec.sink = std::move(sink);
+    return spec;
+}
+
 }  // namespace vocroz::audio_core

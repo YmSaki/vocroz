@@ -166,9 +166,11 @@ public:
                     }
                     fail(m.reason);
                     ports_.link.close();
-                } else {
-                    static_assert(std::is_same_v<M, wire::SessionEndedNotice>);
+                } else if constexpr (std::is_same_v<M, wire::SessionEndedNotice>) {
                     handle_session_ended();
+                } else {
+                    static_assert(std::is_same_v<M, wire::ReturnMuteNotice>);
+                    handle_return_mute(m);
                 }
             },
             decoded.value());
@@ -307,6 +309,7 @@ private:
         snapshot_.session_name.reset();
         // 初期ミュート: 新しく参加するときは、送信ミュートから始める。
         force_send_mute();
+        reset_return();
         resolved_.reset();
         pending_code_ = code.value();
         detail::bump_revision(snapshot_.revision);
@@ -327,6 +330,7 @@ private:
         snapshot_.failure_code.reset();
         snapshot_.session_name.reset();
         force_send_mute();
+        reset_return();
         pending_code_.reset();
         resolved_.reset();
         reconnecting_since_.reset();
@@ -413,6 +417,19 @@ private:
         }
     }
 
+    // 返送のミュートは親機だけが決める。子機は受信側の判定へ渡して表示に写すだけで、
+    // 観測値なので revision は進めない。
+    void handle_return_mute(const wire::ReturnMuteNotice& notice) {
+        if (!in_session()) {
+            return;
+        }
+        ports_.link.apply_return_mute(notice.muted, notice.epoch);
+        if (snapshot_.return_muted != notice.muted) {
+            snapshot_.return_muted = notice.muted;
+            publish();
+        }
+    }
+
     void handle_session_ended() {
         if (!advance(ClientEvent::kSessionEnded, false)) {
             return;
@@ -420,6 +437,7 @@ private:
         reconnect_token_.reset();
         snapshot_.failure_code = ErrorCode::kSessionEnded;
         force_send_mute();
+        reset_return();
         reconnecting_since_.reset();
         ports_.link.close();
         publish();
@@ -453,8 +471,15 @@ private:
             return;
         }
         snapshot_.failure_code = reason;
+        reset_return();
         reconnecting_since_.reset();
         publish();
+    }
+
+    // 親機との接続がなくなったら、返送は届かないのでミュート（OFF）の表示に戻す。
+    // 次の接続では、親機が承認の後に今の状態を知らせてくる。
+    void reset_return() {
+        snapshot_.return_muted = true;
     }
 
     void force_send_mute() {

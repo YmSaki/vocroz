@@ -14,6 +14,7 @@
 - 子機と親機の間の制御メッセージのエンコードとデコード（信頼境界、`src/wire/`）
 - ルーティングのステージング、検証（参照、組み合わせ、値の範囲、ループ）、ループの承認、適用と、バスとセンドのミュートとフェーダー（`src/routing_book`、`src/routing_validator`）
 - ルーティングの保存（ストリップを参照しない部分とフェーダーの値）と、起動時のミュートでの復元（`HostContext::restore_routing()`）
+- 返送モニター（Minus-Me）のミュート（`return_muted`）と世代番号、接続の送信側（`PeerLink::set_return_mute()`）と子機（`ReturnMuteNotice`）への通知、再接続での送り直し（`docs/adr/0036-return-monitor.md`）
 - 子機の MIDI: MIDI レーンのメッセージのデコード（`src/wire/midi_message_codec`）、子機の時刻から親機の時刻への写し方（`src/midi_timeline`）、承認済みの接続だけを受け付けてストリップごとのキューに積む受け口と、途絶、切断、ストリップの削除での Panic（`PeerMidiInbox`）
 - プラグインの一覧: スキャンの記録のキャッシュ、読み込み不可のファイルの記録、スキャンの進行（`PluginCatalog`、`docs/adr/0032-plugin-catalog-and-loader.md`）
 
@@ -31,8 +32,8 @@
 | `vocroz/session/settings.h` | `HostSettings`、`ClientSettings`、`SettingsError` |
 | `vocroz/session/ports/mixer_control.h` | `MixerControl`（親機のミキサーへの反映。ルーティングの適用を含む） |
 | `vocroz/session/ports/output_device_control.h` | `OutputDeviceControl`（親機の出力デバイスの一覧、開く、閉じる） |
-| `vocroz/session/ports/peer_link.h` | `PeerLink`（親機から子機との接続の操作） |
-| `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作） |
+| `vocroz/session/ports/peer_link.h` | `PeerLink`（親機から子機との接続の操作。返送のミュートの反映を含む） |
+| `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作。返送のミュートの受信側への反映を含む） |
 | `vocroz/session/ports/capture_control.h` | `CaptureControl`（子機のキャプチャと送信への反映） |
 | `vocroz/session/ports/rendezvous_client.h` | `RendezvousClient`（招待の登録、解決、失効） |
 | `vocroz/session/ports/secret_store.h` | `SecretStore`、`SecretSlot`、`SecretError`（親機と子機の静的秘密鍵の保存。`persistence` が DPAPI で実装する） |

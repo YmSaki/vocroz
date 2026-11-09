@@ -16,6 +16,7 @@ target_sources(vocroz_transport PRIVATE
   src/jitter_estimator.cpp
   src/liveness_monitor.cpp
   src/media_frame.cpp
+  src/media_stream_encoder.cpp
   src/noise_ik_handshake.cpp
   src/opus_frame_decoder.cpp
   src/opus_frame_encoder.cpp
@@ -38,7 +39,8 @@ add_library(vocroz::transport ALIAS vocroz_transport)
 target_include_directories(vocroz_transport
   PUBLIC include
   PRIVATE src)
-# audio-core は VOCROZ_NONBLOCKING（vocroz/audio_core/realtime.h）のためだけに使う。
+# audio-core は VOCROZ_NONBLOCKING（vocroz/audio_core/realtime.h）と、MediaStreamEncoder が実装する
+# AudioSink ポートとゲインランプに使う。
 target_link_libraries(vocroz_transport
   PUBLIC vocroz::common vocroz::audio_core
   PRIVATE noise::protocol sodium Opus::opus)
@@ -60,6 +62,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/liveness_monitor_test.cpp
     tests/media_frame_test.cpp
     tests/media_payload_test.cpp
+    tests/media_stream_encoder_test.cpp
     tests/noise_ik_handshake_test.cpp
     tests/opus_frame_decoder_test.cpp
     tests/opus_frame_encoder_test.cpp
