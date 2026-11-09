@@ -74,9 +74,21 @@ describe("送信の安全", () => {
     const channels = screen.getByRole("combobox", { name: "チャンネル" }) as HTMLSelectElement;
     expect(channels.value).toBe("1");
     fireEvent.change(channels, { target: { value: "2" } });
+    expect(channels.value).toBe("1");
     await advance(20);
     expect(engine.snapshot().input_channels).toBe(2);
     expect(channels.value).toBe("2");
+    expect(engine.snapshot().send_muted).toBe(true);
+  });
+
+  it("アプリ音声は既定で送らず、チェックしても送信ミュートのまま", async () => {
+    const appAudio = screen.getByRole("checkbox", { name: "アプリ音声も送る" }) as HTMLInputElement;
+    expect(appAudio.checked).toBe(false);
+    fireEvent.click(appAudio);
+    expect(appAudio.checked).toBe(false);
+    await advance(20);
+    expect(engine.snapshot().app_audio).toBe(true);
+    expect(appAudio.checked).toBe(true);
     expect(engine.snapshot().send_muted).toBe(true);
   });
 
@@ -124,7 +136,6 @@ describe("開発中のボタン（AT-A09）", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(toasts.get().history.map((t) => t.text)).toEqual([
       "『返送モニター』は現在開発中です。今後のアップデートで利用可能になる予定です。",
-      "『アプリ音声』は現在開発中です。今後のアップデートで利用可能になる予定です。",
     ]);
   });
 });

@@ -84,6 +84,13 @@
     color: var(--color-text-dim);
 }
 
+.client-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
 .client-field input,
 .client-field select {
     padding: 6px 8px;
