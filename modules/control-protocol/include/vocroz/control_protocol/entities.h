@@ -279,6 +279,13 @@ struct ClientSnapshot {
     std::uint8_t input_channels = 1;
     /// アプリ音声（PC で再生している音）も送る。出演者が選んだときだけ送るので、既定値は false。
     bool app_audio = false;
+    /// 返送を鳴らせる出力デバイス。接続時と、選択や抜去のときに列挙し直す。
+    std::vector<OutputDevice> output_devices;
+    /// 返送を鳴らす出力デバイスの ID。std::nullopt は「出力なし」（返送を鳴らさない）。
+    /// 抜去されたときは抜けたデバイスの ID を残す（挿し直したデバイスを選び直しやすくするため）。
+    std::optional<std::string> selected_output_id;
+    /// 選択中の出力デバイスが抜去されて、返送を鳴らしていない。ほかのデバイスへは切り替えない。
+    bool output_missing = false;
 
     friend bool operator==(const ClientSnapshot&, const ClientSnapshot&) = default;
 };

@@ -7,6 +7,7 @@
 // - 子機の接続状態（ClientState）の状態機械を進める（src/state/）
 // - 招待の文字列のパース、参加の申請、承認待ち、再接続トークンによる同じストリップへの復帰
 // - 送信ミュート（初期ミュート、ミュートの世代番号）、入力デバイスの選択と「入力なし」の検知
+// - 返送モニターを鳴らす出力デバイスの選択と抜去の検知（docs/adr/0036-return-monitor.md）
 // - コマンドの適用（revision の競合の拒否、重複した request_id の無視）
 // 副作用（キャプチャ、親機への接続、ランデブーサーバー、設定、UI への通知）はポート経由で行う。
 #pragma once
@@ -25,6 +26,7 @@
 #include "vocroz/session/invite_code.h"
 #include "vocroz/session/ports/capture_control.h"
 #include "vocroz/session/ports/host_link.h"
+#include "vocroz/session/ports/output_device_control.h"
 #include "vocroz/session/ports/rendezvous_client.h"
 #include "vocroz/session/ports/settings_store.h"
 #include "vocroz/session/ports/ui_event_sink.h"
@@ -40,6 +42,8 @@ public:
         UiEventSink& ui;
         CaptureControl& capture;
         HostLink& link;
+        /// 返送モニターを鳴らす出力デバイス。
+        OutputDeviceControl& outputs;
         RendezvousClient& rendezvous;
         SettingsStore& settings;
         const common::Clock& clock;
@@ -54,6 +58,7 @@ public:
     ClientSession& operator=(const ClientSession&) = delete;
 
     /// 設定を読み、初期状態（送信ミュート、未接続）をキャプチャへ反映する。
+    /// 保存した返送の出力デバイスがあれば開き、開けなければ「出力なし」の表示にする。
     /// 設定が読めなくても既定値で始める。起動時に 1 回だけ呼ぶ。
     void start();
 
@@ -95,6 +100,10 @@ public:
     /// 選択中のデバイスがなくなったら「入力なし」にし、送信ミュートの状態は変えない。
     /// @param devices 今ある入力デバイス
     void on_input_devices_changed(std::vector<control_protocol::InputDevice> devices);
+
+    /// 返送を鳴らしていた出力デバイスが抜去された。出力を閉じ、ほかのデバイスへは切り替えない。
+    /// 選択中の ID は残し、出演者が選び直すのを待つ。
+    void on_output_device_lost();
 
     /// 時刻で決まる処理（再接続の猶予）を進める。100 ms〜1 s の間隔で呼ぶ。
     void tick();

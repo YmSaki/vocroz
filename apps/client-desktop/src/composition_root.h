@@ -9,7 +9,8 @@
 // - コントロールスレッド: JUCE のメッセージスレッド。生成、破棄、poll()、UI からのメッセージ
 // - オーディオスレッド: WASAPI のキャプチャのスレッド（CaptureProcessor）
 // - 送信スレッド: ClientRuntime が持つ SenderThread
-// - ネットワーク受信スレッド: Winsock のソケットの受信スレッド（ReceiveRouter と PeerInbox）
+// - ネットワーク受信スレッド: Winsock のソケットの受信スレッド（ReceiveRouter と HostReceivePath）
+// - 返送の出力デバイスのスレッド: WASAPI の出力のスレッド（ReturnPlayer）
 // - HTTPS の作業用スレッド: HttpsRendezvousClient（結果は InviteInbox へ）
 #pragma once
 
@@ -26,13 +27,16 @@
 #include "vocroz/session/ports/rendezvous_client.h"
 #include "vocroz/session/ports/settings_store.h"
 #include "vocroz/transport/crypto_random_source.h"
+#include "vocroz/transport/playout_stream.h"
 #include "vocroz/webui/web_ui_host.h"
 
 #include "client_runtime.h"
+#include "host_receive_path.h"
 #include "invite_inbox.h"
 #include "peer_inbox.h"
 #include "win/wasapi_input_device_opener.h"
 #include "win/wasapi_loopback_opener.h"
+#include "win/wasapi_output_device_opener.h"
 
 namespace vocroz::client {
 
@@ -76,6 +80,7 @@ private:
     std::unique_ptr<audio_core::AudioDeviceCatalog> devices_;
     win::WasapiInputDeviceOpener inputs_;
     win::WasapiLoopbackOpener app_audio_;
+    win::WasapiOutputDeviceOpener outputs_;
     std::unique_ptr<network::NetworkEnvironment> environment_;
 
     // --- 招待の解決（作業用スレッドの結果を受け箱へ） ---
@@ -85,8 +90,12 @@ private:
     std::string rendezvous_host_;
 
     // --- UDP の受信（受信スレッドを持つソケットを、受け取る側より後に作り、先に破棄する） ---
+    // 返送のジッターバッファと受信の処理は start() で作る（作るのに失敗しうるため）。
+    // どちらも ClientRuntime より長く生存し、受信スレッドが止まるまで残る。
     PeerInbox peer_inbox_;
-    network::ReceiveRouter router_;
+    std::unique_ptr<transport::PlayoutStream> returns_;
+    std::unique_ptr<HostReceivePath> receive_path_;
+    std::unique_ptr<network::ReceiveRouter> router_;
     std::unique_ptr<network::UdpEndpoint> endpoint_;
 
     // --- 画面と子機の動作 ---

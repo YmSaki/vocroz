@@ -34,6 +34,7 @@ session::ClientSettings sample_client() {
     s.selected_input_id = "{0.0.1.00000000}.{def}";
     s.send_level_db = 3.0;
     s.input_channels = 2;
+    s.output_device_id = "{0.0.0.00000000}.{spk}";
     return s;
 }
 
@@ -76,6 +77,20 @@ TEST(SettingsCodecTest, ReadsClientSettingsWithoutOrWithInvalidInputChannelsAsMo
         EXPECT_EQ(decoded->input_channels, 1);
         EXPECT_EQ(decoded->send_level_db, -3.0);
     }
+}
+
+TEST(SettingsCodecTest, ReadsClientSettingsWithoutReturnOutputAsNone) {
+    // 返送モニターの前のファイルには output_device_id がない。「出力なし」として読む。
+    const auto decoded = decode_client_settings(
+        R"({"schema_version":1,"display_name":"Vo","selected_input_id":null,"send_level_db":0})");
+    ASSERT_TRUE(decoded);
+    EXPECT_FALSE(decoded->output_device_id);
+}
+
+TEST(SettingsCodecTest, RejectsClientSettingsWithReturnOutputOfAnotherType) {
+    EXPECT_FALSE(decode_client_settings(
+        R"({"schema_version":1,"display_name":"Vo","selected_input_id":null,"send_level_db":0,)"
+        R"("output_device_id":3})"));
 }
 
 TEST(SettingsCodecTest, RejectsTruncatedJson) {

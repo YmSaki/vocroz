@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 親機の出力デバイスの一覧、開く、閉じるを行うポート。
-// オペレーターの選択（SelectOutput）と、起動時に保存した出力デバイスを開く処理で使う。
-// コンポジションルートが device の AudioDeviceCatalog と AudioOutput で実装する。
+// 出力デバイスの一覧、開く、閉じるを行うポート。
+// 親機では Master を鳴らすデバイス、子機では返送モニターを鳴らすデバイスに使う
+// （docs/adr/0036-return-monitor.md）。選択（SelectOutput）と、起動時に保存した出力デバイスを
+// 開く処理で使う。コンポジションルートが device の AudioDeviceCatalog と AudioOutput で実装する。
 #pragma once
 
 #include <string>
@@ -14,7 +15,7 @@
 
 namespace vocroz::session {
 
-/// 親機の出力デバイスの操作。開いている出力デバイスは同時に 1 つだけ。
+/// 出力デバイスの操作。開いている出力デバイスは同時に 1 つだけ。
 /// スレッド安全性: コントロールスレッドから呼ぶ。
 class OutputDeviceControl {
 public:

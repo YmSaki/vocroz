@@ -7,6 +7,9 @@
 // アプリ音声（PC で再生している音）は既定で送らず、出演者がチェックしたときだけ加える。
 // 送信の設定は接続前から操作でき、参加する前にマイクを確かめられるようにする。
 // マイクを選んだだけでは送信を始めず、送信ミュートの解除は利用者の明示的な操作だけで行う。
+// 返送モニターでは、返送を鳴らす出力デバイスを選び、親機が返送を送っているかを表示する。返送の
+// ON と OFF は親機のオペレーターが決めるので、子機の画面には切り替えを置かない
+// （docs/adr/0036-return-monitor.md）。
 
 import { useState } from "preact/hooks";
 import { Fader } from "../../components/fader/Fader";
@@ -17,15 +20,14 @@ import {
   kNotificationHistoryWidthPx,
   NotificationHistory,
 } from "../../components/toast/NotificationHistory";
-import { PlannedButton } from "../../components/planned-button/PlannedButton";
-import { t, type MessageKey } from "../../i18n/i18n";
+import { t } from "../../i18n/i18n";
 import type { EngineClient } from "../../ipc/engine-client";
 import type { ClientStore } from "../../state/client-store";
 import type { MeterStore } from "../../state/meter-store";
 import type { OptimisticStore } from "../../state/optimistic-store";
 import type { ToastStore } from "../../state/toast-store";
 import { useStore } from "../../state/use-store";
-import { errorText, notifyPlanned } from "../shared/feedback";
+import { errorText } from "../shared/feedback";
 import { ToastLayer } from "../shared/ToastLayer";
 import { useCommand } from "../shared/use-command";
 import { useContinuousGain } from "../shared/use-continuous-gain";
@@ -43,11 +45,9 @@ export interface ClientScreenProps {
   initialInvite?: string;
 }
 
-/** 今後のバージョンで実装する子機の機能。 */
-export const kClientPlannedFeatures: readonly MessageKey[] = ["feature.return_monitor"];
-
-/** select の「入力なし」を表す値。デバイスの永続 ID と重ならない値にする。 */
+/** select の「入力なし」と「鳴らさない」を表す値。デバイスの永続 ID と重ならない値にする。 */
 const kNoInputValue = "";
+const kNoOutputValue = "";
 
 /** 子機の画面。 */
 export function ClientScreen({
@@ -263,16 +263,46 @@ export function ClientScreen({
                 </p>
               </div>
             </div>
-            <div class="client-planned">
-              {kClientPlannedFeatures.map((feature) => (
-                <PlannedButton
-                  key={feature}
-                  text={t(feature)}
-                  title={t("feature.planned_hint")}
-                  onClick={() => notifyPlanned(feature, toasts)}
-                />
-              ))}
-            </div>
+          </section>
+          <section class="client-card" aria-label={t("client.return_monitor")}>
+            <h2>{t("client.return_monitor")}</h2>
+            <label class="client-field">
+              <span>{t("client.return_output")}</span>
+              <select
+                value={state.selected_output_id ?? kNoOutputValue}
+                disabled={busy}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  command.send(state.entity_id, state.revision, {
+                    type: "select_output",
+                    device_id: value === kNoOutputValue ? null : value,
+                  });
+                  // 表示は ACK のあとのスナップショットで変える（エンジン主権）。
+                  event.currentTarget.value = state.selected_output_id ?? kNoOutputValue;
+                }}
+              >
+                <option value={kNoOutputValue}>{t("client.no_output")}</option>
+                {state.output_devices.map((device) => (
+                  <option key={device.id} value={device.id}>
+                    {device.name}
+                  </option>
+                ))}
+                {/* 抜けたデバイスは一覧から消えるが、選択は残すので名前の代わりに ID で出す。 */}
+                {state.selected_output_id !== null &&
+                !state.output_devices.some((device) => device.id === state.selected_output_id) ? (
+                  <option value={state.selected_output_id}>{state.selected_output_id}</option>
+                ) : null}
+              </select>
+            </label>
+            {state.output_missing ? (
+              <p class="client-alert" role="alert">
+                {t("client.output_missing")}
+              </p>
+            ) : null}
+            <p class={`client-return client-return--${state.return_muted ? "off" : "on"}`}>
+              {state.return_muted ? t("client.return_off") : t("client.return_on")}
+            </p>
+            <p class="client-note">{t("client.return_hint")}</p>
           </section>
         </main>
         {historyOpen ? (

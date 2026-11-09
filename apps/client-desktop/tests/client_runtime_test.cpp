@@ -2,7 +2,8 @@
 //
 // 子機モードの組み立て（ClientRuntime）のテスト。UI の hello にスナップショットで応えること、
 // 入力デバイスの一覧と選択がキャプチャまで届くこと、参加の操作から招待の解決とランデブーの登録まで
-// 進むこと、入力のメーターを UI へ送ることを、アダプターのフェイクで確かめる。
+// 進むこと、入力のメーターを UI へ送ること、返送の出力デバイスの選択と抜去を、アダプターの
+// フェイクで確かめる。
 
 #include "client_runtime.h"
 
@@ -21,6 +22,7 @@
 #include "fakes/fake_logger.h"
 #include "fakes/fake_message_channel.h"
 #include "fakes/fake_network_environment.h"
+#include "fakes/fake_output_device_opener.h"
 #include "fakes/fake_random_source.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_settings_store.h"
@@ -54,6 +56,9 @@ protected:
     ClientRuntimeTest() {
         devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
                              {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"}});
+        devices_.set_devices(audio_core::AudioDeviceDirection::kOutput,
+                             {audio_core::AudioDeviceInfo{.id = "spk-1", .name = "Headphones"}});
+        outputs_.available = {"spk-1"};
         environment_.resolved = {kServer};
         settings_.client() = session::ClientSettings{"Alice", "mic-1", 0.0};
         runtime_ =
@@ -61,10 +66,13 @@ protected:
                                                        .endpoint = endpoint_,
                                                        .router = router_,
                                                        .inbox = inbox_,
+                                                       .path = path_,
+                                                       .returns = *returns_,
                                                        .environment = environment_,
                                                        .devices = devices_,
                                                        .inputs = inputs_,
                                                        .app_audio = app_audio_,
+                                                       .outputs = outputs_,
                                                        .rendezvous = rendezvous_,
                                                        .invites = invites_,
                                                        .settings = settings_,
@@ -107,11 +115,15 @@ protected:
     cp::FakeMessageChannel channel_;
     network::FakeUdpEndpoint endpoint_;
     PeerInbox inbox_;
-    network::ReceiveRouter router_{inbox_};
+    std::unique_ptr<transport::PlayoutStream> returns_ =
+        transport::PlayoutStream::create(transport::PlayoutConfig{}).value();
+    HostReceivePath path_{inbox_, *returns_};
+    network::ReceiveRouter router_{path_};
     FakeNetworkEnvironment environment_;
     audio_core::FakeAudioDeviceCatalog devices_;
     FakeInputs inputs_;
     FakeInputs app_audio_;
+    FakeOutputDeviceOpener outputs_;
     session::FakeRendezvousClient rendezvous_;
     InviteInbox invites_;
     session::FakeSettingsStore settings_;
@@ -184,6 +196,27 @@ TEST_F(ClientRuntimeTest, RefreshesDevicesWhenInputIsUnplugged) {
     const auto snapshot = latest_snapshot().value();
     EXPECT_TRUE(snapshot.input_devices.empty());
     EXPECT_TRUE(snapshot.input_missing);
+}
+
+TEST_F(ClientRuntimeTest, OpensTheSelectedReturnOutputAndReportsItsLoss) {
+    send_ui(cp::Hello{});
+    auto snapshot = latest_snapshot().value();
+    ASSERT_EQ(snapshot.output_devices.size(), 1U);
+    send_ui(cp::DiscreteCommand{.request_id = "r1",
+                                .entity_id = snapshot.entity_id,
+                                .expected_revision = snapshot.revision,
+                                .body = cp::SelectOutput{.device_id = "spk-1"}});
+    ASSERT_NE(outputs_.last, nullptr);
+    EXPECT_TRUE(outputs_.last->is_started());
+    EXPECT_EQ(settings_.client()->output_device_id, "spk-1");
+
+    devices_.set_devices(audio_core::AudioDeviceDirection::kOutput, {});
+    outputs_.last->simulate_device_lost();
+    runtime_->poll();
+    snapshot = latest_snapshot().value();
+    EXPECT_EQ(snapshot.selected_output_id, "spk-1");
+    EXPECT_TRUE(snapshot.output_missing);
+    EXPECT_TRUE(snapshot.output_devices.empty());
 }
 
 }  // namespace

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 親機から届いたパケットを、ネットワーク受信スレッドからコントロールスレッドへ渡す受け箱。
-// 子機が親機から受け取るのはハンドシェイクの応答と制御パケットだけ（下りの音声は Beta）で、
-// 状態を持つ処理（ハンドシェイク、信頼制御層）はコントロールスレッドにあるので、SPSC キューで
-// 渡す（AGENTS.md 6.1）。network の ReceiveRouter が、ランデブーメッセージ以外をここへ渡す。
+// 親機から届いたハンドシェイクの応答を、ネットワーク受信スレッドからコントロールスレッドへ渡す
+// 受け箱。鍵交換はコントロールスレッド（HostConnection）が行うので、SPSC キューで渡す
+// （AGENTS.md 6.1）。鍵交換の後のパケットは、受信スレッドの HostReceivePath が復号する
+// （docs/adr/0036-return-monitor.md）。HostReceivePath が応答だけをここへ渡す。
 #pragma once
 
 #include <array>
@@ -40,7 +40,7 @@ struct PeerDatagram {
 class PeerInbox final : public network::DatagramListener {
 public:
     /// パケットをキューに入れる。kMaxPacketBytes より長いものと、満杯のときのものは捨てる
-    /// （制御パケットは信頼制御層が再送し、ハンドシェイクは子機が送り直す）。
+    /// （ハンドシェイクは子機が送り直す）。
     /// スレッド安全性: ネットワーク受信スレッドから呼ぶ。ヒープを確保しない。
     void on_datagram(const network::UdpAddress& from,
                      std::span<const std::uint8_t> datagram) noexcept override;

@@ -2,7 +2,8 @@
 //
 // 子機から親機への接続（HostConnection）のテスト。ランデブーサーバーの REGISTERED と PUNCH を
 // 渡し、親機の候補へ送った鍵交換に応答すると接続が確立すること、制御メッセージが両方向に届くこと、
-// 受信の途絶と再接続、最初の接続の失敗を、仮想時刻で確かめる。
+// 受信の途絶と再接続、最初の接続の失敗、返送のジッターバッファへの受け渡し、親機の送信元の
+// 変化への追従を、仮想時刻で確かめる。
 
 #include "host_connection.h"
 
@@ -18,6 +19,7 @@
 #include "fakes/fake_random_source.h"
 #include "fakes/fake_udp_endpoint.h"
 #include "rendezvous_messages.h"
+#include "return_frames.h"
 #include "test_host.h"
 
 namespace vocroz::client {
@@ -114,16 +116,20 @@ protected:
     transport::FakeRandomSource random_;
     net::FakeUdpEndpoint endpoint_;
     PeerInbox inbox_;
-    net::ReceiveRouter router_{inbox_};
+    std::unique_ptr<transport::PlayoutStream> returns_ =
+        transport::PlayoutStream::create(transport::PlayoutConfig{}).value();
+    HostReceivePath path_{inbox_, *returns_};
+    net::ReceiveRouter router_{path_};
     transport::SendWakeup wakeup_;
     PacketSender sender_{wakeup_};
     FakeNetworkEnvironment environment_;
     transport::StaticKeyPair keys_ = test::make_keys();
     RecordingListener listener_;
-    test::TestHost host_{clock_, kHostAddress, inbox_};
+    test::TestHost host_{clock_, kHostAddress, router_};
     HostConnection connection_{HostConnection::Ports{.endpoint = endpoint_,
                                                      .router = router_,
                                                      .inbox = inbox_,
+                                                     .path = path_,
                                                      .sender = sender_,
                                                      .environment = environment_,
                                                      .random = random_,
@@ -213,6 +219,44 @@ TEST_F(HostConnectionTest, CloseStopsSendingAndDropsLink) {
     connection_.send(std::vector<std::uint8_t>{1});
     step(2s);
     EXPECT_EQ(endpoint_.sent.size(), sent_before);
+}
+
+TEST_F(HostConnectionTest, PassesTheReturnToTheJitterBufferOnceTheHostUnmutes) {
+    establish();
+    const auto opus = test::encode_return_frame();
+    // 親機が返送を解除する前のフレーム（世代 0）は鳴らさない。
+    host_.send_media(0, 0, opus);
+    connection_.apply_return_mute(false, 1);
+    for (std::uint64_t i = 0; i < 8; ++i) {
+        host_.send_media(i * test::kReturnFrameSamples, 1, opus);
+    }
+    std::vector<float> out(2400);
+    returns_->render(out);
+    EXPECT_GT(returns_->stats().frames_decoded, 0U);
+}
+
+TEST_F(HostConnectionTest, KeepsTheLinkAliveWithReturnMedia) {
+    establish();
+    const auto opus = test::encode_return_frame();
+    connection_.apply_return_mute(false, 1);
+    // 制御パケットが届かなくても、返送のメディアが届いていれば途絶とみなさない。
+    for (std::uint64_t i = 0; i < 60; ++i) {
+        host_.send_media(i * test::kReturnFrameSamples, 1, opus);
+        clock_.advance(100ms);
+        connection_.poll();
+    }
+    EXPECT_EQ(listener_.lost, 0);
+}
+
+TEST_F(HostConnectionTest, FollowsTheHostToANewAddress) {
+    establish();
+    const auto moved = net::UdpAddress::from_ipv4({203, 0, 113, 9}, 50001);
+    host_.from = moved;
+    host_.send(std::vector<std::uint8_t>{1});
+    step();
+    connection_.send(std::vector<std::uint8_t>{2});
+    step();
+    EXPECT_EQ(endpoint_.sent.back().to, moved);
 }
 
 }  // namespace

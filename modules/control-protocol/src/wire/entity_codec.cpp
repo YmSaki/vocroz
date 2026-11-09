@@ -437,6 +437,9 @@ nlohmann::json write_json(const ClientSnapshot& snapshot) {
         {"return_muted", snapshot.return_muted},
         {"input_channels", snapshot.input_channels},
         {"app_audio", snapshot.app_audio},
+        {"output_devices", write_array(snapshot.output_devices)},
+        {"selected_output_id", nullable(snapshot.selected_output_id)},
+        {"output_missing", snapshot.output_missing},
     };
 }
 
@@ -456,6 +459,9 @@ common::Result<ClientSnapshot, DecodeError> read_client_snapshot(const nlohmann:
         snapshot.return_muted = r.boolean("return_muted");
         snapshot.input_channels = small_count(r, "input_channels", kMaxInputChannels);
         snapshot.app_audio = r.boolean("app_audio");
+        snapshot.output_devices = r.list<OutputDevice>("output_devices", read_output_device);
+        snapshot.selected_output_id = r.nullable_text("selected_output_id", kDeviceIdRule);
+        snapshot.output_missing = r.boolean("output_missing");
         return snapshot;
     });
 }

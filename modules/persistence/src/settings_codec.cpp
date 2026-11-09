@@ -348,6 +348,7 @@ std::string encode_client_settings(const session::ClientSettings& settings) {
     root["selected_input_id"] = optional_to_json(settings.selected_input_id);
     root["send_level_db"] = settings.send_level_db;
     root["input_channels"] = settings.input_channels;
+    root["output_device_id"] = optional_to_json(settings.output_device_id);
     return dump(root);
 }
 
@@ -371,6 +372,15 @@ std::optional<session::ClientSettings> decode_client_settings(std::string_view t
     if (const auto channels = read_unsigned(*root, "input_channels");
         channels && *channels >= 1 && *channels <= control_protocol::kMaxInputChannels) {
         settings.input_channels = static_cast<std::uint8_t>(*channels);
+    }
+    // 返送モニターの前のバージョンのファイルには output_device_id がない。その場合は「出力なし」
+    // として読む。値の型が違えば、ほかの項目と同じく壊れたファイルとして扱う。
+    if (root->contains("output_device_id")) {
+        auto output_device_id = read_optional_string(*root, "output_device_id");
+        if (!output_device_id) {
+            return std::nullopt;
+        }
+        settings.output_device_id = std::move(*output_device_id);
     }
     return settings;
 }

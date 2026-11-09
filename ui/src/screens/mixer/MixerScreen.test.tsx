@@ -238,6 +238,19 @@ describe("参加の承認", () => {
   });
 });
 
+describe("返送モニター", () => {
+  it("返送は OFF から始まり、押すと ACK のあとに ON になる", async () => {
+    const vo = strip("Vo 山田");
+    const toggle = within(vo).getByRole("button", { name: "Vo 山田 への返送" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await advance(20);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(engine.snapshot().channels.find((c) => c.name === "Vo 山田")?.return_muted).toBe(false);
+  });
+});
+
 describe("目標遅延と受信の実測値", () => {
   it("目標遅延の選択はエンジンに送り、ACK のあとの状態で表示する", async () => {
     const select = screen.getByRole("combobox", { name: "全チャンネルの目標遅延" });
