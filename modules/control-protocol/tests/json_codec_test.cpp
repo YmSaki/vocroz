@@ -256,6 +256,17 @@ TEST(JsonCodecTest, RejectsInviteAndDeviceIdOutOfRange) {
     EXPECT_EQ(ui_error(select_output), (DecodeError{DecodeErrorCode::kOutOfRange, "device_id"}));
 }
 
+TEST(JsonCodecTest, RejectsInputChannelsOtherThanMonoOrStereo) {
+    nlohmann::json command = {{"type", "set_input_channels"},
+                              {"request_id", "r1"},
+                              {"entity_id", "client"},
+                              {"expected_revision", 1},
+                              {"channels", 0}};
+    EXPECT_EQ(ui_error(command), (DecodeError{DecodeErrorCode::kOutOfRange, "channels"}));
+    command["channels"] = 3;
+    EXPECT_EQ(ui_error(command), (DecodeError{DecodeErrorCode::kOutOfRange, "channels"}));
+}
+
 TEST(JsonCodecTest, DecodesSelectOutputWithNullAsNoOutput) {
     const auto decoded = decode_ui_to_engine(R"({"type":"select_output","request_id":"r1",
         "entity_id":"session","expected_revision":2,"device_id":null})");

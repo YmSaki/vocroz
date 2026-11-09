@@ -5,6 +5,7 @@
 // 保存した値で音が出る状態に戻ることがないようにするため。
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -57,6 +58,10 @@ struct ClientSettings {
     std::optional<std::string> selected_input_id;
     /// 送信レベル（-60〜+12 dB）。
     double send_level_db = 0.0;
+    /// マイク入力のチャンネル数（1 か 2）。
+    /// アプリ音声を送るかは保存しない。起動するたびに送らない状態から始め、出演者が選び直す
+    /// （PC の通知音などを意図せず送らないため）。
+    std::uint8_t input_channels = 1;
 
     friend bool operator==(const ClientSettings&, const ClientSettings&) = default;
 };

@@ -205,8 +205,22 @@
     "muted": false
   },
   {
-    "type": "set_latency_target",
+    "type": "set_input_channels",
     "request_id": "r-27",
+    "entity_id": "client",
+    "expected_revision": 3,
+    "channels": 2
+  },
+  {
+    "type": "set_app_audio",
+    "request_id": "r-28",
+    "entity_id": "client",
+    "expected_revision": 4,
+    "enabled": true
+  },
+  {
+    "type": "set_latency_target",
+    "request_id": "r-29",
     "entity_id": "session",
     "expected_revision": 3,
     "target_ms": 40

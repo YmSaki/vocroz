@@ -86,4 +86,8 @@ void MediaReceiver::render(std::span<float> out) {
     playout_->render(out);
 }
 
+void MediaReceiver::render(std::span<float> left, std::span<float> right) {
+    playout_->render(left, right);
+}
+
 }  // namespace vocroz::test_harness

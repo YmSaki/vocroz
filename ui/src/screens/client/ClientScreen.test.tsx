@@ -53,7 +53,7 @@ function sendMute(): HTMLElement {
 describe("送信の安全", () => {
   it("送信ミュートから始まり、マイクを選んでも送信を始めない", async () => {
     expect(sendMute().getAttribute("aria-pressed")).toBe("true");
-    fireEvent.change(screen.getByRole("combobox"), {
+    fireEvent.change(screen.getByRole("combobox", { name: "入力デバイス" }), {
       target: { value: engine.snapshot().input_devices[0]?.id },
     });
     await advance(20);
@@ -68,6 +68,16 @@ describe("送信の安全", () => {
     await advance(20);
     expect(sendMute().getAttribute("aria-pressed")).toBe("false");
     expect(sendMute().textContent).toBe("送信中");
+  });
+
+  it("ステレオに切り替えても送信ミュートのまま", async () => {
+    const channels = screen.getByRole("combobox", { name: "チャンネル" }) as HTMLSelectElement;
+    expect(channels.value).toBe("1");
+    fireEvent.change(channels, { target: { value: "2" } });
+    await advance(20);
+    expect(engine.snapshot().input_channels).toBe(2);
+    expect(channels.value).toBe("2");
+    expect(engine.snapshot().send_muted).toBe(true);
   });
 
   it("「入力なし」を選べる", () => {
@@ -114,6 +124,7 @@ describe("開発中のボタン（AT-A09）", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(toasts.get().history.map((t) => t.text)).toEqual([
       "『返送モニター』は現在開発中です。今後のアップデートで利用可能になる予定です。",
+      "『アプリ音声』は現在開発中です。今後のアップデートで利用可能になる予定です。",
     ]);
   });
 });

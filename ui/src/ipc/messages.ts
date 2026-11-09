@@ -283,6 +283,10 @@ export interface ClientSnapshot {
   send_level_db: number;
   /** 親機が返送モニターをミュート（OFF）にしている。子機からは解除できない。 */
   return_muted: boolean;
+  /** マイクのチャンネル数（1: モノラル、2: ステレオ）。 */
+  input_channels: 1 | 2;
+  /** アプリ音声（再生デバイスのループバック）を送るか。 */
+  app_audio: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +314,8 @@ export type DiscreteCommandBody =
   | { type: "leave" }
   | { type: "select_input"; device_id: string | null }
   | { type: "set_send_mute"; muted: boolean }
+  | { type: "set_input_channels"; channels: 1 | 2 }
+  | { type: "set_app_audio"; enabled: boolean }
   | { type: "stage_routing"; config: RoutingConfig }
   | { type: "commit_routing"; approve_feedback: boolean }
   | { type: "discard_routing" }

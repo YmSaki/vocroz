@@ -105,6 +105,7 @@ common::Result<void, ClientAppError> CompositionRoot::start() {
                                                    .environment = *environment_,
                                                    .devices = *devices_,
                                                    .inputs = inputs_,
+                                                   .app_audio = app_audio_,
                                                    .rendezvous = *rendezvous_,
                                                    .invites = invites_,
                                                    .settings = *settings_,

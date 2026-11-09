@@ -126,9 +126,10 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
                 return id == kSessionEntityId ? set_latency_target(body.target_ms)
                                               : invalid_state();
             } else {
-                static_assert(std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
-                              std::is_same_v<B, cp::SelectInput> ||
-                              std::is_same_v<B, cp::SetSendMute>);
+                static_assert(
+                    std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
+                    std::is_same_v<B, cp::SelectInput> || std::is_same_v<B, cp::SetSendMute> ||
+                    std::is_same_v<B, cp::SetInputChannels> || std::is_same_v<B, cp::SetAppAudio>);
                 return invalid_state();
             }
         },
