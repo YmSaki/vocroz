@@ -13,6 +13,8 @@
 //   ジッターバッファへの投入まで（PeerReceivePath）。鍵交換と制御はループに積んで渡す
 // - JUCE のメッセージスレッド（JUCE を使うビルドだけ）: MIDI デバイスの一覧、開閉、抜去の通知。
 //   グラフへの反映はループに積んで渡す（docs/adr/0039-pa-engine-juce-message-thread.md）
+// - SRTP 外部出力の送信スレッド（送信中と接続テスト中だけ）: RTP、SRTP、宛先への送信。
+//   接続テストの結果はループに積んで渡す（docs/adr/0040-srtp-external-output.md）
 // - JUCE の MIDI の受信スレッド: MIDI デバイスのメッセージをキューに積むだけ
 #pragma once
 
@@ -47,10 +49,12 @@
 #include "engine_activity.h"
 #include "engine_mixer.h"
 #include "engine_output_devices.h"
+#include "external_output_driver.h"
 #include "host_peer_links.h"
 #include "host_rendezvous_driver.h"
 #include "invite_result_relay.h"
 #include "launch_options.h"
+#include "network_external_socket_opener.h"
 #include "offline_rendezvous_client.h"
 #include "peer_receive_path.h"
 #include "peer_receive_relay.h"
@@ -161,6 +165,11 @@ private:
     std::unique_ptr<network::UdpEndpoint> endpoint_;
     // endpoint_ で送るので、endpoint_ より後に宣言する（先に破棄する）。
     std::unique_ptr<HostRendezvousDriver> rendezvous_driver_;
+    // --- SRTP 外部出力（docs/adr/0040-srtp-external-output.md） ---
+    // 宛先ごとのソケットは network_environment_ で名前解決し、子機との endpoint_ とは別に開く。
+    // ドライバーは engine_mixer_ にタップをつなぐので、それより後に宣言する（先に破棄する）。
+    std::unique_ptr<NetworkExternalSocketOpener> external_sockets_;
+    std::unique_ptr<ExternalOutputDriver> external_output_;
     std::unique_ptr<UiEventPublisher> ui_publisher_;
     std::unique_ptr<session::HostSession> session_;
     std::unique_ptr<UiMessageReceiver> ui_receiver_;

@@ -77,6 +77,12 @@ struct RouteLevelUpdated {
     friend bool operator==(const RouteLevelUpdated&, const RouteLevelUpdated&) = default;
 };
 
+/// SRTP 外部出力の状態が変わった（external_output_updated）。
+struct ExternalOutputUpdated {
+    ExternalOutput external_output;
+    friend bool operator==(const ExternalOutputUpdated&, const ExternalOutputUpdated&) = default;
+};
+
 /// 離散コマンドを適用した（ack）。
 struct Ack {
     std::string request_id;
@@ -148,6 +154,7 @@ struct Notice {
 using EngineToUiMessage =
     std::variant<MixerSnapshotEvent, ClientSnapshotEvent, SessionUpdated, ChannelUpdated,
                  ChannelRemoved, MasterUpdated, PendingUpdated, ClientUpdated, RoutingUpdated,
-                 RouteLevelUpdated, Ack, Reject, GainAck, Meters, LinkStats, Notice>;
+                 RouteLevelUpdated, ExternalOutputUpdated, Ack, Reject, GainAck, Meters, LinkStats,
+                 Notice>;
 
 }  // namespace vocroz::control_protocol

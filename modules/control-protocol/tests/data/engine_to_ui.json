@@ -157,6 +157,21 @@
           "source_number": 1
         }
       ],
+      "external_output": {
+        "entity_id": "external_output",
+        "revision": 6,
+        "config": {
+          "host": "encoder.example",
+          "port": 5004,
+          "source_id": "bus-fx",
+          "profile": "OPUS_STEREO",
+          "payload_type": 111,
+          "crypto_suite": "AES_CM_128_HMAC_SHA1_80"
+        },
+        "key_configured": true,
+        "state": "RUNNING",
+        "last_result": "OK"
+      },
       "master": {
         "entity_id": "master",
         "revision": 2,
@@ -307,6 +322,21 @@
         "latency_target_ms": 20
       },
       "channels": [],
+      "external_output": {
+        "entity_id": "external_output",
+        "revision": 0,
+        "config": {
+          "host": "",
+          "port": 5004,
+          "source_id": "master",
+          "profile": "OPUS_STEREO",
+          "payload_type": 111,
+          "crypto_suite": "AES_CM_128_HMAC_SHA1_80"
+        },
+        "key_configured": false,
+        "state": "STOPPED",
+        "last_result": null
+      },
       "master": {
         "entity_id": "master",
         "revision": 2,
@@ -1219,5 +1249,59 @@
     "type": "reject",
     "request_id": "r-device_unavailable",
     "error_code": "DEVICE_UNAVAILABLE"
+  },
+  {
+    "type": "external_output_updated",
+    "external_output": {
+      "entity_id": "external_output",
+      "revision": 7,
+      "config": {
+        "host": "192.0.2.10",
+        "port": 6000,
+        "source_id": "master",
+        "profile": "OPUS_MONO",
+        "payload_type": 96,
+        "crypto_suite": "AES_CM_128_HMAC_SHA1_32"
+      },
+      "key_configured": true,
+      "state": "TESTING",
+      "last_result": null
+    }
+  },
+  {
+    "type": "external_output_updated",
+    "external_output": {
+      "entity_id": "external_output",
+      "revision": 8,
+      "config": {
+        "host": "no-such-host.example",
+        "port": 6000,
+        "source_id": "master",
+        "profile": "OPUS_MONO",
+        "payload_type": 96,
+        "crypto_suite": "AES_CM_128_HMAC_SHA1_32"
+      },
+      "key_configured": true,
+      "state": "STOPPED",
+      "last_result": "RESOLVE_FAILED"
+    }
+  },
+  {
+    "type": "external_output_updated",
+    "external_output": {
+      "entity_id": "external_output",
+      "revision": 9,
+      "config": {
+        "host": "2001:db8::10",
+        "port": 6000,
+        "source_id": "master",
+        "profile": "OPUS_STEREO",
+        "payload_type": 96,
+        "crypto_suite": "AES_CM_128_HMAC_SHA1_80"
+      },
+      "key_configured": true,
+      "state": "STOPPED",
+      "last_result": "SEND_FAILED"
+    }
   }
 ]

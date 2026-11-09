@@ -71,8 +71,23 @@ ADR-0009 では、ライブラリを採用するときに ADR を書き、アダ
 ### 初期状態と接続テスト
 
 - 外部出力は、起動時と再起動時に停止の状態から始める（初期ミュートの製品要件）。設定（宛先、バス、プロファイル、鍵）は保存して戻すが、送信の開始はオペレーターの操作でだけ行う。
-- 接続テストは、出力を止めている間だけ行える。同じ SRTP の経路で 1 kHz、-20 dBFS の試験音を数秒送り、宛先の解決、ソケットの送信の失敗、ICMP の到達不能の通知の有無を結果として返す。試験音も暗号化して送る。
+- 接続テストは、出力を止めている間だけ行える。同じ SRTP の経路で 1 kHz、-20 dBFS の試験音を数秒（3 秒）送り、宛先の解決とソケットの送信の失敗を結果として返す。試験音も暗号化して送る。
+- ICMP の到達不能の通知は、今は結果に含めない。`network` の Winsock のソケットは、子機との接続で ICMP のエラーに受信を止められないよう `SIO_UDP_CONNRESET` を切っており（`modules/network/src/win/winsock_udp_endpoint.cpp`）、同じ実装を使う外部出力のソケットでも通知が届かない。外部出力のソケットだけ設定を変えるかは、相互接続試験で受信機が止まっているときの振る舞いを見てから決める。
 - 受信機に届いて復号できたことまでは、受信機が返す SRTCP の受信レポートがないと確かめられない。受信レポートによる確認は、相互接続試験で受信機の振る舞いを確かめてから足す。
+
+### UI とエンジンの間の制御
+
+- 外部出力は entity `external_output` 1 つで表す。スナップショットとイベント（`external_output_updated`）には、設定（宛先、ポート、送り出すバス、プロファイル、ペイロードタイプ、暗号スイート）、鍵が設定済みかどうか、状態（`STOPPED`、`RUNNING`、`TESTING`）、直前の結果（`OK`、`RESOLVE_FAILED`、`SEND_FAILED`）を載せる。鍵は載せない。
+- コマンドは、設定の変更（`set_external_output_config`）、鍵の設定（`set_external_output_key`）、開始と停止（`set_external_output_running`）、接続テスト（`test_external_output`）の 4 つにする。設定と鍵は、止めている間だけ変えられる。送信中の宛先や鍵の差し替えは、受信機から見ると別のストリームになるため、止めてから変える運用にそろえる。
+- revision はコマンドで変えた値（設定、鍵、状態）で進め、接続テストが終わって結果が出たことでは進めない（`docs/adr/0015-control-protocol-messages.md` の観測値の規則）。開始に失敗したときはコマンドを受け付けたうえで、状態を `STOPPED` のまま結果を載せ、通知（`external_output_failed`）を出す。
+- 送り出すバスがルーティングの適用でなくなったら、送信を止めて通知（`external_output_source_removed`）を出す。別のバスへ暗黙に切り替えない（AGENTS.md 1.2 のフェイルセーフ）。
+- 鍵は UI の画面で作る（Web Crypto の `crypto.getRandomValues()`）。作った鍵を受信機に貼るための写しは画面の入力欄にだけ置き、エンジンへ送ったら入力欄から消す。エンジンは鍵を UI へ返さないので、一度設定した鍵を画面で見返すことはできない。受信機の鍵を失ったら作り直す。
+- 鍵は、受信機に貼るのと同じ `inline:` 形式の文字列にして DPAPI で保存し、起動時の読み込みでも `parse_srtp_master_key()` で検証する。
+
+### 組み立て
+
+- `pa-engine` は、外部出力の開始のたびに、宛先の解決、ソケット、`ExternalStreamSender`、Opus のエンコーダー、SPSC キューを組み立ててから、ミキサーのグラフにタップのノードを足す。停止ではタップを外してから送信スレッドを止める。グラフとキューの寿命は、タップとエンコーダーが共有するパイプの共有ポインターでそろえる。
+- タップの前には、Master と同じリミッターを置く。受信機の側でクリップさせないため。
 
 ## 理由
 
@@ -86,5 +101,5 @@ ADR-0009 では、ライブラリを採用するときに ADR を書き、アダ
 
 - `transport` の公開 API に `SrtpMasterKey`、`SrtpCryptoSuite`、`RtpStreamParams`、`ExternalStreamSender`、`parse_srtp_master_key()`、`format_srtp_master_key()`、`generate_srtp_master_key()`、`make_rtp_stream_params()` が加わる。libsrtp を包む `SrtpProtector` と、RTP のヘッダーの組み立て（`src/wire/rtp_header_codec`）は `src/` に置き、公開しない。単体テストでは、送ったパケットを libsrtp の受信側で復号し、RTP のヘッダーとペイロードが元どおりであることを確かめる。
 - libsrtp の内蔵の AES はテーブル参照の実装で、定数時間ではない。外部出力の暗号化は送信側だけで行い、鍵に依存する処理時間を相手が細かく測れる状況は考えにくいが、RC1 の前の外部のセキュリティレビューでこの判断を確かめる。必要なら OpenSSL のバックエンドに切り替える。
-- 続きの作業（2 本目の PR）: バスから取り出すタップのノードとステレオのエンコード（`audio-core`、`transport`）、宛先ごとの UDP ソケット（`network`）、設定と鍵の保存と出力の開始と停止（`session`、`persistence`）、`control-protocol` のコマンドとイベント、`pa-engine` の送信スレッドの組み立て、外部出力と接続テストの画面（`ui/`）。
-- 外部の受信機との相互接続試験は、相手機器を手配してから `docs/testing/` の手順で行う。それまでは仕様書の Beta2 の合格条件のうち、この項目は未達のままになる。
+- 実装は 3 本の PR に分けた。1 本目は libsrtp と送信の部品、2 本目はバスから取り出すタップのノードとステレオのエンコード（`audio-core`、`transport`）、3 本目は設定と鍵の保存と出力の開始と停止（`session`、`persistence`）、`control-protocol` のコマンドとイベント、`pa-engine` の送信スレッドと宛先へのソケットの組み立て、外部出力と接続テストの画面（`ui/`）。
+- 外部の受信機との相互接続試験は、相手機器を手配してから `docs/testing/srtp-external-output.md` の手順で行う。それまでは仕様書の Beta2 の合格条件のうち、この項目は未達のままになる。

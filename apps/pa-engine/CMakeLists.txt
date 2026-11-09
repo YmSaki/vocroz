@@ -18,12 +18,15 @@ add_library(pa_engine_core STATIC
   src/engine_activity.cpp
   src/engine_mixer.cpp
   src/engine_output_devices.cpp
+  src/external_output_driver.cpp
+  src/external_stream_worker.cpp
   src/host_key_loader.cpp
   src/host_peer_links.cpp
   src/host_rendezvous_driver.cpp
   src/invite_result_relay.cpp
   src/launch_options.cpp
   src/mixer_graph_builder.cpp
+  src/network_external_socket_opener.cpp
   src/offline_rendezvous_client.cpp
   src/peer_receive_path.cpp
   src/peer_receive_relay.cpp
@@ -83,12 +86,14 @@ if(VOCROZ_BUILD_TESTS)
     tests/engine_activity_test.cpp
     tests/engine_mixer_test.cpp
     tests/engine_output_devices_test.cpp
+    tests/external_output_driver_test.cpp
     tests/host_key_loader_test.cpp
     tests/host_peer_links_test.cpp
     tests/host_rendezvous_driver_test.cpp
     tests/invite_result_relay_test.cpp
     tests/launch_options_test.cpp
     tests/mixer_graph_builder_test.cpp
+    tests/network_external_socket_opener_test.cpp
     tests/offline_rendezvous_client_test.cpp
     tests/peer_receive_relay_test.cpp
     tests/rendezvous_id_tap_test.cpp

@@ -74,6 +74,13 @@ public:
         see(channel.error_code);
     }
 
+    void see(const ExternalOutput& output) {
+        see(output.config.profile);
+        see(output.config.crypto_suite);
+        see(output.state);
+        see(output.last_result);
+    }
+
     void see(const MasterStrip& master) {
         see(master.master_mute_reason);
     }
@@ -140,6 +147,7 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
                     }
                     coverage.see(event.snapshot.master);
                     coverage.see(event.snapshot.routing);
+                    coverage.see(event.snapshot.external_output);
                 } else if constexpr (std::is_same_v<T, RoutingUpdated>) {
                     coverage.see(event.routing);
                 } else if constexpr (std::is_same_v<T, ClientSnapshotEvent>) {
@@ -152,6 +160,8 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
                     coverage.see(event.master);
                 } else if constexpr (std::is_same_v<T, ClientUpdated>) {
                     coverage.see(event.client);
+                } else if constexpr (std::is_same_v<T, ExternalOutputUpdated>) {
+                    coverage.see(event.external_output);
                 } else if constexpr (std::is_same_v<T, Reject>) {
                     coverage.see(event.error_code);
                 } else if constexpr (std::is_same_v<T, Notice>) {
@@ -174,6 +184,10 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
     EXPECT_TRUE(coverage.covers_all_up_to(BusKind::kCue));
     EXPECT_TRUE(coverage.covers_all_up_to(SendTap::kPreFader));
     EXPECT_TRUE(coverage.covers_all_up_to(RoutingIssue::kUndelayedLoop));
+    EXPECT_TRUE(coverage.covers_all_up_to(ExternalOutputState::kTesting));
+    EXPECT_TRUE(coverage.covers_all_up_to(ExternalOutputProfile::kOpusMono));
+    EXPECT_TRUE(coverage.covers_all_up_to(SrtpSuite::kAesCm128HmacSha1_32));
+    EXPECT_TRUE(coverage.covers_all_up_to(ExternalOutputResult::kSendFailed));
 }
 
 }  // namespace

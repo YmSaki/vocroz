@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "vocroz/control_protocol/constants.h"
 #include "vocroz/control_protocol/states.h"
 
 namespace vocroz::control_protocol {
@@ -234,6 +235,39 @@ struct RoutingInfo {
     friend bool operator==(const RoutingInfo&, const RoutingInfo&) = default;
 };
 
+/// SRTP 外部出力の設定。鍵は秘密情報なので含めない（SetExternalOutputKey で別に渡す）。
+struct ExternalOutputConfig {
+    /// 宛先のホスト名か IP アドレス。空なら未設定。
+    std::string host;
+    /// 宛先の UDP ポート。
+    std::uint16_t port = kDefaultExternalOutputPort;
+    /// 送り出すバスの entity_id（Master か、適用中のルーティングのバス）。
+    std::string source_id = "master";
+    ExternalOutputProfile profile = ExternalOutputProfile::kOpusStereo;
+    /// RTP のペイロードタイプ（動的な範囲の 96〜127）。受信機の SDP と合わせる。
+    std::uint8_t payload_type = kDefaultExternalOutputPayloadType;
+    SrtpSuite crypto_suite = SrtpSuite::kAesCm128HmacSha1_80;
+
+    friend bool operator==(const ExternalOutputConfig&, const ExternalOutputConfig&) = default;
+};
+
+/// SRTP 外部出力の状態。entity_id は "external_output"。
+/// revision は設定、鍵の有無、送信の開始と停止のコマンドで進む。接続テストの終了のような
+/// エンジンが観測して変わるだけの値では進まない。
+struct ExternalOutput {
+    std::string entity_id;
+    Revision revision = 0;
+    ExternalOutputConfig config;
+    /// 鍵が設定済みなら true。鍵そのものは UI に返さない。
+    bool key_configured = false;
+    /// 初期ミュートの要件により既定値は STOPPED。
+    ExternalOutputState state = ExternalOutputState::kStopped;
+    /// 直前の開始か接続テストの結果。まだなければ std::nullopt。
+    std::optional<ExternalOutputResult> last_result;
+
+    friend bool operator==(const ExternalOutput&, const ExternalOutput&) = default;
+};
+
 /// 親機モードの全状態。UI の接続時にエンジンが送る。
 struct MixerSnapshot {
     SessionInfo session;
@@ -242,6 +276,7 @@ struct MixerSnapshot {
     MasterStrip master;
     std::vector<PendingParticipant> pending;
     RoutingInfo routing;
+    ExternalOutput external_output;
 
     friend bool operator==(const MixerSnapshot&, const MixerSnapshot&) = default;
 };

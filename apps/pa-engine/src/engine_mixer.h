@@ -28,6 +28,7 @@
 #include "vocroz/audio_core/mixer.h"
 #include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
+#include "vocroz/audio_core/ports/audio_stream_sink.h"
 #include "vocroz/common/ports/logger.h"
 #include "vocroz/control_protocol/events.h"
 #include "vocroz/session/ports/mixer_control.h"
@@ -87,6 +88,19 @@ public:
     /// オーディオスレッド外で外れる。
     /// @param key attach_return() に渡したキー
     void detach_return(std::uint64_t key);
+
+    /// SRTP
+    /// 外部出力のストリームタップをつなぐ。送り出すバスのポストフェーダーの音が、安全リミッター
+    /// を通って sink へ流れる（docs/adr/0040-srtp-external-output.md）。つないでいれば置き換える。
+    /// @param source_id 送り出すバスの entity_id（Master か、適用中のルーティングのバス）
+    /// @param sink      送り出す音の渡し先（null にしない）
+    /// @return 引数が正しく、グラフを差し替えられたら true。失敗したら前の状態のまま
+    [[nodiscard]] bool attach_external_stream(std::string source_id,
+                                              std::shared_ptr<audio_core::AudioStreamSink> sink);
+
+    /// SRTP 外部出力のストリームタップを外す。渡し先の最後の参照は、古いグラフの破棄（collect()）で
+    /// オーディオスレッド外で外れる。
+    void detach_external_stream();
 
     /// MIDI ソースをグラフに加える。同じキーのソースがあれば置き換え、識別子は引き継ぐ。
     /// @param key    ソースを区別するキー（MidiSourceAssignment::key）

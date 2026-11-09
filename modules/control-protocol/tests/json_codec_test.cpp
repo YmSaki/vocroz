@@ -470,6 +470,45 @@ TEST(JsonCodecTest, RejectsLatencyTargetOutOfRange) {
     }
 }
 
+TEST(JsonCodecTest, RejectsExternalOutputConfigOutOfRange) {
+    const auto message = [](std::uint64_t port, std::uint64_t payload_type) {
+        return nlohmann::json{{"type", "set_external_output_config"},
+                              {"request_id", "r1"},
+                              {"entity_id", "external_output"},
+                              {"expected_revision", 0},
+                              {"config",
+                               {{"host", "192.0.2.1"},
+                                {"port", port},
+                                {"source_id", "master"},
+                                {"profile", "OPUS_STEREO"},
+                                {"payload_type", payload_type},
+                                {"crypto_suite", "AES_CM_128_HMAC_SHA1_80"}}}};
+    };
+    EXPECT_EQ(ui_error(message(0, 111)),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.port"}));
+    EXPECT_EQ(ui_error(message(65536, 111)),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.port"}));
+    EXPECT_EQ(ui_error(message(5004, 95)),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.payload_type"}));
+    EXPECT_EQ(ui_error(message(5004, 128)),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.payload_type"}));
+}
+
+TEST(JsonCodecTest, RejectsUnknownSrtpSuite) {
+    const nlohmann::json message = {{"type", "set_external_output_config"},
+                                    {"request_id", "r1"},
+                                    {"entity_id", "external_output"},
+                                    {"expected_revision", 0},
+                                    {"config",
+                                     {{"host", "192.0.2.1"},
+                                      {"port", 5004},
+                                      {"source_id", "master"},
+                                      {"profile", "OPUS_STEREO"},
+                                      {"payload_type", 111},
+                                      {"crypto_suite", "NULL_HMAC_SHA1_80"}}}};
+    EXPECT_EQ(ui_error(message).field, "config.crypto_suite");
+}
+
 TEST(JsonCodecTest, RejectsMalformedLinkStats) {
     EXPECT_EQ(engine_error({{"type", "link_stats"}, {"stats", {{"ch1", 2.5}}}}).code,
               DecodeErrorCode::kWrongType);
