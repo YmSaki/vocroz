@@ -7,10 +7,13 @@
 #include <utility>
 #include <vector>
 
+#include "vocroz/network/rendezvous_url.h"
+
 #include "chained_port_mapper.h"
 #include "pcp_port_mapper.h"
 #include "win/miniupnpc_port_mapper.h"
 #include "win/win_network_environment.h"
+#include "win/winhttp_https_transport.h"
 #include "win/winsock_gateway_channel.h"
 #include "win/winsock_udp_endpoint.h"
 
@@ -34,6 +37,15 @@ std::unique_ptr<PortMapper> make_port_mapper(transport::RandomSource& random) {
     mappers.push_back(std::make_unique<PcpPortMapper>(&win::WinsockGatewayChannel::open, random));
     mappers.push_back(std::make_unique<win::MiniupnpcPortMapper>());
     return std::make_unique<ChainedPortMapper>(std::move(mappers));
+}
+
+common::Result<std::unique_ptr<HttpsTransport>, NetworkError> make_winhttp_https_transport(
+    std::string_view base_url) {
+    const auto url = parse_rendezvous_url(base_url);
+    if (!url) {
+        return common::make_unexpected(url.error());
+    }
+    return win::WinHttpHttpsTransport::open(url.value());
 }
 
 }  // namespace vocroz::network

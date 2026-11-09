@@ -33,6 +33,14 @@
 - ゲートウェイがプライベートアドレスしか持たない（二重 NAT）場合、UPnP のポート開放は外から届かないので、成功として扱わない。
 - 割り当ての寿命は 1 時間で、使う側が寿命の半分で更新する。セッションの終了時に削除する。
 
+### 招待の HTTPS（2026-11-09 追記）
+
+- session の `RendezvousClient` ポートを network の `HttpsRendezvousClient` で実装する。要求（登録、解決、失効）はキューに積み、1 本の作業用のスレッドが呼ばれた順に送る。結果は `InviteResultListener` に作業用のスレッドから渡し、コンポジションルートがコントロールスレッドへ渡してから session に返す。
+- HTTP の送受信は `HttpsTransport` ポートにし、Windows では WinHTTP で実装する。TLS の証明書の検証とプロキシ（自動検出と PAC を含む）は OS の設定に従う。リダイレクトには従わない。名前解決、接続、送信、受信のそれぞれを 5 秒で打ち切り、応答の本文は 16 KiB で打ち切る。
+- ランデブーサーバーの URL は https のベース URL で受け取る（`parse_rendezvous_url()`）。http は、ホストが localhost、127.0.0.1、[::1] のとき（手元でサーバーを動かす開発用）だけ受け付ける。
+- JSON の組み立てと応答の検証は `src/wire/invite_api_codec` に置き、nlohmann/json を使う（AGENTS.md 4.2 の使用範囲に `network` を加える）。鍵とトークンの base64url は `src/wire/base64url` で自前で符号化する。
+- サーバーのエラーは次のように session のエラーコードに変換する。`INVITE_NOT_FOUND` と `INVALID_CODE` は `kInviteInvalid`、`INVITE_EXPIRED` は `kInviteExpired`、`INVITE_REVOKED` は `kInviteRevoked`、サーバーに届かないとき、`CAPACITY_EXCEEDED`、5xx、成功の状態コードで本文が正しくないときは `kUnreachable`、残りの 4xx（クライアントの不具合）は `kEngineError`。
+
 ## 理由
 
 - ソケットを 1 本にしないと、ランデブーサーバーが見た外部アドレスと、相手と通信するときの外部アドレスが一致しない。ホールパンチはこの一致が前提なので、ランデブーサーバーとの通信も相手との通信も同じソケットで行う。
@@ -41,6 +49,11 @@
 - STUN の Binding は実装しない。REGISTERED がサーバーから見た外部アドレスを返し、PUNCH にも入っているので、同じ情報を別のメッセージで取る必要がない（AGENTS.md 1.2 のシンプルさ）。NAT の種類の判定などで必要になったら追加する。
 - PCP と NAT-PMP はメッセージが固定長で単純なので、ライブラリを入れるより自前のほうが依存も攻撃面も小さい。UPnP-IGD は XML と HTTP を含むので、実績のあるライブラリに任せる。
 - miniupnpc は BSD-3-Clause で、AGPL-3.0 の配布物に含められる。Transmission など多くのアプリケーションで使われていて、Windows を含む主要なプラットフォームでビルドできる。
+- 招待 API の HTTPS に WinHTTP を使うのは、OS に組み込まれていて新しいライブラリを配布物に含めずに済み、証明書ストアと企業のプロキシ設定にもそのまま従えるため。TLS を自前のライブラリで扱うと、ルート証明書の更新を VOCROZ の更新に頼ることになる。
+- 招待の要求を 1 本のスレッドで順に送るのは、発行し直しで「古い招待の失効」と「新しい招待の登録」が続くとき、サーバーに届く順序を session が呼んだ順序と同じにするため。招待 API の呼び出しはセッションの作成と参加のときだけで、並列に送る必要がない。
+- リダイレクトに従わないのは、招待トークンを含む本文を、設定していないサーバーへ送り直さないため。招待 API はリダイレクトを返さない。
+- http をループバックだけに限るのは、設定を誤っても招待トークンと鍵を平文でインターネットに流さないため。
+- 応答の JSON を自前でパースせず nlohmann/json を使うのは、信頼できない外部入力のパーサーを新しく書くより、実績のあるパーサー（control-protocol と persistence で採用済み）を使うほうが安全なため。base64url は 50 行ほどで、テストで RFC 4648 の例と照合できるので自前にした。
 
 ## 結果
 
@@ -48,5 +61,6 @@
 - AGENTS.md 4.2 の外部ライブラリの表に miniupnpc（`network`）を、CONTRIBUTING.md のライセンスの表に miniupnpc を追加する。miniupnpc のアダプターは Windows のビルドでだけ使うので、`src/win/` に置く。
 - 対称型 NAT 同士など、ホールパンチが成立しない組み合わせは `kUnreachable` になる。中継は提供しない（仕様のとおり）。
 - 親機の受信スレッドは同じ鍵交換のメッセージを複数の経路から受け取ることがある。親機の組み立て（E1）は、接続 ID が同じ 2 つ目以降のメッセージを重複として扱う。
-- 招待の HTTPS（`session` の `RendezvousClient` の実装）は、`session` のマージ後に同じモジュールへ追加する。
+- 招待の HTTPS（`session` の `RendezvousClient` の実装）は、`session` のマージ後に同じモジュールへ追加した（上の追記）。network は `session` に依存する（AGENTS.md 4.2 の許可リストのとおり）。
+- `HttpsRendezvousClient` を破棄すると、キューに残った要求を送り終えるまで待つ。サーバーに届かないときは、終了が要求 1 つにつき最大で各段階の 5 秒ずつ遅れる。
 - QoS（DSCP）の設定は、Windows では管理者権限か qWAVE が必要になるので、この ADR では扱わない。

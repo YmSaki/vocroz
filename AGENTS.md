@@ -205,7 +205,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/`、トップレベルの `tests/` |
-| nlohmann/json | `control-protocol`、`persistence`、`plugin-host`（`pa-plugin-scanner` との間のスキャン結果の JSON） |
+| nlohmann/json | `control-protocol`、`persistence`、`plugin-host`（`pa-plugin-scanner` との間のスキャン結果の JSON）、`network`（`network` はランデブーサーバーの招待 API の JSON だけ。`docs/adr/0021-udp-socket-and-nat-traversal.md`） |
 | miniupnpc | `network`（UPnP-IGD による自動ポート開放だけ。Windows のビルドでだけ取得する。`docs/adr/0021-udp-socket-and-nat-traversal.md`） |
 | Preact | `ui/`（UI の実行時に読み込む唯一のライブラリ。`docs/adr/0011-ui-frontend-stack.md`） |
 | Vite、TypeScript、Vitest、jsdom、Testing Library、Prettier | `ui/` の開発時の依存（成果物に含めない） |
@@ -367,9 +367,11 @@ modules/<module>/
     wire/                          ワイヤーフォーマットのパースとシリアライズ（信頼境界のモジュールだけ）
     win/<技術名>_<役割名>.{h,cpp}  Win32 を直接呼ぶアダプター（例: win/wasapi_audio_output.cpp）
     juce/<技術名>_<役割名>.{h,cpp} JUCE によるアダプター（例: juce/juce_web_ui_host.cpp）。JUCE は OS 非依存なので win/ と分ける
+    posix/<技術名>_<役割名>.{h,cpp} Linux の CI で単体テストするための POSIX 実装（製品には含めない。docs/adr/0027-persistence.md）
   tests/
     <対象>_test.cpp
     fakes/fake_<役割名>.h
+    support/                       テスト用の補助（フェイク以外。例: 一時フォルダ）
 ```
 
 `CMakeLists.txt` は `modules/common/CMakeLists.txt` と同じ順序（ライブラリ定義 → ALIAS → include ディレクトリ → 依存 → 警告 → テスト）で書きます。
