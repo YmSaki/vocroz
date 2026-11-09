@@ -76,5 +76,6 @@
 
 - 子機の送信の経路は、`tests/harness` の `MediaSender` と同じ部品の順序（エンコード → 暗号化 → 送信）を、スレッドを分けて製品に置いたものになる。結合テストの `SimulatedClient` は、コンポジションルートができたら `ClientRuntime` に置き換えられる。
 - コンポジションルート（WebView、WASAPI、Winsock、WinHTTP）と親機モードは、`pa-engine`（#57）、`persistence`（#55）、`network` の招待の HTTPS の後に加えた。設定の保存とログは `persistence`、時刻は `common::SteadyClock` を使う。データフォルダの既定の規則は `pa-engine` と `pa-updater` と同じものを `remote-pa` の `src/win/known_paths` にも持つ（各アプリの `src/win/` に置く形に合わせた。共通化は定期リファクタリングで判断する）。
-- 次の点は続きの作業にする。`remote-pa` の単一インスタンスと既存のウィンドウへの引数の受け渡し（`docs/adr/0007-launch-interface.md`）、エンジンが落ちたことの画面での知らせ方（今は再アタッチと、失敗したときのダイアログだけ）、子機の静的鍵の保存（今は起動ごとに作る）、親機モードの `--rendezvous-url` を `pa-engine` に渡すこと（今は `pa-engine` がビルド時の値だけを使う）。
+- 次の点は続きの作業にする。`remote-pa` の単一インスタンスと既存のウィンドウへの引数の受け渡し（`docs/adr/0007-launch-interface.md`）、エンジンが落ちたことの画面での知らせ方（今は再アタッチと、失敗したときのダイアログだけ）、子機の静的鍵の保存（今は起動ごとに作る）。
+- 親機モードでは `--rendezvous-url` を `pa-engine` に渡さず、エンジンはビルド時の `VOCROZ_RENDEZVOUS_URL` だけを使う（E1 と合意）。招待 URL の基点とランデブーの通信先が同じ値で、配布物では固定でよく、受け入れテストもビルド時の値で回せるため。別のサーバーに向ける必要が出たら、ADR-0007 と ADR-0028 に引数を足す。
 - 送信スレッドの優先度（MMCSS への登録）は、実機での遅延の計測の後に決める。
