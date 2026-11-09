@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "vocroz/audio_core/ports/audio_source.h"
+#include "vocroz/audio_core/ports/midi_source.h"
 #include "vocroz/audio_core/ports/plugin_processor.h"
 
 namespace vocroz::audio_core {
@@ -149,10 +150,33 @@ struct Connection {
     std::optional<FaderId> level;
 };
 
+/// グラフ内の MIDI ソースの識別子。1 つのグラフの中で一意にする。NodeId とは別の名前空間。
+struct MidiSourceId {
+    std::uint32_t value = 0;  ///< 識別子の値
+    friend constexpr auto operator<=>(MidiSourceId, MidiSourceId) = default;
+};
+
+/// MIDI ソース（MIDI デバイス 1 台、子機 1 台など）の記述。
+/// MIDI は PCM の結線とは独立に流すので、ノードではなくグラフの外側の入力として記述する。
+struct MidiSourceSpec {
+    MidiSourceId id;                     ///< ソースの識別子
+    std::shared_ptr<MidiSource> source;  ///< イベントの取り出し先（null にしない）
+};
+
+/// MIDI の経路。from のイベントを、プラグインノード to の process() に渡す。
+/// 1 つのソースを複数のプラグインへ、複数のソースを 1 つのプラグインへつないでよい。
+/// 経路を外すと、その経路で発音中だったノートには、外した後の最初のブロックで Note Off を送る。
+struct MidiConnection {
+    MidiSourceId from;  ///< 送り元の MIDI ソース
+    NodeId to;          ///< 送り先のプラグインノード
+};
+
 /// 音声グラフ全体の記述。ノードの並び順は処理順に影響しない（結線から決める）。
 struct GraphDescription {
-    std::vector<NodeSpec> nodes;          ///< ノード
-    std::vector<Connection> connections;  ///< 結線
+    std::vector<NodeSpec> nodes;                   ///< ノード
+    std::vector<Connection> connections;           ///< 結線
+    std::vector<MidiSourceSpec> midi_sources;      ///< MIDI ソース
+    std::vector<MidiConnection> midi_connections;  ///< MIDI の経路
     /// 遅延ノードを通るループ（フィードバック経路）を、オペレーターが承認済みなら true。
     /// 遅延ノードを通らないループは、この値に関わらず適用できない。
     bool feedback_approved = false;
@@ -181,6 +205,11 @@ enum class GraphError {
     kInvalidPluginLayout,  ///< プラグインのチャンネル数が範囲外（入力 0〜2、出力 1〜2）
     /// プラグインの遅延か、合流する経路の遅延の差が kMaxLatencyCompensationSamples を超える
     kLatencyOutOfRange,
+    kDuplicateMidiSource,  ///< 同じ MidiSourceId の MIDI ソースが複数ある
+    kMissingMidiSource,    ///< MIDI ソースに MidiSource がない
+    /// MIDI の経路が、存在しない MIDI
+    /// ソースかノードを指しているか、送り先がプラグインノードでないか、 同じ経路が重複している
+    kInvalidMidiConnection,
 };
 
 }  // namespace vocroz::audio_core

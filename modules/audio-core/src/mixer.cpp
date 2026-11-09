@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <span>
 
 #include "vocroz/audio_core/constants.h"
@@ -49,8 +50,9 @@ float sanitize(float sample) noexcept {
 
 class Mixer::Impl {
 public:
-    explicit Impl(const MixerConfig& config)
-        : faders_(config.fader_capacity, ramp_samples_of(config.ramp_duration_ms)),
+    Impl(const MixerConfig& config, const common::Clock* midi_clock)
+        : midi_clock_(midi_clock),
+          faders_(config.fader_capacity, ramp_samples_of(config.ramp_duration_ms)),
           meters_(config.meter_capacity),
           safety_gate_(ramp_samples_of(config.ramp_duration_ms)) {
         // 安全ミュートのゲートは開いた状態で始める。初期ミュートはフェーダーが担う。
@@ -122,14 +124,27 @@ public:
         }
         RenderGraph* graph = exchange_.acquire();
 
+        // コールバックの先頭の時刻と、そこから出すサンプルの位置を対応づける。コールバックを
+        // kBlockSize に分けたブロックは同じ時刻を基準にするので、分け方に関わらず MIDI
+        // の位置が揃う。
+        MidiBlockClock midi_clock;
+        midi_clock.anchor_sample = rendered_samples_;
+        if (midi_clock_ != nullptr) {
+            midi_clock.has_anchor = true;
+            midi_clock.anchor_time = midi_clock_->now();
+        }
+
         const std::size_t frames = out.frames();
         for (std::size_t offset = 0; offset < frames; offset += kBlockSize) {
             const std::size_t block = std::min(kBlockSize, frames - offset);
+            midi_clock.first_sample = rendered_samples_ + offset;
+            midi_clock.frames = block;
             const std::span<const OutputBlock> outputs =
-                graph != nullptr ? graph->process(block, faders_, meters_)
+                graph != nullptr ? graph->process(block, faders_, meters_, midi_clock)
                                  : std::span<const OutputBlock>();
             write_block(out, offset, block, outputs);
         }
+        rendered_samples_ += frames;
     }
 
 private:
@@ -176,15 +191,20 @@ private:
         }
     }
 
+    const common::Clock* midi_clock_;  // null なら MIDI のタイムスタンプを使わない
     FaderBank faders_;
     MeterBank meters_;
     GainRamp safety_gate_;  // オーディオスレッドだけが触る
     GraphExchange exchange_;
     common::SpscQueue<ParameterChange, kParameterQueueCapacity> changes_;
     std::atomic<bool> safety_muted_{false};
+    std::uint64_t rendered_samples_ = 0;  // 出力した累計サンプル数。オーディオスレッドだけが触る
 };
 
-Mixer::Mixer(const MixerConfig& config) : impl_(std::make_unique<Impl>(config)) {}
+Mixer::Mixer(const MixerConfig& config) : impl_(std::make_unique<Impl>(config, nullptr)) {}
+
+Mixer::Mixer(const MixerConfig& config, const common::Clock& midi_clock)
+    : impl_(std::make_unique<Impl>(config, &midi_clock)) {}
 
 Mixer::~Mixer() = default;
 

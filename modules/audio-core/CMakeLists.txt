@@ -13,7 +13,12 @@ add_library(vocroz_audio_core STATIC
   src/graph_exchange.cpp
   src/graph_validator.cpp
   src/latency_planner.cpp
+  src/active_notes.cpp
   src/meter_bank.cpp
+  src/midi_input_queue.cpp
+  src/midi_message.cpp
+  src/midi_router.cpp
+  src/midi_timing.cpp
   src/mixer.cpp
   src/render_graph.cpp
   src/safety_limiter.cpp)
@@ -41,12 +46,18 @@ if(VOCROZ_BUILD_TESTS)
     tests/graph_exchange_test.cpp
     tests/graph_validator_test.cpp
     tests/latency_planner_test.cpp
+    tests/active_notes_test.cpp
     tests/meter_bank_test.cpp
+    tests/midi_input_queue_test.cpp
+    tests/midi_message_test.cpp
+    tests/midi_routing_test.cpp
+    tests/midi_timing_test.cpp
     tests/mixer_test.cpp
     tests/realtime_sanitizer_test.cpp
     tests/render_graph_test.cpp
     tests/safety_limiter_test.cpp)
   # 内部クラス（src/ のヘッダー）も対象と同じモジュールのテストとして直接検証する。
   target_include_directories(audio_core_tests PRIVATE src)
-  target_link_libraries(audio_core_tests PRIVATE vocroz::audio_core vocroz::audio_core_fakes)
+  target_link_libraries(audio_core_tests PRIVATE vocroz::audio_core vocroz::audio_core_fakes
+    vocroz::common_fakes)
 endif()
