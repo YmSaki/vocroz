@@ -23,8 +23,8 @@ public:
     /// @param logger デバイスのエラーの出力先。このオブジェクトより長く生存させる
     explicit WasapiLoopbackOpener(common::Logger& logger) noexcept : logger_(logger) {}
 
-    /// 既定の再生デバイスを集める入力を返す。device_id は使わない（ClientCapture
-    /// は空文字列を渡す）。
+    /// 既定の再生デバイスを集める入力を返す。
+    /// device_id は使わない（ClientCapture は空文字列を渡す）。
     [[nodiscard]] common::Result<std::unique_ptr<audio_core::AudioInput>,
                                  audio_core::AudioDeviceError>
     open(std::string_view /*device_id*/) override {

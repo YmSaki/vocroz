@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// WASAPI のループバックによる AudioInput の実装。生成は factories.h の
-// make_wasapi_loopback_input() から行う。
-// 既定の再生デバイスで鳴っている音（伴奏の再生アプリなど）を、子機のアプリ音声として集める
-// （docs/adr/0035-client-input-expansion.md）。
+// WASAPI のループバックによる AudioInput の実装。
+// 生成は factories.h の make_wasapi_loopback_input() から行う。
+// 既定の再生デバイスの音（伴奏の再生アプリなど）を、子機のアプリ音声として集める。
+// 子機の入力としての扱いは docs/adr/0035-client-input-expansion.md にある。
 #pragma once
 
 #include <atomic>
@@ -31,10 +31,9 @@
 namespace vocroz::capture::win {
 
 /// 既定の再生デバイスのループバック。
-/// ストリームの COM
-/// オブジェクトはすべて専用のオーディオスレッドで作り、そのスレッドの中だけで使う。 スレッド安全性:
-/// start()、stop() はコントロールスレッドから呼ぶ。channel_count() はどのスレッド
-/// からも呼び出し可能。
+/// ストリームの COM オブジェクトは、すべて専用のオーディオスレッドで作って使う。
+/// スレッド安全性: start() と stop() はコントロールスレッドから呼ぶ。
+/// channel_count() はどのスレッドからも呼び出し可能。
 class WasapiLoopbackInput final : public audio_core::AudioInput {
 public:
     /// @param logger 開始の失敗と抜去の詳細の出力先

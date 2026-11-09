@@ -24,8 +24,8 @@ inline constexpr std::uint32_t kStreamWatchdogMilliseconds = 100;
 /// 無音を流し続ける再生ストリームのバッファ長（100ns 単位、100ms）。
 /// 再生しているアプリがない間は、オーディオエンジンが止まってループバックにパケットが届かない。
 /// 無音の再生ストリームを開いておくとエンジンが動き続け、無音のパケットが周期どおり届く。
-/// 補充はループバックのイベントごと（10ms
-/// 程度）に行うので、それより十分長くして途切れないようにする。
+/// 補充はループバックのイベントごと（10ms 程度）に行う。
+/// それより十分長くして、途切れないようにする。
 inline constexpr std::int64_t kKeepAliveBufferDuration = 1'000'000;
 
 }  // namespace vocroz::capture

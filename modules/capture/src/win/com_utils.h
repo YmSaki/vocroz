@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// COM と Win32 のリソースを保持する RAII ラッパーと、HRESULT
-// の扱い（AGENTS.md 6.1「リソース管理」）。 device
-// モジュールにも同じ形のものがあるが、アダプター同士は依存できない（AGENTS.md 4.1）ので、
-// このモジュールで使う分だけを持つ。
+// COM と Win32 のリソースの RAII ラッパーと、HRESULT の扱い。
+// RAII は AGENTS.md 6.1「リソース管理」に従う。
+// device にも同じ形のものがあるが、アダプター同士は依存できない（AGENTS.md 4.1）。
+// そのため、このモジュールで使う分だけを持つ。
 #pragma once
 
 #include <memory>
