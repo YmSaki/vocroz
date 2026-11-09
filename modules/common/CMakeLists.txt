@@ -24,6 +24,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/fakes_test.cpp
     tests/result_test.cpp
     tests/spsc_queue_test.cpp
+    tests/steady_clock_test.cpp
     tests/version_info_test.cpp)
   target_link_libraries(common_tests PRIVATE vocroz::common vocroz::common_fakes vocroz_version)
 endif()

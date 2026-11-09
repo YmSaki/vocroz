@@ -20,6 +20,7 @@
 | `vocroz/common/result.h` | `Result<T, E>`、`Result<void, E>`、`make_unexpected()`。C++23 の `std::expected` と同じ形の API | T と E がヒープを確保しなければ使える |
 | `vocroz/common/spsc_queue.h` | `SpscQueue<T, Capacity>`。固定長、ヒープ確保なし、`try_push()` と `try_pop()` は `noexcept` | 呼び出し可能 |
 | `vocroz/common/ports/clock.h` | `Clock`（単調増加する時刻） | 実装による（ブロックしない） |
+| `vocroz/common/steady_clock.h` | `SteadyClock`（`std::chrono::steady_clock` による `Clock` の実装） | 呼び出し可能 |
 | `vocroz/common/ports/logger.h` | `Logger`、`LogLevel` | 呼び出さない |
 
 ### Result 型の使い方

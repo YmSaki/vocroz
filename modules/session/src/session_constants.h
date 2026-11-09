@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cstddef>
 
+#include "vocroz/session/entity_ids.h"
+
 namespace vocroz::session {
 
 /// 招待の有効期間。仕様の設計値（30 分）。ランデブーサーバーの上限と同じで、
@@ -66,10 +68,7 @@ inline constexpr const char* kOutputIdPrefix = "out-";
 inline constexpr const char* kSendIdPrefix = "send-";
 inline constexpr const char* kDelayIdPrefix = "delay-";
 
-/// UI とスナップショットで使う固定の entity_id。UI のフェイクエンジンと同じ値にする。
-inline constexpr const char* kSessionEntityId = "session";
-inline constexpr const char* kMasterEntityId = "master";
-inline constexpr const char* kClientEntityId = "client";
-inline constexpr const char* kRoutingEntityId = "routing";
+// UI とスナップショットで使う固定の entity_id（kSessionEntityId など）は、ミキサーの組み立て
+// （pa-engine）もルーティングの送り元と送り先を引くのに使うので、公開ヘッダーに置いている。
 
 }  // namespace vocroz::session
