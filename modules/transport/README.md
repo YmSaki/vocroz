@@ -9,7 +9,7 @@
 
 | ヘッダー | 内容 | 呼ぶスレッド |
 | --- | --- | --- |
-| `vocroz/transport/constants.h` | パケットの最大長（1232 バイト）、鍵の長さ、`kSampleRate`、`FrameDuration`、`frame_samples()`、`kMaxOpusPayloadBytes` | — |
+| `vocroz/transport/constants.h` | パケットの最大長（1232 バイト）、鍵の長さ、`kSampleRate`、`FrameDuration`、`frame_samples()`、`kMaxOpusPayloadBytes`、`kReturnStreamId`（返送の下りストリーム ID） | — |
 | `vocroz/transport/transport_error.h` | `TransportError`（破棄や失敗の原因） | — |
 | `vocroz/transport/packet_header.h` | `PacketType`、`PacketHeader`、`parse_packet_header()`（復号前に接続 ID で届け先を選ぶ） | どこからでも（ヒープ確保なし） |
 | `vocroz/transport/media_payload.h` | `MediaPayload`（ストリーム ID、48kHz タイムスタンプ、ミュート epoch、Opus）、`decode_media_payload()` | どこからでも（ヒープ確保なし） |
@@ -32,8 +32,10 @@
 | `vocroz/transport/secure_control_packet_sink.h` | `SecureControlPacketSink`（制御パケットの平文を暗号化して `DatagramSocket` で送る） | sealer を使うスレッド |
 | `vocroz/transport/srtp_master_key.h` | `SrtpMasterKey`（SRTP 外部出力のマスターキーとソルト。破棄時に消去）、`parse_srtp_master_key()`（SDES の `inline:` 形式のパース。信頼境界）、`format_srtp_master_key()`、`generate_srtp_master_key()` | どこからでも |
 | `vocroz/transport/external_stream_sender.h` | `ExternalStreamSender`（RTP の組み立てと SRTP の暗号化と送信。平文は送らない）、`SrtpCryptoSuite`、`RtpStreamParams`、`make_rtp_stream_params()`、`ExternalStreamError` | `create()` はコントロール、`send()` は送信スレッド（オーディオスレッドからは呼ばない） |
+| `vocroz/transport/peer_packet_sender.h` | `PeerPacketSender`（1 つの接続の送信方向。制御パケットの平文とエンコード済みのフレームを SPSC キューで受け取り、`pump()` で暗号化して送る） | 積むのはコントロールとオーディオスレッド、`pump()` は送信スレッド |
+| `vocroz/transport/send_wakeup.h` | `SendWakeup`（`SendNotifier` の実装。送信スレッドを合図で起こす） | `notify()` はどこからでも、`wait()` は送信スレッド |
 | `vocroz/transport/crypto_random_source.h` | `CryptoRandomSource`（libsodium による `RandomSource`） | どこからでも |
-| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`、`MediaFrameSink`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | 各ヘッダーの説明のとおり |
+| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`、`MediaFrameSink`、`SendNotifier`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | 各ヘッダーの説明のとおり |
 
 ### 使い方
 

@@ -73,10 +73,13 @@ export class EngineClient {
   /**
    * @param transport エンジンとの通信経路
    * @param timers タイマー（テストではフェイクを渡す）
+   * @param requestPrefix request_id の接頭辞。1 本の接続を複数の窓で共有するときは、エンジンの応答が
+   *   すべての窓に届くので、窓ごとに違う値にして自分の応答だけを受け取る（docs/adr/0038-routing-window.md）
    */
   constructor(
     private readonly transport: Transport,
     private readonly timers: Timers = kBrowserTimers,
+    private readonly requestPrefix = "r",
   ) {
     transport.subscribe((message) => this.handle(message));
   }
@@ -106,7 +109,7 @@ export class EngineClient {
     expectedRevision: number,
     body: DiscreteCommandBody,
   ): Promise<CommandResult> {
-    const requestId = `r${this.nextRequestId++}`;
+    const requestId = `${this.requestPrefix}${this.nextRequestId++}`;
     return new Promise((resolve) => {
       const timer = this.timers.setTimeout(() => {
         this.pending.delete(requestId);

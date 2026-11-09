@@ -34,6 +34,7 @@ public:
 
     [[nodiscard]] control_protocol::MessageChannel& channel() override;
     void reload() override;
+    void bring_to_front() override;
 
 private:
     /// send() の呼び出し元のスレッドから、メッセージスレッドの WebView へメッセージを渡す。
@@ -56,11 +57,17 @@ private:
         std::shared_ptr<Target> target_;
     };
 
+    /// UI からの窓の操作の求めを扱う。WebView のイベントの中で窓を破棄しないよう、
+    /// 呼び出し先へはメッセージスレッドへ積み直してから渡す。
+    void on_window_request(const std::string& request);
+
     WebUiHostOptions options_;
     Sink sink_;
     BridgeChannel bridge_;
     std::unique_ptr<UiWebView> view_;
     std::unique_ptr<UiWindow> window_;
+    // メッセージスレッドへ積んだ処理が、破棄の後に動かないための印。
+    std::shared_ptr<JuceWebUiHost*> alive_;
 };
 
 }  // namespace vocroz::webui::juce_impl

@@ -11,7 +11,7 @@
 
 namespace vocroz::client {
 
-PacketSender::PacketSender(SendWakeup& wakeup) noexcept
+PacketSender::PacketSender(transport::SendWakeup& wakeup) noexcept
     : wakeup_(wakeup), packet_(transport::kMaxPacketBytes) {}
 
 PacketSender::~PacketSender() {

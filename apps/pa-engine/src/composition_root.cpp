@@ -187,10 +187,9 @@ std::optional<int> CompositionRoot::start() {
     config.host_public_key = host_keys_->public_key();
     config.invite_base_url = kInviteBaseUrl;
     session_ = std::make_unique<session::HostSession>(
-        std::move(config),
-        session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, *peer_links_,
-                                    *rendezvous_tap_, *settings_, random_, clock_, *logger_,
-                                    *peer_links_});
+        std::move(config), session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_,
+                                                       *peer_links_, *rendezvous_tap_, *settings_,
+                                                       random_, clock_, *logger_, *peer_links_});
     peer_events_.bind(session_.get());
     const auto on_registered =
         [this](
@@ -259,7 +258,7 @@ bool CompositionRoot::create_peer_network() {
     peer_links_ = std::make_unique<HostPeerLinks>(
         HostPeerLinks::Ports{*endpoint_, peer_receive_, engine_mixer_, midi_inbox_,
                              rendezvous_driver_->rendezvous(), peer_events_, *host_keys_, clock_,
-                             *logger_},
+                             *logger_, peer_sending_},
         transport::PlayoutConfig{});
     peer_relay_.set_target(peer_links_.get());
     logger_->log(common::LogLevel::kInfo, "子機の受け付けを UDP のポート " +
@@ -350,6 +349,11 @@ void CompositionRoot::shutdown() {
     stop_midi();
     if (outputs_) {
         outputs_->close_output();
+    }
+    // 返送を作るオーディオ出力を閉じてから、子機への送信スレッドを止める。送信スレッドが使う
+    // endpoint_ は、メンバーの破棄で先に閉じるため。
+    if (peer_links_) {
+        peer_links_->stop_sending();
     }
     if (rendezvous_driver_) {
         rendezvous_driver_->stop();

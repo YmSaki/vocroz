@@ -45,6 +45,18 @@ beforeEach(() => {
 });
 
 describe("EngineClient の離散コマンド", () => {
+  it("接続を共有する窓ごとの接頭辞で request_id を作り、ほかの窓の応答では解決しない", async () => {
+    const routing = new EngineClient(transport, timers, "rt");
+    const result = routing.sendCommand("routing", 1, { type: "discard_routing" });
+    const sent = transport.sent[0];
+    if (sent === undefined || !("request_id" in sent)) throw new Error("unreachable");
+    expect(sent.request_id).toBe("rt1");
+    // ミキサーの窓のコマンド（r1）への応答は、ルーティングの窓には関係がない。
+    transport.deliver({ type: "reject", request_id: "r1", error_code: "NOT_FOUND" });
+    transport.deliver({ type: "ack", request_id: "rt1", applied_revision: 2 });
+    await expect(result).resolves.toEqual({ ok: true, applied_revision: 2 });
+  });
+
   it("request_id と expected_revision を付けて送り、ACK で解決する", async () => {
     const result = client.sendCommand("ch1", 4, { type: "set_channel_mute", muted: false });
     const sent = transport.sent[0];

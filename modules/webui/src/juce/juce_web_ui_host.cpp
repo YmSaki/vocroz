@@ -5,6 +5,7 @@
 #include "juce/juce_web_ui_host.h"
 
 #include <cstddef>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -44,6 +45,17 @@ std::string_view mode_name(UiMode mode) {
             return "client";
     }
     return "host";
+}
+
+// ui/src/ipc/launch-config.ts の screen と同じ文字列。
+std::string_view screen_name(UiScreen screen) {
+    switch (screen) {
+        case UiScreen::kMain:
+            return "main";
+        case UiScreen::kRouting:
+            return "routing";
+    }
+    return "main";
 }
 
 }  // namespace
@@ -124,7 +136,7 @@ void JuceWebUiHost::Sink::set_view(UiWebView* view) {
 }
 
 JuceWebUiHost::JuceWebUiHost(WebUiHostOptions options)
-    : options_(std::move(options)), bridge_(sink_) {
+    : options_(std::move(options)), bridge_(sink_), alive_(std::make_shared<JuceWebUiHost*>(this)) {
     const UiAssetTable assets = options_.assets;
     auto browser_options =
         juce::WebBrowserComponent::Options{}
@@ -142,8 +154,16 @@ JuceWebUiHost::JuceWebUiHost(WebUiHostOptions options)
                                        bridge_.receive_from_ui(payload.toString().toStdString());
                                    }
                                })
+            .withEventListener(to_identifier(kWindowEventId),
+                               [this](const juce::var& payload) {
+                                   if (payload.isString()) {
+                                       on_window_request(payload.toString().toStdString());
+                                   }
+                               })
             .withInitialisationData(to_juce_string(kInitModeKey),
                                     to_juce_string(mode_name(options_.launch.mode)))
+            .withInitialisationData(to_juce_string(kInitScreenKey),
+                                    to_juce_string(screen_name(options_.launch.screen)))
             .withResourceProvider([assets](const juce::String& path)
                                       -> std::optional<juce::WebBrowserComponent::Resource> {
                 const auto found = find_ui_resource(assets, path.toStdString());
@@ -158,6 +178,11 @@ JuceWebUiHost::JuceWebUiHost(WebUiHostOptions options)
     if (options_.launch.lang) {
         browser_options = browser_options.withInitialisationData(
             to_juce_string(kInitLangKey), to_juce_string(*options_.launch.lang));
+    }
+    if (!options_.launch.request_id_prefix.empty()) {
+        browser_options = browser_options.withInitialisationData(
+            to_juce_string(kInitRequestPrefixKey),
+            to_juce_string(options_.launch.request_id_prefix));
     }
     if (options_.launch.join) {
         browser_options = browser_options.withInitialisationData(
@@ -175,6 +200,7 @@ JuceWebUiHost::JuceWebUiHost(WebUiHostOptions options)
 }
 
 JuceWebUiHost::~JuceWebUiHost() {
+    alive_.reset();
     // 先にブリッジを閉じ、ほかのスレッドの send() が sink_ を呼ばないようにする。
     // まだ実行されていない送信の依頼は、view を外したので WebView に触れずに捨てられる。
     bridge_.close();
@@ -190,6 +216,31 @@ control_protocol::MessageChannel& JuceWebUiHost::channel() {
 
 void JuceWebUiHost::reload() {
     view_->goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
+}
+
+void JuceWebUiHost::bring_to_front() {
+    window_->setMinimised(false);
+    window_->toFront(true);
+}
+
+void JuceWebUiHost::on_window_request(const std::string& request) {
+    // 求めの中身は UI が決めた固定の文字列だけを受け付け、それ以外は UI の不具合として捨てる。
+    std::function<void()> action;
+    if (request == kOpenRoutingRequest) {
+        action = options_.on_open_routing;
+    } else if (request == kCloseWindowRequest) {
+        action = options_.on_close_requested;
+    }
+    if (!action) {
+        return;
+    }
+    // 呼び出し先がこの窓を破棄することがあるので、WebView のイベントを抜けてから呼ぶ。
+    juce::MessageManager::callAsync(
+        [alive = std::weak_ptr<JuceWebUiHost*>(alive_), action = std::move(action)] {
+            if (alive.lock()) {
+                action();
+            }
+        });
 }
 
 }  // namespace juce_impl

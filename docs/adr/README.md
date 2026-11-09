@@ -33,5 +33,11 @@
 | [0031](0031-recording-and-playback-nodes.md) | 録音タップと再生ノードの形と、ディスクの不調の扱い | 採用 |
 | [0032](0032-plugin-catalog-and-loader.md) | プラグインの一覧のキャッシュ、読み込み不可の記録、読み込みと状態の保存のポート | 採用 |
 | [0033](0033-routing-persistence.md) | ルーティングの構成の保存と復元、ルーティング画面の開き方 | 採用 |
+| [0034](0034-single-juce-target.md) | JUCE のモジュールを 1 つのターゲット（vocroz::juce）にまとめる | 採用 |
+| [0035](0035-client-input-expansion.md) | 子機の入力拡張（ステレオ、複数の入力、アプリ音声） | 採用 |
+| [0036](0036-return-monitor.md) | 返送モニター（Minus-Me）のミックス、下りストリーム、返送ミュート | 採用 |
+| [0037](0037-latency-target-and-link-stats.md) | 全体の目標レイテンシーと、受信の実測値（ジッター）の表示 | 採用 |
+| [0038](0038-routing-window.md) | ルーティング画面を別の窓で開く（1 本のパイプの多重化と応答の振り分け） | 採用 |
+| [0039](0039-pa-engine-juce-message-thread.md) | pa-engine に JUCE のメッセージスレッドを置く | 採用 |
 
 仕様書は RPC-SPEC-001（1.2-draft）。2026-11-07 にプロダクトオーナーが「UX を損なわない範囲で実装しやすい方法」を方針として承認した。
