@@ -17,10 +17,17 @@ add_library(pa_engine_core STATIC
   src/engine_mixer.cpp
   src/engine_output_devices.cpp
   src/host_key_loader.cpp
+  src/host_peer_links.cpp
+  src/host_rendezvous_driver.cpp
   src/invite_result_relay.cpp
   src/launch_options.cpp
   src/mixer_graph_builder.cpp
   src/offline_rendezvous_client.cpp
+  src/peer_receive_path.cpp
+  src/peer_receive_relay.cpp
+  src/playout_source.cpp
+  src/rendezvous_id_tap.cpp
+  src/session_peer_events.cpp
   src/stderr_logger.cpp
   src/ui_event_publisher.cpp
   src/ui_message_receiver.cpp)
@@ -65,10 +72,14 @@ if(VOCROZ_BUILD_TESTS)
     tests/engine_mixer_test.cpp
     tests/engine_output_devices_test.cpp
     tests/host_key_loader_test.cpp
+    tests/host_peer_links_test.cpp
+    tests/host_rendezvous_driver_test.cpp
     tests/invite_result_relay_test.cpp
     tests/launch_options_test.cpp
     tests/mixer_graph_builder_test.cpp
     tests/offline_rendezvous_client_test.cpp
+    tests/peer_receive_relay_test.cpp
+    tests/rendezvous_id_tap_test.cpp
     tests/ui_event_publisher_test.cpp
     tests/ui_message_receiver_test.cpp)
   target_link_libraries(pa_engine_tests PRIVATE
@@ -76,7 +87,10 @@ if(VOCROZ_BUILD_TESTS)
     vocroz::audio_core_fakes
     vocroz::common_fakes
     vocroz::control_protocol_fakes
-    vocroz::session_fakes)
+    vocroz::session_fakes
+    vocroz::transport_fakes)
+  # network のフェイク（FakeUdpEndpoint）はターゲットにまとめられていないので、ディレクトリを参照する。
+  target_include_directories(pa_engine_tests PRIVATE ${PROJECT_SOURCE_DIR}/modules/network/tests)
 
   # 起動のスモークテスト。pa-engine.exe を別プロセスで起動し、名前付きパイプでつなぐ。
   if(WIN32)
