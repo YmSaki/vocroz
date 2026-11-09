@@ -75,7 +75,7 @@ class MediaFaultsTest : public ::testing::Test {
 protected:
     void create(const netsim::FaultProfile& uplink) {
         MediaLinkConfig config;
-        config.uplink = uplink;
+        config.faults = uplink;
         auto created = MediaLinkSimulation::create(config);
         ASSERT_TRUE(created);
         simulation_ = std::move(created).value();
