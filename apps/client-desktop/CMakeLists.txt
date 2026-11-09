@@ -2,7 +2,7 @@
 #
 # 子機モード。単独の実行ファイルではなく remote-pa に組み込み、--mode=client（--client）か招待で起動する。
 # OS に依存しない組み立て（ClientRuntime とその部品）はどのプラットフォームでもビルドして単体テストし、
-# WebView、WASAPI、Winsock をつなぐコンポジションルートは Windows で JUCE を使うときだけビルドする
+# WebView、WASAPI（マイクとアプリ音声のループバック）、Winsock をつなぐコンポジションルートは Windows で JUCE を使うときだけビルドする
 # （docs/adr/0030-remote-pa-assembly.md）。
 add_library(vocroz_client STATIC
   src/capture_processor.cpp
@@ -32,7 +32,7 @@ target_link_libraries(vocroz_client
 if(WIN32 AND VOCROZ_WITH_JUCE)
   target_sources(vocroz_client PRIVATE src/composition_root.cpp)
   target_compile_definitions(vocroz_client PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
-  target_link_libraries(vocroz_client PRIVATE vocroz::device vocroz::persistence vocroz::juce)
+  target_link_libraries(vocroz_client PRIVATE vocroz::capture vocroz::device vocroz::persistence vocroz::juce)
 endif()
 vocroz_set_warnings(vocroz_client)
 

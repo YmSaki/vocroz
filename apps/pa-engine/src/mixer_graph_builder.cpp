@@ -99,6 +99,14 @@ void add_returns(ac::GraphDescription& graph, ac::NodeId master,
 
 }  // namespace
 
+std::string strip_midi_key(std::string_view strip_id) {
+    return "strip:" + std::string(strip_id);
+}
+
+std::string device_midi_key(std::string_view device_id) {
+    return "device:" + std::string(device_id);
+}
+
 BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
                                   std::string_view master_entity_id,
                                   const cp::RoutingConfig& config, bool feedback_approved) {
@@ -191,6 +199,9 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         writer.connect(*from, *to, to_graph_tap(send.tap), level->second);
     }
     built.graph = writer.take(feedback_approved);
+    for (const auto& midi : assignments.midi_sources) {
+        built.graph.midi_sources.push_back(ac::MidiSourceSpec{midi.id, midi.source});
+    }
     add_returns(built.graph, master, returns);
     return built;
 }

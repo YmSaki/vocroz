@@ -33,6 +33,17 @@ inline constexpr int kHostWindowHeight = 800;
 inline constexpr int kHostWindowMinWidth = 960;
 inline constexpr int kHostWindowMinHeight = 600;
 
+/// ルーティングの窓の大きさ。編集の段とバスとセンドのフェーダーの段が並ぶ大きさにし、
+/// 最小はミキサーの窓と同じにする（同じ画面の部品を使うため）。
+inline constexpr int kRoutingWindowWidth = 1100;
+inline constexpr int kRoutingWindowHeight = 760;
+
+/// コマンドの request_id の接頭辞。ミキサーの窓とルーティングの窓は 1 本のパイプを共有し、
+/// エンジンの応答はどちらの窓にも届くので、窓ごとに違う値にして自分の応答を見分けさせる
+/// （docs/adr/0038-routing-window.md）。
+inline constexpr const char* kMixerRequestIdPrefix = "m";
+inline constexpr const char* kRoutingRequestIdPrefix = "rt";
+
 /// 親機モードの WebView2 のデータを置く、データフォルダの下のフォルダ名。
 /// 同じデータフォルダで子機モードと同時に動かしても、ブラウザープロセスを共有しないよう分ける。
 inline constexpr const char* kHostWebViewDataFolderName = "webview2-host";

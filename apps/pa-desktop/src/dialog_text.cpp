@@ -74,6 +74,16 @@ ConfirmText startup_failed_text(DialogLanguage language) noexcept {
     return startup_failed_text(DialogLanguage::kEnglish);
 }
 
+std::string_view routing_window_title(DialogLanguage language) noexcept {
+    switch (language) {
+        case DialogLanguage::kJapanese:
+            return "VOCROZ - ルーティング";
+        case DialogLanguage::kEnglish:
+            return "VOCROZ - Routing";
+    }
+    return routing_window_title(DialogLanguage::kEnglish);
+}
+
 DialogLanguage dialog_language_from_tag(std::string_view lang) noexcept {
     return lang == "ja" ? DialogLanguage::kJapanese : DialogLanguage::kEnglish;
 }

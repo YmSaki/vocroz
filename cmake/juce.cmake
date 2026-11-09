@@ -6,6 +6,7 @@
 # VOCROZ_WITH_JUCE が OFF のときはこのファイルを読み込まない（ルートの CMakeLists.txt）。
 if(NOT COMMAND juce_add_console_app)
   # JUCE のリポジトリは履歴が大きいので、タグで浅く取得し、コミットのハッシュを別に検査する。
+  # 更新するときは plugin-host の読み戻しのテスト（JucePluginProcessorTest.PluginReadsBackTheSameMidiEventsInOrder）を確認する（docs/adr/0029-midi-and-vsti.md）。
   set(VOCROZ_JUCE_TAG 9.0.5)
   set(VOCROZ_JUCE_COMMIT d60b7a78030661574a615b586d9325ba7a7fa7dd)
 

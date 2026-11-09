@@ -26,8 +26,12 @@ export interface RoutingScreenProps {
   store: MixerStore;
   optimistic: OptimisticStore;
   toasts: ToastStore;
-  /** ミキサー画面に戻る。 */
+  /**
+   * 画面を閉じる。同じ窓で開いたときはミキサー画面に戻り、別の窓で開いたときは窓を閉じる。
+   */
   onClose: () => void;
+  /** 別の窓で開いているか。閉じるボタンの文言を変える。 */
+  inOwnWindow?: boolean;
 }
 
 const kIssueKey: Record<RoutingIssue, MessageKey> = {
@@ -84,7 +88,14 @@ function statusText(routing: RoutingInfo, labelOf: (id: string) => string): stri
 }
 
 /** ルーティング画面。 */
-export function RoutingScreen({ client, store, optimistic, toasts, onClose }: RoutingScreenProps) {
+export function RoutingScreen({
+  client,
+  store,
+  optimistic,
+  toasts,
+  onClose,
+  inOwnWindow = false,
+}: RoutingScreenProps) {
   const state = useStore(store);
   const command = useCommand(client, toasts);
   const gain = useContinuousGain(client, optimistic);
@@ -123,7 +134,7 @@ export function RoutingScreen({ client, store, optimistic, toasts, onClose }: Ro
     <div class="routing-screen">
       <header class="routing-header">
         <button type="button" class="routing-header__back" onClick={onClose}>
-          {t("routing.back")}
+          {t(inOwnWindow ? "routing.close" : "routing.back")}
         </button>
         <h1 class="routing-header__title">{t("routing.title")}</h1>
         <p

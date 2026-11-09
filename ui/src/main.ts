@@ -7,6 +7,7 @@ import { h, render } from "preact";
 import { detectLocale, setLocale } from "./i18n/i18n";
 import { EngineClient } from "./ipc/engine-client";
 import { findJuce, JuceTransport } from "./ipc/juce-transport";
+import { JuceWindowControl } from "./ipc/juce-window";
 import { readLaunchConfig, type UiMode } from "./ipc/launch-config";
 import type { Transport } from "./ipc/transport";
 import { ClientScreen } from "./screens/client/ClientScreen";
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
 
   const transport =
     juce !== undefined ? new JuceTransport(juce.backend) : await createFakeTransport(config.mode);
-  const client = new EngineClient(transport);
+  const client = new EngineClient(transport, undefined, config.requestPrefix);
   const meters = new MeterStore();
   const optimistic = new OptimisticStore();
   const toasts = new ToastStore();
@@ -68,7 +69,25 @@ async function main(): Promise<void> {
       store.apply(message);
       if (message.type === "link_stats") linkStats.apply(message);
     });
-    // ルーティング画面は同じウィンドウで切り替えて開く（docs/adr/0033-routing-persistence.md）。
+    // JUCE 上では、ルーティング画面は別の窓で開く（docs/adr/0038-routing-window.md）。
+    // 窓はネイティブ側が開き、その窓の UI は screen=routing で起動して自分でエンジンの状態を受け取る。
+    const windows = juce !== undefined ? new JuceWindowControl(juce.backend) : undefined;
+    if (windows !== undefined && config.screen === "routing") {
+      render(
+        h(RoutingScreen, {
+          client,
+          store,
+          optimistic,
+          toasts,
+          onClose: () => windows.close(),
+          inOwnWindow: true,
+        }),
+        root,
+      );
+      client.hello();
+      return;
+    }
+    // ブラウザでの開発時は窓を開けないので、同じ窓で切り替える。
     // ストアは画面をまたいで共有するので、切り替えてもエンジンの状態を取り直さない。
     const showMixer = (): void =>
       render(
@@ -79,7 +98,7 @@ async function main(): Promise<void> {
           meters,
           linkStats,
           toasts,
-          onOpenRouting: showRouting,
+          onOpenRouting: windows !== undefined ? () => windows.openRouting() : showRouting,
         }),
         root,
       );
