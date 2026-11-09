@@ -27,6 +27,7 @@
 #include "vocroz/transport/static_key_pair.h"
 
 #include "fakes/fake_logger.h"
+#include "fakes/fake_output_device_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
@@ -119,6 +120,7 @@ private:
     transport::StaticKeyPair keys_;
     session::FakeUiEventSink ui_;
     HarnessMixer mixer_;
+    session::FakeOutputDeviceControl outputs_;
     session::FakeRendezvousClient rendezvous_;
     session::FakeSettingsStore settings_;
     session::FakeSecureRandom random_;

@@ -169,7 +169,7 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
     EXPECT_TRUE(coverage.covers_all_up_to(OutputDeviceState::kLost));
     EXPECT_TRUE(coverage.covers_all_up_to(MasterMuteReason::kSafety));
     EXPECT_TRUE(coverage.covers_all_up_to(ClientState::kFailed));
-    EXPECT_TRUE(coverage.covers_all_up_to(ErrorCode::kEngineError));
+    EXPECT_TRUE(coverage.covers_all_up_to(ErrorCode::kDeviceUnavailable));
     EXPECT_TRUE(coverage.covers_all_up_to(NoticeSeverity::kWarning));
     EXPECT_TRUE(coverage.covers_all_up_to(BusKind::kCue));
     EXPECT_TRUE(coverage.covers_all_up_to(SendTap::kPreFader));

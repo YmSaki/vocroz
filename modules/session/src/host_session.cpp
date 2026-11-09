@@ -2,8 +2,8 @@
 //
 // 親機のセッション管理の公開 API の実装。
 // 状態と共通の副作用は HostContext、UI のコマンドは HostCommandHandler、子機からの通知は
-// HostPeerHandler
-// が持ち、ここではランデブーサーバー、出力デバイス、時間経過の処理と振り分けだけを行う。
+// HostPeerHandler が持ち、ここでは起動、ランデブーサーバー、出力デバイスの抜去、時間経過の
+// 処理と振り分けだけを行う。
 // 状態の遷移は src/state/ の遷移表に従う。
 
 #include "vocroz/session/host_session.h"
@@ -54,6 +54,21 @@ public:
         ctx.ports.mixer.set_master_muted(true);
         ctx.ports.mixer.set_master_gain(ctx.master.gain_db);
         ctx.restore_routing();
+        ctx.refresh_output_devices();
+        open_saved_output_device();
+    }
+
+    // 保存した ID のデバイスだけを開く。開けなければ未選択のままにし、ほかのデバイスへは
+    // 切り替えない（出力デバイスを暗黙にフォールバックしない）。保存した ID は消さず、
+    // 次の起動でまた試す。
+    void open_saved_output_device() {
+        if (!ctx.settings.output_device_id) {
+            return;
+        }
+        const auto id = *ctx.settings.output_device_id;
+        if (!ctx.open_output(id)) {
+            ctx.log(common::LogLevel::kWarning, "保存した出力デバイスを開けませんでした");
+        }
     }
 
     // --- ランデブーサーバー ---
@@ -91,33 +106,19 @@ public:
 
     // --- 出力デバイス ---
 
-    void on_output_device_opened(const std::string& device_id, const std::string& name) {
-        if (!ctx.advance_output(state::OutputDeviceEvent::kOpened)) {
-            return;
-        }
-        ctx.session.output_device_name = name;
-        ctx.settings.output_device_id = device_id;
-        ctx.publish_session();
-        ctx.save_settings();
-    }
-
     void on_output_device_lost() {
+        // 抜けたデバイスの後始末。状態が OPEN でなくても閉じておく（閉じるのは冪等）。
+        ctx.ports.outputs.close_output();
         if (!ctx.advance_output(state::OutputDeviceEvent::kLost)) {
             return;
         }
+        // ID は残し、挿し直したデバイスを選び直しやすくする。
         ctx.session.output_device_name.reset();
+        ctx.refresh_output_devices();
         // 別のデバイスへは流さず、Master を止めてオペレーターの選択を待つ（フェイルセーフ）。
         ctx.mute_master(cp::MasterMuteReason::kSafety);
         ctx.publish_session();
         ctx.notice(cp::NoticeSeverity::kWarning, "output_lost", {});
-    }
-
-    void on_output_device_closed() {
-        if (!ctx.advance_output(state::OutputDeviceEvent::kClosed)) {
-            return;
-        }
-        ctx.session.output_device_name.reset();
-        ctx.publish_session();
     }
 
     void on_engine_fault(ErrorCode code) {
@@ -222,16 +223,8 @@ void HostSession::on_signal_state(PeerHandle peer, control_protocol::SignalState
     impl_->peers.on_signal_state(peer, state);
 }
 
-void HostSession::on_output_device_opened(const std::string& device_id, const std::string& name) {
-    impl_->on_output_device_opened(device_id, name);
-}
-
 void HostSession::on_output_device_lost() {
     impl_->on_output_device_lost();
-}
-
-void HostSession::on_output_device_closed() {
-    impl_->on_output_device_closed();
 }
 
 void HostSession::on_engine_fault(control_protocol::ErrorCode code) {
