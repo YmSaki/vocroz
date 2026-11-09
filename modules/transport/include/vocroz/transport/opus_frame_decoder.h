@@ -22,15 +22,18 @@ struct OpusDecoder;
 
 namespace vocroz::transport {
 
-/// 48kHz モノラルの Opus のデコーダー。
+/// 48kHz の Opus のデコーダー。チャンネル数（モノラルかステレオ）は生成時に固定する。
 /// スレッド安全性: 1 つのオブジェクトを同時に 1 スレッドからだけ使う。
 /// create() はヒープを確保するのでオーディオスレッド外で呼ぶ。
 /// それ以外はオーディオスレッドから呼び出し可能。
 class OpusFrameDecoder {
 public:
     /// デコーダーを生成する。
-    /// @return 生成したデコーダー。libopus が生成を拒否したら CodecError::kCreateFailed
-    [[nodiscard]] static common::Result<OpusFrameDecoder, CodecError> create() noexcept;
+    /// @param channels 出力のチャンネル数（1 か 2）。送信側のストリームと同じ値にする
+    /// @return 生成したデコーダー。チャンネル数が 1 と 2 以外か、libopus が生成を拒否したら
+    /// CodecError::kCreateFailed
+    [[nodiscard]] static common::Result<OpusFrameDecoder, CodecError> create(
+        std::size_t channels = 1) noexcept;
 
     OpusFrameDecoder(OpusFrameDecoder&&) noexcept;
     OpusFrameDecoder& operator=(OpusFrameDecoder&&) noexcept;
@@ -40,15 +43,19 @@ public:
 
     /// 1 フレームをデコードする。
     /// @param payload Opus のペイロード
-    /// @param out     PCM の書き込み先。長さはフレーム長以上にする
-    /// @return 書き込んだサンプル数。壊れたパケットや out に収まらないフレームは kInvalidPacket
+    /// @param out     PCM の書き込み先。長さはフレーム長 × チャンネル数以上にする。
+    /// ステレオは L、R の順にインターリーブして書く
+    /// @return 書き込んだ 1 チャンネルあたりのサンプル数。壊れたパケットや out に収まらない
+    /// フレームは kInvalidPacket
     /// スレッド安全性: オーディオスレッドから呼び出し可能（ヒープを確保せず、ブロックしない）。
     [[nodiscard]] common::Result<std::size_t, CodecError> decode(
         std::span<const std::uint8_t> payload, std::span<float> out) noexcept VOCROZ_NONBLOCKING;
 
     /// 欠損した 1 フレームを PLC で補間する。
-    /// @param out 補間した PCM の書き込み先。長さが補間するサンプル数になる（2.5ms の整数倍）
-    /// @return 書き込んだサンプル数。長さが 2.5ms の整数倍でなければ kInvalidFrameSize
+    /// @param out 補間した PCM の書き込み先。長さ ÷ チャンネル数が補間するサンプル数になる
+    /// （2.5ms の整数倍）。ステレオはインターリーブして書く
+    /// @return 書き込んだ 1 チャンネルあたりのサンプル数。長さが 2.5ms × チャンネル数の整数倍で
+    /// なければ kInvalidFrameSize
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
     [[nodiscard]] common::Result<std::size_t, CodecError> conceal(std::span<float> out) noexcept
         VOCROZ_NONBLOCKING;
@@ -58,6 +65,11 @@ public:
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
     void reset() noexcept VOCROZ_NONBLOCKING;
 
+    /// チャンネル数（1 か 2）を返す。
+    [[nodiscard]] std::size_t channels() const noexcept {
+        return channels_;
+    }
+
 private:
     // libopus のデコーダーを破棄する。
     // opus.h を公開ヘッダーに含めないよう、定義は .cpp に置く。
@@ -66,9 +78,10 @@ private:
     };
     using Handle = std::unique_ptr<::OpusDecoder, Deleter>;
 
-    explicit OpusFrameDecoder(Handle decoder) noexcept;
+    OpusFrameDecoder(Handle decoder, std::size_t channels) noexcept;
 
     Handle decoder_;
+    std::size_t channels_;
 };
 
 }  // namespace vocroz::transport

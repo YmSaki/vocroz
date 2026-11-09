@@ -258,9 +258,21 @@ TEST(JsonCodecTest, RejectsInvalidEngineMessages) {
                               {"short_id", "#01"},       {"connection_state", "PENDING"},
                               {"signal_state", nullptr}, {"send_muted", true},
                               {"channel_muted", true},   {"gain_db", 0.0},
-                              {"error_code", nullptr}};
+                              {"error_code", nullptr},   {"source_kind", "MICROPHONE"},
+                              {"channel_count", 1},      {"source_number", 1}};
     EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
               (DecodeError{DecodeErrorCode::kOutOfRange, "channel.connection_state"}));
+
+    // 入力のチャンネル数はモノラルかステレオだけ。
+    channel["connection_state"] = "CONNECTED";
+    channel["channel_count"] = 3;
+    EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "channel.channel_count"}));
+    channel["channel_count"] = 1;
+    channel["source_number"] = 0;
+    EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "channel.source_number"}));
+    channel["source_number"] = 1;
 
     channel["connection_state"] = "CONNECTED";
     channel["signal_state"] = "LIVE";  // v1.1 以前の旧名称は受け付けない

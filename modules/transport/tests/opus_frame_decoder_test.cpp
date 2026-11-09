@@ -118,5 +118,59 @@ TEST(OpusFrameDecoderTest, ResetForgetsPreviousSignal) {
     EXPECT_LT(rms(out), 1e-4);
 }
 
+// L に 1kHz、R に無音を置いたステレオの往復で、左右が入れ替わらず分かれたまま戻ることを確かめる。
+TEST(OpusFrameDecoderTest, StereoRoundTripKeepsChannelsSeparate) {
+    OpusEncoderConfig config;
+    config.channels = 2;
+    config.bitrate_bps = kStereoBitrateBps;
+    auto encoder = OpusFrameEncoder::create(config);
+    ASSERT_TRUE(encoder);
+    auto decoder = OpusFrameDecoder::create(2);
+    ASSERT_TRUE(decoder);
+    EXPECT_EQ(decoder.value().channels(), 2U);
+    std::vector<float> left;
+    std::vector<float> right;
+    std::vector<float> pcm(kFrame * 2);
+    std::vector<float> out(kFrame * 2);
+    std::array<std::uint8_t, kMaxOpusPayloadBytes> packet{};
+    for (std::size_t f = 0; f < 50; ++f) {
+        for (std::size_t i = 0; i < kFrame; ++i) {
+            const double t = static_cast<double>(f * kFrame + i) / kSampleRate;
+            pcm[i * 2] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 1000.0 * t));
+            pcm[(i * 2) + 1] = 0.0F;
+        }
+        const auto bytes = encoder.value().encode(pcm, packet);
+        ASSERT_TRUE(bytes);
+        const auto samples =
+            decoder.value().decode(std::span<const std::uint8_t>{packet}.first(bytes.value()), out);
+        ASSERT_TRUE(samples);
+        EXPECT_EQ(samples.value(), kFrame);
+        if (f >= 10) {  // エンコーダーの立ち上がりを除く
+            for (std::size_t i = 0; i < kFrame; ++i) {
+                left.push_back(out[i * 2]);
+                right.push_back(out[(i * 2) + 1]);
+            }
+        }
+    }
+    EXPECT_NEAR(rms(left), 0.5 / std::numbers::sqrt2, 0.05);
+    EXPECT_LT(rms(right), 0.05);
+}
+
+TEST(OpusFrameDecoderTest, StereoConcealsInterleavedFrame) {
+    auto decoder = OpusFrameDecoder::create(2);
+    ASSERT_TRUE(decoder);
+    std::vector<float> out(kFrame * 2);
+    const auto samples = decoder.value().conceal(out);
+    ASSERT_TRUE(samples);
+    EXPECT_EQ(samples.value(), kFrame);
+    std::vector<float> odd(120 * 2 + 2);
+    EXPECT_FALSE(decoder.value().conceal(odd));
+}
+
+TEST(OpusFrameDecoderTest, RejectsChannelCountOtherThanMonoOrStereo) {
+    EXPECT_FALSE(OpusFrameDecoder::create(0));
+    EXPECT_FALSE(OpusFrameDecoder::create(3));
+}
+
 }  // namespace
 }  // namespace vocroz::transport

@@ -16,8 +16,8 @@
 | `vocroz/transport/noise_ik_handshake.h` | `NoiseIkHandshake`、`generate_connection_id()` | コントロールかネットワーク受信 |
 | `vocroz/transport/secure_channel.h` | `PacketSealer`（送信）、`PacketOpener`（受信とリプレイ排除）、`SecureChannel` | 送信はネットワーク送信側、受信はネットワーク受信（ヒープ確保、ロック、I/O なし） |
 | `vocroz/transport/media_frame.h` | `MediaFrame`（タイムスタンプ、ミュートの世代番号、Opus のペイロード）、`make_media_frame()` | どこからでも |
-| `vocroz/transport/opus_frame_encoder.h` | `OpusFrameEncoder`。`create()` はオーディオスレッド外、`encode()` はオーディオスレッドから呼び出し可能 | 子機のオーディオスレッド |
-| `vocroz/transport/opus_frame_decoder.h` | `OpusFrameDecoder`。`decode()`、`conceal()`（PLC）、`reset()` | オーディオスレッド |
+| `vocroz/transport/opus_frame_encoder.h` | `OpusFrameEncoder`（モノラルかステレオ。ステレオはインターリーブの PCM）。`create()` はオーディオスレッド外、`encode()` はオーディオスレッドから呼び出し可能 | 子機のオーディオスレッド |
+| `vocroz/transport/opus_frame_decoder.h` | `OpusFrameDecoder`（モノラルかステレオ）。`decode()`、`conceal()`（PLC）、`reset()` | オーディオスレッド |
 | `vocroz/transport/playout_stream.h` | `PlayoutStream`。1 ストリームの受信から PCM までをまとめたもの | `enqueue()` はネットワーク受信スレッド、`render()` はオーディオスレッド |
 | `vocroz/transport/signal_monitor.h` | `SignalMonitor`。信号状態の判定と、古い世代のフレームの選別 | ネットワーク受信スレッド |
 | `vocroz/transport/signal_state.h` | `SignalState`、`canonical_name()` | どこからでも |

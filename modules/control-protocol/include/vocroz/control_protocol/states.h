@@ -119,4 +119,10 @@ enum class RoutingIssue {
     kUndelayedLoop,  ///< UNDELAYED_LOOP: 遅延ノードを通らないループがある。承認しても適用できない
 };
 
+/// 子機の入力の種類。ストリップの表示（マイク、アプリ音声）に使う。
+enum class InputSourceKind {
+    kMicrophone,  ///< MICROPHONE: 入力デバイス（マイク、ライン入力、オーディオインターフェース）
+    kApplicationAudio,  ///< APP_AUDIO: PC 内のアプリ音声（WASAPI のループバック）
+};
+
 }  // namespace vocroz::control_protocol

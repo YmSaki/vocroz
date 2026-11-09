@@ -11,9 +11,11 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "vocroz/control_protocol/states.h"
 #include "vocroz/session/identifiers.h"
+#include "vocroz/session/input_stream.h"
 
 namespace vocroz::session::wire {
 
@@ -52,6 +54,15 @@ struct InputReport {
     friend bool operator==(const InputReport&, const InputReport&) = default;
 };
 
+/// 子機 → 親機: 送る入力（ストリーム）の一覧の申告。
+/// 参加の申請と再接続の後と、入力の構成を変えたときに送る。一覧は毎回すべてを送り、親機は前回の
+/// 一覧と置き換える。申告を受け取る前の子機は、ストリーム 0 のモノラルのマイク 1 本とみなす。
+struct StreamsReport {
+    /// 1〜kMaxInputStreams 個。ストリーム ID は重複しない。
+    std::vector<InputStream> streams;
+    friend bool operator==(const StreamsReport&, const StreamsReport&) = default;
+};
+
 /// 子機 → 親機: 退出。
 struct LeaveNotice {
     friend bool operator==(const LeaveNotice&, const LeaveNotice&) = default;
@@ -88,8 +99,8 @@ struct SessionEndedNotice {
 };
 
 /// 子機から親機へのメッセージ。
-using ClientToHostMessage =
-    std::variant<JoinRequest, ReconnectRequest, SendMuteReport, InputReport, LeaveNotice>;
+using ClientToHostMessage = std::variant<JoinRequest, ReconnectRequest, SendMuteReport, InputReport,
+                                         LeaveNotice, StreamsReport>;
 
 /// 親機から子機へのメッセージ。
 using HostToClientMessage = std::variant<JoinPending, JoinApproved, JoinDenied, SessionEndedNotice>;

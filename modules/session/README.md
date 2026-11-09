@@ -8,6 +8,7 @@
 - 状態機械: `SessionState`、`ConnectionState`、`OutputDeviceState`、`ClientState`（`src/state/` の遷移表）
 - 招待コード、招待 URL、`vocroz://` の引数のパースと検証。招待の発行、期限切れでの発行し直し、失効、申請の照合
 - 承認と拒否、再接続トークンによる同じストリップへの復帰、全員 `LOST` での `READY` への復帰
+- 子機の入力（ストリーム）の申告と、入力ごとのストリップの対応（1 台の子機は最大 4 本のストリップになる。`docs/adr/0035-client-input-expansion.md`）
 - 参加者とチャンネルストリップの状態、コマンドの適用（revision の競合の拒否、重複した `request_id` の無視）と認可
 - 初期ミュート、出力デバイスの抜去時の Master の `SAFETY` ミュート、子機の「入力なし」の検知
 - 子機と親機の間の制御メッセージのエンコードとデコード（信頼境界、`src/wire/`）
