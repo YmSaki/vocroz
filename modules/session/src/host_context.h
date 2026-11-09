@@ -112,6 +112,10 @@ struct HostContext {
     /// 今あるチャンネルストリップの entity_id。ルーティングの検証に使う。
     [[nodiscard]] std::vector<std::string> strip_ids() const;
 
+    /// 返送モニターの今の状態を、参加者の接続の送信側と子機へ知らせる。
+    /// 承認と再接続で接続を受け付けたとき（JoinApproved
+    /// より前）と、ミュートを切り替えたときに呼ぶ。 接続がなければ何もしない。
+    void sync_return(const Participant& participant);
     /// 子機へ制御メッセージを送る。
     void send(PeerHandle peer, const wire::HostToClientMessage& message);
 

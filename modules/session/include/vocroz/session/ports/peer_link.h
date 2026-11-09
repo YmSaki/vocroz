@@ -37,6 +37,14 @@ public:
     /// @param epoch      通知に載っていたミュートの世代番号
     virtual void apply_send_mute(PeerHandle peer, bool send_muted, std::uint32_t epoch) = 0;
 
+    /// 返送モニター（Minus-Me）のミュートを、その接続への返送の送信側へ渡す。
+    /// ミュート中は返送の送信を止め、解除したら新しい世代番号のフレームで再開する
+    /// （docs/adr/0036-return-monitor.md）。承認した接続と、再接続で戻った接続には、admit()
+    /// の後に今の状態で必ず 1 回呼ぶ。
+    /// @param peer  接続
+    /// @param muted ミュートするなら true
+    /// @param epoch ミュートの世代番号。解除のたびに 1 増える
+    virtual void set_return_mute(PeerHandle peer, bool muted, std::uint32_t epoch) = 0;
     /// 接続を閉じる。以降、この接続からのメディアと制御メッセージは捨てる。
     /// @param peer 接続
     virtual void close(PeerHandle peer) = 0;

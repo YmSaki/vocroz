@@ -116,6 +116,8 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
                 return id == kRoutingEntityId ? discard_routing() : invalid_state();
             } else if constexpr (std::is_same_v<B, cp::SetRouteMute>) {
                 return set_route_mute(id, body.muted);
+            } else if constexpr (std::is_same_v<B, cp::SetReturnMute>) {
+                return set_return_mute(id, body.muted);
             } else {
                 static_assert(std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
                               std::is_same_v<B, cp::SelectInput> ||
@@ -213,6 +215,7 @@ HostCommandHandler::CommandResult HostCommandHandler::approve(const std::string&
     ctx_.registry.remove_pending(entity_id);
     ctx_.ports.mixer.add_channel(p.strip.entity_id);
     ctx_.ports.peers.admit(peer, p.strip.entity_id);
+    ctx_.sync_return(p);
     ctx_.send(peer, wire::JoinApproved{token});
     ctx_.publish_pending();
     ctx_.publish_channel(p);
@@ -249,6 +252,26 @@ HostCommandHandler::CommandResult HostCommandHandler::remove_strip(const std::st
     ctx_.ports.ui.publish(cp::ChannelRemoved{entity_id});
     ctx_.forget_strip_in_routing(entity_id);
     return revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::set_return_mute(const std::string& entity_id,
+                                                                      bool muted) {
+    auto* p = ctx_.registry.find(entity_id);
+    if (p == nullptr) {
+        return invalid_state();
+    }
+    if (p->strip.return_muted != muted) {
+        // 解除のたびに世代番号を進め、ミュート前に送ったフレームと解除後のフレームを子機が
+        // 区別できるようにする（制御メッセージとメディアの到着順は逆転しうる）。
+        if (!muted) {
+            ++p->return_epoch;
+        }
+        p->strip.return_muted = muted;
+        ctx_.sync_return(*p);
+        detail::bump_revision(p->strip.revision);
+        ctx_.publish_channel(*p);
+    }
+    return p->strip.revision;
 }
 
 // --- ルーティング ---

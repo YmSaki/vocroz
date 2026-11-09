@@ -17,6 +17,7 @@
 | `vocroz/transport/secure_channel.h` | `PacketSealer`（送信）、`PacketOpener`（受信とリプレイ排除）、`SecureChannel` | 送信はネットワーク送信側、受信はネットワーク受信（ヒープ確保、ロック、I/O なし） |
 | `vocroz/transport/media_frame.h` | `MediaFrame`（タイムスタンプ、ミュートの世代番号、Opus のペイロード）、`make_media_frame()` | どこからでも |
 | `vocroz/transport/opus_frame_encoder.h` | `OpusFrameEncoder`。`create()` はオーディオスレッド外、`encode()` はオーディオスレッドから呼び出し可能 | 子機のオーディオスレッド |
+| `vocroz/transport/media_stream_encoder.h` | `MediaStreamEncoder`（`AudioSink` の実装。送信レベルとミュートのランプ、世代番号、Opus のエンコード、ミュート中の送信停止）、`StreamSendParams` | `set_params()` はコントロール、`push()` はオーディオスレッド |
 | `vocroz/transport/opus_frame_decoder.h` | `OpusFrameDecoder`。`decode()`、`conceal()`（PLC）、`reset()` | オーディオスレッド |
 | `vocroz/transport/playout_stream.h` | `PlayoutStream`。1 ストリームの受信から PCM までをまとめたもの | `enqueue()` はネットワーク受信スレッド、`render()` はオーディオスレッド |
 | `vocroz/transport/signal_monitor.h` | `SignalMonitor`。信号状態の判定と、古い世代のフレームの選別 | ネットワーク受信スレッド |
@@ -28,7 +29,7 @@
 | `vocroz/transport/reconnect_backoff.h` | `ReconnectBackoff`、`reconnect_delay()`（1、2、4、8、15 秒、±20% のジッター） | コントロール |
 | `vocroz/transport/secure_control_packet_sink.h` | `SecureControlPacketSink`（制御パケットの平文を暗号化して `DatagramSocket` で送る） | sealer を使うスレッド |
 | `vocroz/transport/crypto_random_source.h` | `CryptoRandomSource`（libsodium による `RandomSource`） | どこからでも |
-| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | 各ヘッダーの説明のとおり |
+| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`、`MediaFrameSink`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | 各ヘッダーの説明のとおり |
 
 ### 使い方
 
@@ -66,6 +67,22 @@ monitor.poll(clock.now());
 // オーディオスレッド: デバイスのコールバックごとに（長さは毎回変わってよい）
 stream->render(block);
 ```
+
+### 送信側のつなぎ方（親機から子機への返送）
+
+親機から子機への返送（下りストリーム）は、上りと同じ `MediaPayload` で運び、下りのストリーム ID 0 を使います（[ADR-0036](../../docs/adr/0036-return-monitor.md)）。
+
+```cpp
+// コントロールスレッド: エンコーダーを作り、audio-core のグラフの返送タップの渡し先にする。
+auto encoder = std::make_shared<MediaStreamEncoder>(OpusFrameEncoder::create({}).value(), frame_sink);
+engine_mixer.attach_return(strip_id, encoder);
+// 返送のミュートを切り替えるたび（session の PeerLink::set_return_mute()）。
+(void)encoder->set_params({muted, epoch, 1.0F});
+// オーディオスレッド: グラフの返送タップが push() を呼び、1 フレームごとに frame_sink.push_frame()。
+// ネットワークのスレッド: frame_sink から取り出して seal_media() で暗号化して送る。
+```
+
+ミュートすると、ランプで無音にしてから送信を止めます。止めている間もタイムスタンプは進めるので、再開後のフレームは実時間どおりの位置に並びます。
 
 ### 振る舞いの要点
 
@@ -105,5 +122,5 @@ liveness.poll();
 
 ## 依存してよいモジュール
 
-`audio-core`、`common`（AGENTS.md 4.2）。`audio-core` は `VOCROZ_NONBLOCKING`（`vocroz/audio_core/realtime.h`）のためだけに使います。外部ライブラリは libsodium、noise-c、libopus をこのモジュールの中だけで使い、公開ヘッダーには型を出しません。
-オーディオスレッドから呼ぶ関数（`PlayoutStream::render()` とそこから呼ばれる関数、`OpusFrameEncoder::encode()`）には、`audio-core` の `VOCROZ_NONBLOCKING` を付けています（AGENTS.md 第 9 節）。
+`audio-core`、`common`（AGENTS.md 4.2）。`audio-core` は `VOCROZ_NONBLOCKING`（`vocroz/audio_core/realtime.h`）と、`MediaStreamEncoder` が実装する `AudioSink` ポートとゲインランプに使います。外部ライブラリは libsodium、noise-c、libopus をこのモジュールの中だけで使い、公開ヘッダーには型を出しません。
+オーディオスレッドから呼ぶ関数（`PlayoutStream::render()` とそこから呼ばれる関数、`OpusFrameEncoder::encode()`、`MediaStreamEncoder::push()`）には、`audio-core` の `VOCROZ_NONBLOCKING` を付けています（AGENTS.md 第 9 節）。

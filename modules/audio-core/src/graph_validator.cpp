@@ -76,6 +76,11 @@ std::optional<GraphError> validate_node(const NodeSpec& spec, std::size_t fader_
                 return GraphError::kMissingTrack;
             }
             break;
+        case NodeKind::kReturnTap:
+            if (!spec.sink) {
+                return GraphError::kMissingSink;
+            }
+            break;
     }
     if (spec.fader && spec.fader->value >= fader_capacity) {
         return GraphError::kFaderOutOfRange;
@@ -105,9 +110,10 @@ std::optional<GraphError> claim_fader(std::optional<FaderId> fader, std::size_t 
 std::optional<GraphError> validate_connection(const Connection& connection, const NodeSpec& from,
                                               const NodeSpec& to) {
     // 音声入力を持たないプラグイン（VSTi）と再生ノードへの結線も、受け取る先がないので拒否する。
-    // 録音タップは出力を持たないので、送り元にできない。
+    // 録音タップと返送タップは出力を持たないので、送り元にできない。
     if (from.kind == NodeKind::kOutput || from.kind == NodeKind::kRecordTap ||
-        to.kind == NodeKind::kSource || input_channels_of(to) == 0) {
+        from.kind == NodeKind::kReturnTap || to.kind == NodeKind::kSource ||
+        input_channels_of(to) == 0) {
         return GraphError::kInvalidConnection;
     }
     // モノラルからステレオへは両チャンネルに複製するが、ステレオからモノラルへの
@@ -177,6 +183,8 @@ std::size_t output_channels_of(const NodeSpec& spec) noexcept {
             return 0;
         case NodeKind::kPlayer:
             return spec.playback ? spec.playback->channel_count() : 1;
+        case NodeKind::kReturnTap:
+            return 0;
     }
     return 1;
 }
@@ -189,6 +197,9 @@ std::size_t input_channels_of(const NodeSpec& spec) noexcept {
             return spec.recording ? spec.recording->channel_count() : 1;
         case NodeKind::kPlayer:
             return 0;
+        case NodeKind::kReturnTap:
+            // ステレオで受けてからダウンミックスする。モノラルの入力は両チャンネルに複製される。
+            return kStereoChannels;
         case NodeKind::kSource:
         case NodeKind::kStrip:
         case NodeKind::kBus:

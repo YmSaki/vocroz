@@ -18,6 +18,8 @@ public:
     void admit(session::PeerHandle /*peer*/, const std::string& /*strip_id*/) override {}
     void apply_send_mute(session::PeerHandle /*peer*/, bool /*send_muted*/,
                          std::uint32_t /*epoch*/) override {}
+    void set_return_mute(session::PeerHandle /*peer*/, bool /*muted*/,
+                         std::uint32_t /*epoch*/) override {}
     void close(session::PeerHandle /*peer*/) override {}
 };
 

@@ -57,6 +57,13 @@ TEST(PeerMessageCodecTest, RoundTripsEveryHostToClientMessage) {
         EXPECT_EQ(round_trip(JoinDenied{reason}), HostToClientMessage{JoinDenied{reason}});
     }
     EXPECT_EQ(round_trip(SessionEndedNotice{}), HostToClientMessage{SessionEndedNotice{}});
+    const ReturnMuteNotice return_mute{false, 3};
+    EXPECT_EQ(round_trip(return_mute), HostToClientMessage{return_mute});
+}
+
+TEST(PeerMessageCodecTest, EncodesReturnMuteInBigEndian) {
+    EXPECT_EQ(encode(HostToClientMessage{ReturnMuteNotice{false, 0x01020304}}),
+              (std::vector<std::uint8_t>{0x85, 0x00, 0x01, 0x02, 0x03, 0x04}));
 }
 
 TEST(PeerMessageCodecTest, EncodesSendMuteInBigEndian) {

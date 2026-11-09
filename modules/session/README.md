@@ -13,6 +13,7 @@
 - 子機と親機の間の制御メッセージのエンコードとデコード（信頼境界、`src/wire/`）
 - ルーティングのステージング、検証（参照、組み合わせ、値の範囲、ループ）、ループの承認、適用と、バスとセンドのミュートとフェーダー（`src/routing_book`、`src/routing_validator`）
 - ルーティングの保存（ストリップを参照しない部分とフェーダーの値）と、起動時のミュートでの復元（`HostContext::restore_routing()`）
+- 返送モニター（Minus-Me）のミュート（`return_muted`）と世代番号、接続の送信側（`PeerLink::set_return_mute()`）と子機（`ReturnMuteNotice`）への通知、再接続での送り直し（`docs/adr/0036-return-monitor.md`）
 - プラグインの一覧: スキャンの記録のキャッシュ、読み込み不可のファイルの記録、スキャンの進行（`PluginCatalog`、`docs/adr/0032-plugin-catalog-and-loader.md`）
 
 ワイヤーフォーマットの外枠と暗号化（`transport`）、DSP（`audio-core`）、ソケットと HTTP（`network`）、設定ファイルの形式（`persistence`）は持ちません。
@@ -28,8 +29,8 @@
 | `vocroz/session/routing_delay.h` | `delay_samples()`（ルーティングの遅延の ms からサンプル数への換算） |
 | `vocroz/session/settings.h` | `HostSettings`、`ClientSettings`、`SettingsError` |
 | `vocroz/session/ports/mixer_control.h` | `MixerControl`（親機のミキサーへの反映。ルーティングの適用を含む） |
-| `vocroz/session/ports/peer_link.h` | `PeerLink`（親機から子機との接続の操作） |
-| `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作） |
+| `vocroz/session/ports/peer_link.h` | `PeerLink`（親機から子機との接続の操作。返送のミュートの反映を含む） |
+| `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作。返送のミュートの受信側への反映を含む） |
 | `vocroz/session/ports/capture_control.h` | `CaptureControl`（子機のキャプチャと送信への反映） |
 | `vocroz/session/ports/rendezvous_client.h` | `RendezvousClient`（招待の登録、解決、失効） |
 | `vocroz/session/ports/secret_store.h` | `SecretStore`、`SecretSlot`、`SecretError`（親機と子機の静的秘密鍵の保存。`persistence` が DPAPI で実装する） |

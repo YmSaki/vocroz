@@ -138,6 +138,14 @@ void HostContext::release_peer(Participant& p) {
     }
 }
 
+void HostContext::sync_return(const Participant& p) {
+    if (!p.peer) {
+        return;
+    }
+    ports.peers.set_return_mute(*p.peer, p.strip.return_muted, p.return_epoch);
+    send(*p.peer, wire::ReturnMuteNotice{p.strip.return_muted, p.return_epoch});
+}
+
 void HostContext::send(PeerHandle peer, const wire::HostToClientMessage& message) {
     const auto bytes = wire::encode(message);
     ports.peers.send(peer, bytes);

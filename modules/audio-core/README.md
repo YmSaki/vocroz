@@ -13,6 +13,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 - プラグインノードとプラグイン遅延補正（PDC、Beta4、`docs/adr/0024-plugin-node-and-pdc.md`）: `PluginProcessor` ポートを呼ぶノード（入力 0〜2、出力 1〜2。入力 0 は VSTi）、合流する経路にだけ遅延を足す補正、処理の失敗や NaN でそのノードを無音にする扱い
 - 録音タップと再生ノード（Beta2、`docs/adr/0031-recording-and-playback-nodes.md`）: オーディオスレッドはロックフリーのリングバッファを読み書きするだけで、ファイルへの書き出しと先読みはディスク I/O スレッドが行う。書き込みが遅れたら欠落として数えて無音で埋め、ライブ音声を止めない。音声ファイルの書き出しと読み込みのポート（`AudioFileWriter`、`AudioFileReader`）
 - MIDI（Beta5、`docs/adr/0029-midi-and-vsti.md`）: PCM とは独立した MIDI の経路（MIDI ソース → プラグインノード）、タイムスタンプからブロック内のサンプルオフセットへの変換、届いた順の保証、経路ごとの発音中のノートの追跡と Panic（子機の切断、キューのあふれ、経路を外したグラフの差し替えで Note Off とサステインのオフを送る）
+- 子機への返送モニター（Minus-Me、Beta1、`docs/adr/0036-return-monitor.md`）: 子機ごとに、その子機自身の入力と、そこから結線をたどって届くノード（自分の声を含むバス）を除いたミックスを、安全リミッターを通して返送タップ（`AudioSink` ポート）へ渡す
 - 5〜20ms のゲインランプ、安全リミッター、ピークと RMS のメーター算出
 - 初期ミュート（すべてのフェーダーはミュートで始まる）と、安全ミュート（SAFETY MUTE）の受け口
 - オーディオ入出力のポート（`AudioOutput`、`AudioInput`、デバイスの一覧の `AudioDeviceCatalog`）と、グラフのソースのポート（`AudioSource`）
@@ -26,6 +27,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/constants.h` | `kSampleRate`、`kBlockSize`、`kMaxFaderGainDb`、遅延と出力チャンネルの上限 | 対象外 |
 | `vocroz/audio_core/mixer.h` | `Mixer`、`MixerConfig`、`MixerError` | `render()` だけ呼び出し可能 |
 | `vocroz/audio_core/graph_description.h` | `GraphDescription`、`NodeSpec`、`Connection`、`SendTap`、`NodeId`、`FaderId`、`MeterId`、`GraphError` | 対象外（コントロールスレッドで記述する） |
+| `vocroz/audio_core/minus_me.h` | `add_minus_me_returns()`、`MinusMeReturn`、`MinusMeReport`（子機ごとの返送をグラフに足す） | 対象外（コントロールスレッドで記述する） |
 | `vocroz/audio_core/feedback_analysis.h` | `analyze_feedback()`、`FeedbackReport`（ループに含まれるノードと、遅延のないループ） | 対象外 |
 | `vocroz/audio_core/latency_compensation.h` | `analyze_latency()`、`LatencyReport`（ノードごとの遅延と結線ごとの補正） | 対象外 |
 | `vocroz/audio_core/midi_event.h` | `MidiEvent`（ブロック内の MIDI メッセージ） | 呼び出し可能 |
@@ -46,6 +48,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/ports/audio_device_catalog.h` | `AudioDeviceCatalog`（デバイスの一覧。`device` が実装） | 対象外 |
 | `vocroz/audio_core/audio_device_info.h` | `AudioDeviceInfo`、`AudioDeviceDirection` | 対象外 |
 | `vocroz/audio_core/ports/audio_source.h` | `AudioSource`（`transport` のジッターバッファが実装） | 呼び出し可能 |
+| `vocroz/audio_core/ports/audio_sink.h` | `AudioSink`（返送タップの渡し先。`transport` の `MediaStreamEncoder` が実装） | 呼び出し可能 |
 | `vocroz/audio_core/ports/midi_source.h` | `MidiSource`、`MidiBlockClock`、`MidiPullResult`（`MidiInputQueue` が実装） | `pull()` だけ呼び出し可能 |
 | `vocroz/audio_core/ports/plugin_processor.h` | `PluginProcessor`、`PluginBusLayout`、`PluginProcessContext`（`plugin-host` が実装） | `process()` だけ呼び出し可能 |
 | `vocroz/audio_core/recording_track.h` | `RecordingTrack`（録音タップの書き込み先。ディスク I/O スレッドが `drain()` と `finish()` で書き出す） | `push()` だけ呼び出し可能 |
@@ -192,6 +195,23 @@ keys->request_panic();
 
 経路を外したグラフに差し替えると、その経路で発音中だったノートには、差し替え後の最初のブロックで Note Off を送ります。
 
+### 使い方（子機への返送）
+
+```cpp
+using namespace vocroz::audio_core;
+
+// 親機のグラフ（ストリップ 11〜13 → Master 20 → …）に、子機 A と B への返送を足す。
+// 候補は Master へ入る信号。A の返送には A のストリップと、A を含むバスが入らない。
+std::shared_ptr<AudioSink> to_a = ...;  // transport の MediaStreamEncoder
+std::shared_ptr<AudioSink> to_b = ...;
+const std::vector<NodeId> mix_inputs = {NodeId{11}, NodeId{12}, NodeId{13}};
+const std::vector<MinusMeReturn> returns = {{{NodeId{11}}, to_a}, {{NodeId{12}}, to_b}};
+if (auto added = add_minus_me_returns(graph, mix_inputs, returns); !added) { /* GraphError */ }
+(void)mixer.apply_graph(graph);
+```
+
+返送はポストフェーダーで取るので、チャンネルミュートしたチャンネルは返送にも入りません。返送タップはステレオの入力を L と R の平均でモノラルにして、1 ブロックごとに `AudioSink::push()` を呼びます。
+
 ### グラフとフェーダーの関係
 
 フェーダーとメーターの状態はグラフの外（`Mixer`）にあり、`FaderId` と `MeterId` で参照します。
@@ -203,7 +223,7 @@ keys->request_panic();
 
 ## テストダブル
 
-`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog`、`FakePluginProcessor`（報告した遅延のぶん実際に遅らせ、受け取った MIDI を記録する）、`FakeAudioFileWriter`（書き込みの遅延と容量不足を模擬する）、`FakeAudioFileReader`（位置から値が決まるサンプルを返す）、`FakeMidiSource` は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
+`tests/fakes/` の `FakeAudioOutput`、`FakeAudioInput`、`FakeAudioSource`、`FakeAudioDeviceCatalog`、`FakePluginProcessor`（報告した遅延のぶん実際に遅らせ、受け取った MIDI を記録する）、`FakeAudioFileWriter`（書き込みの遅延と容量不足を模擬する）、`FakeAudioFileReader`（位置から値が決まるサンプルを返す）、`FakeMidiSource`、`FakeAudioSink`（受け取ったサンプルを記録する）は、CMake ターゲット `vocroz::audio_core_fakes` で他モジュールのテストからも使えます。
 
 ```cmake
 target_link_libraries(device_tests PRIVATE vocroz::device vocroz::audio_core_fakes)

@@ -211,6 +211,7 @@ nlohmann::json write_json(const ChannelStrip& channel) {
         {"channel_muted", channel.channel_muted},
         {"gain_db", nullable(channel.gain_db)},
         {"error_code", enum_json(channel.error_code)},
+        {"return_muted", channel.return_muted},
     };
 }
 
@@ -232,6 +233,7 @@ common::Result<ChannelStrip, DecodeError> read_channel_strip(const nlohmann::jso
         channel.channel_muted = r.boolean("channel_muted");
         channel.gain_db = r.gain("gain_db");
         channel.error_code = r.nullable_enumeration<ErrorCode>("error_code");
+        channel.return_muted = r.boolean("return_muted");
         return channel;
     });
 }
@@ -393,6 +395,7 @@ nlohmann::json write_json(const ClientSnapshot& snapshot) {
         {"input_missing", snapshot.input_missing},
         {"send_muted", snapshot.send_muted},
         {"send_level_db", snapshot.send_level_db},
+        {"return_muted", snapshot.return_muted},
     };
 }
 
@@ -409,6 +412,7 @@ common::Result<ClientSnapshot, DecodeError> read_client_snapshot(const nlohmann:
         snapshot.input_missing = r.boolean("input_missing");
         snapshot.send_muted = r.boolean("send_muted");
         snapshot.send_level_db = r.number("send_level_db", kMinFiniteGainDb, kMaxGainDb);
+        snapshot.return_muted = r.boolean("return_muted");
         return snapshot;
     });
 }

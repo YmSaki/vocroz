@@ -166,6 +166,8 @@ void HostPeerHandler::rejoin(Participant& p, PeerHandle peer) {
     p.peer = peer;
     ctx_.advance_connection(p, ConnectionEvent::kReconnectStarted);
     ctx_.ports.peers.admit(peer, p.strip.entity_id);
+    // 新しい接続の返送の送信側は初期状態（ミュート）で始まるので、今の状態に合わせる。
+    ctx_.sync_return(p);
     ctx_.send(peer, wire::JoinApproved{p.reconnect_token});
 }
 

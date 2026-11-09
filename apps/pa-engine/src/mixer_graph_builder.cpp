@@ -8,6 +8,7 @@
 #include <optional>
 #include <string_view>
 
+#include "vocroz/audio_core/minus_me.h"
 #include "vocroz/session/routing_delay.h"
 
 namespace vocroz::engine {
@@ -76,6 +77,27 @@ using NodeTable = std::map<std::string, ac::NodeId, std::less<>>;
     return it->second;
 }
 
+// 子機への返送を足す。返送の候補は Master へ入る信号（ストリップ、Master
+// へ送るバスと遅延ノード）で、 親機のメインのミックスと同じバランスにする。Master
+// のフェーダーとミュートは通さない。 Master
+// はハウスの出力の操作で、出演者のモニターまで止めるものではないため。 その子機の声を含む候補は
+// add_minus_me_returns() が除く。
+void add_returns(ac::GraphDescription& graph, ac::NodeId master,
+                 const std::vector<ac::MinusMeReturn>& returns) {
+    if (returns.empty()) {
+        return;
+    }
+    std::vector<ac::NodeId> mix_inputs;
+    for (const auto& connection : graph.connections) {
+        if (connection.to == master) {
+            mix_inputs.push_back(connection.from);
+        }
+    }
+    // 候補と返送のノードはすべてこのグラフのものなので失敗しない。万一失敗したら返送を足さない
+    // （add_minus_me_returns() は失敗したらグラフを変えない）。音の経路を増やさない側に倒す。
+    (void)ac::add_minus_me_returns(graph, mix_inputs, returns);
+}
+
 }  // namespace
 
 BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
@@ -140,6 +162,12 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     }
 
     BuiltMixerGraph built;
+    std::vector<ac::MinusMeReturn> returns;
+    for (const auto& strip : assignments.strips) {
+        if (strip.return_sink) {
+            returns.push_back({{sources_of_sends.at(strip.strip_id)}, strip.return_sink});
+        }
+    }
     for (const auto& send : config.sends) {
         const auto from = find(sources_of_sends, send.from);
         const auto to = find(targets_of_sends, send.to);
@@ -153,6 +181,7 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         writer.connect(*from, *to, to_graph_tap(send.tap), level->second);
     }
     built.graph = writer.take(feedback_approved);
+    add_returns(built.graph, master, returns);
     return built;
 }
 

@@ -202,6 +202,31 @@ void EngineMixer::detach_source(const std::string& strip_id) {
     }
 }
 
+bool EngineMixer::attach_return(const std::string& strip_id, std::shared_ptr<ac::AudioSink> sink) {
+    auto* strip = find_strip(strip_id);
+    if (strip == nullptr || !sink) {
+        return false;
+    }
+    auto previous = std::exchange(strip->return_sink, std::move(sink));
+    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+        strip->return_sink = std::move(previous);
+        logger_.log(common::LogLevel::kError, "返送をつないだグラフを適用できませんでした");
+        return false;
+    }
+    return true;
+}
+
+void EngineMixer::detach_return(const std::string& strip_id) {
+    auto* strip = find_strip(strip_id);
+    if (strip == nullptr || !strip->return_sink) {
+        return;
+    }
+    strip->return_sink.reset();
+    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+        logger_.log(common::LogLevel::kError, "返送を外したグラフを適用できませんでした");
+    }
+}
+
 void EngineMixer::collect() {
     while (!retry_.empty() && try_submit(retry_.front())) {
         retry_.pop_front();

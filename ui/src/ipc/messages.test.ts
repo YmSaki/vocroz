@@ -85,6 +85,7 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
   }),
   discard_routing: keysOf<UiMessageOf<"discard_routing">>(kDiscreteKeys),
   set_route_mute: keysOf<UiMessageOf<"set_route_mute">>({ ...kDiscreteKeys, muted: true }),
+  set_return_mute: keysOf<UiMessageOf<"set_return_mute">>({ ...kDiscreteKeys, muted: true }),
 };
 
 /** エンジンから UI への種別ごとのフィールド。 */
@@ -139,6 +140,7 @@ const kChannelKeys = keysOf<ChannelStrip>({
   channel_muted: true,
   gain_db: true,
   error_code: true,
+  return_muted: true,
 });
 const kMasterKeys = keysOf<MasterStrip>({
   entity_id: true,
@@ -208,6 +210,7 @@ const kClientKeys = keysOf<ClientSnapshot>({
   input_missing: true,
   send_muted: true,
   send_level_db: true,
+  return_muted: true,
 });
 const kInputDeviceKeys = keysOf<InputDevice>({ id: true, name: true });
 

@@ -38,6 +38,7 @@ function initialSnapshot(): ClientSnapshot {
     // 起動時は必ず送信ミュートから始める。
     send_muted: true,
     send_level_db: 0,
+    return_muted: true,
   };
 }
 

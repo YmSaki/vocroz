@@ -258,7 +258,7 @@ TEST(JsonCodecTest, RejectsInvalidEngineMessages) {
                               {"short_id", "#01"},       {"connection_state", "PENDING"},
                               {"signal_state", nullptr}, {"send_muted", true},
                               {"channel_muted", true},   {"gain_db", 0.0},
-                              {"error_code", nullptr}};
+                              {"error_code", nullptr},   {"return_muted", true}};
     EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
               (DecodeError{DecodeErrorCode::kOutOfRange, "channel.connection_state"}));
 

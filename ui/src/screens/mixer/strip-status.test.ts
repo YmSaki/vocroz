@@ -15,6 +15,7 @@ const base: ChannelStrip = {
   channel_muted: false,
   gain_db: 0,
   error_code: null,
+  return_muted: true,
 };
 
 describe("stripStatus", () => {

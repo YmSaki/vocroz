@@ -55,6 +55,8 @@ template <>
 inline constexpr std::string_view kMessageType<DiscardRouting> = "discard_routing";
 template <>
 inline constexpr std::string_view kMessageType<SetRouteMute> = "set_route_mute";
+template <>
+inline constexpr std::string_view kMessageType<SetReturnMute> = "set_return_mute";
 
 // エンジンから UI へ。
 template <>

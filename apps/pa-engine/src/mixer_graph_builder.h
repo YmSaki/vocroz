@@ -8,6 +8,8 @@
 //   ソース → ストリップ（手動ディレイ、プリフェーダーのメーター、フェーダー）→ Master
 //   Master → 安全リミッター → メインの出力（デバイスのチャンネル 0 と 1、最終出力のメーター）
 //   バス、遅延ノード、追加の出力（それぞれ安全リミッターを通す）と、センドの結線
+//   子機への返送（Minus-Me）: Master へ入る信号のうち、その子機の声を含まないもの → 安全リミッター
+//   → 返送タップ（docs/adr/0036-return-monitor.md）
 // ストリップから Master と、Master からメインの出力は暗黙の結線として必ず加える。
 // フェーダーとメーターの識別子は EngineMixer が entity ごとに割り当て、ここでは使うだけにする。
 #pragma once
@@ -18,6 +20,7 @@
 #include <vector>
 
 #include "vocroz/audio_core/graph_description.h"
+#include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
 #include "vocroz/control_protocol/entities.h"
 
@@ -32,6 +35,9 @@ struct StripAssignment {
     audio_core::MeterId meter;
     /// 子機の受信ストリーム。まだ受け付けていなければ null（ストリップだけを置いて無音にする）。
     std::shared_ptr<audio_core::AudioSource> source;
+    /// その子機への返送（Minus-Me）の渡し先。子機への送信を組み立てていなければ null
+    /// （返送を作らない）。
+    std::shared_ptr<audio_core::AudioSink> return_sink;
 };
 
 /// グラフを組み立てるのに使う、フェーダーとメーターの割り当て。

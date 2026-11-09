@@ -46,6 +46,7 @@ private:
     CommandResult commit_routing(bool approve_feedback);
     CommandResult discard_routing();
     CommandResult set_route_mute(const std::string& entity_id, bool muted);
+    CommandResult set_return_mute(const std::string& entity_id, bool muted);
     void handle_gain(const control_protocol::SetGain& command);
     void handle_route_gain(control_protocol::RouteLevel& level,
                            const control_protocol::SetGain& command);
