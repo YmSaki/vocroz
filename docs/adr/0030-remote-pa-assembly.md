@@ -55,6 +55,17 @@
 - 既定値は CMake のキャッシュ変数 `VOCROZ_RENDEZVOUS_URL` でビルドに埋め込む。ホスティングが決まっていないため、ソースには置かない。
 - 検証用に、起動引数 `--rendezvous-url=<URL>` で上書きできる（`docs/adr/0007-launch-interface.md` の引数の表に加える）。1 台の PC でローカルのランデブーサーバーを使った受け入れテストを、ビルドし直さずに行うため。
 
+### コンポジションルートと閉じるときの確認（2026-11-09 追記）
+
+- `remote-pa` のコンポジションルート（`apps/pa-desktop/src/composition_root`）は、両方のモードで共有するもの（データフォルダ、ログ、ダイアログの言語、埋め込んだ UI、JUCE のメッセージループ）を用意し、親機モード（`HostMode`）か子機モード（`client::make_client_app()`）を組み立てる。`client-desktop` は `pa-desktop` に依存できないので、共有するものは `ClientAppConfig` で渡す。
+- ログはモードごとに別のファイル（`remote-pa-host`、`remote-pa-client`）、WebView2 のデータもモードごとに別のフォルダ（`webview2-host`、`webview2-client`）にする。同じデータフォルダで両方のモードを同時に動かしても、ファイルとブラウザープロセスを奪い合わないため。
+- 子機モードの周期の処理（`ClientRuntime::poll()`）は、JUCE のタイマーで 10ms ごとに呼ぶ。音声の経路は周期を待たないので、制御の応答の遅れだけがこの間隔で決まる。
+- ランデブーサーバーの URL がないか形が誤っていれば、子機は起動したうえで、招待の解決をつねに `UNREACHABLE` で返す（`UnavailableRendezvousClient`）。画面で理由を出せるようにし、起動そのものは止めない。
+- エンジンへの接続の手順（`EngineAttacher`）では、1 回の手順でエンジンを起動するのは 1 回だけにする。接続が切れたら自動で 1 回だけ手順をやり直し、それでもつながらなければ「再試行」と「閉じる」を尋ねる。起動直後に落ちるエンジンを自動で起動し続けないため（`docs/adr/0008-runtime-behavior.md`）。ほかのユーザーのパイプやなりすまし（`ipc` の `kAccessDenied`、`kUntrustedServer`）では起動もせずに失敗にする。
+- `pa-engine` はコンソールを作らずに起動する（`CREATE_NO_WINDOW`）。`remote-pa` はウィンドウのアプリ（Windows のサブシステム）にし、`--version` などの出力は親のコンソールがあるときだけそこへ出す。引数とパスを UTF-8 で受け取るため、アプリケーションマニフェストで `activeCodePage` を UTF-8 にする。
+- 閉じるときの確認は、子機モードでは参加中（`ClientRuntime::in_session()`）、親機モードではセッションが `ACTIVE`（参加者がいる）のときだけ出す。親機の画面を閉じてもエンジンは止まらないが、本番中の誤操作を防ぐため、音が止まらないことを伝えたうえで確かめる。親機モードの判定は、エンジンから UI への中継をのぞく `SessionActivityTap` が、エンジンの送ったスナップショットと `session_updated` を読んで行う（状態を導き出さない）。
+- 確認とエンジンの失敗のダイアログは Win32 のメッセージボックスで出す（既定のボタンは「キャンセル」）。WebView の外で出すので、文言は UI の文字列リソースではなく `apps/pa-desktop/src/dialog_text.cpp` に日本語と英語で持ち、`--lang` か OS の表示言語で選ぶ。
+
 ## 理由
 
 - 子機モードのコントロールスレッドをメッセージスレッドにすると、UI からのメッセージをスレッドをまたがずに `session` へ渡せる。UI の描画は WebView2 の別プロセスで行われるので、メッセージスレッドが UI の描画で長く止まることはなく、止まってもオーディオスレッドと送信スレッドは動き続ける。
@@ -64,5 +75,7 @@
 ## 結果
 
 - 子機の送信の経路は、`tests/harness` の `MediaSender` と同じ部品の順序（エンコード → 暗号化 → 送信）を、スレッドを分けて製品に置いたものになる。結合テストの `SimulatedClient` は、コンポジションルートができたら `ClientRuntime` に置き換えられる。
-- コンポジションルート（WebView、WASAPI、Winsock、WinHTTP）と親機モードの組み立ては、`pa-engine`（#57）、`persistence`（#55）、`network` の招待の HTTPS がマージされた後の PR で加える。設定の保存、ログ、時刻、データフォルダの既定はそれらのものを使い、`remote-pa` で重複して持たない。
+- コンポジションルート（WebView、WASAPI、Winsock、WinHTTP）と親機モードは、`pa-engine`（#57）、`persistence`（#55）、`network` の招待の HTTPS の後に加えた。設定の保存とログは `persistence`、時刻は `common::SteadyClock` を使う。データフォルダの既定の規則は `pa-engine` と `pa-updater` と同じものを `remote-pa` の `src/win/known_paths` にも持つ（各アプリの `src/win/` に置く形に合わせた。共通化は定期リファクタリングで判断する）。
+- 次の点は続きの作業にする。`remote-pa` の単一インスタンスと既存のウィンドウへの引数の受け渡し（`docs/adr/0007-launch-interface.md`）、エンジンが落ちたことの画面での知らせ方（今は再アタッチと、失敗したときのダイアログだけ）、子機の静的鍵の保存（今は起動ごとに作る）。
+- 親機モードでは `--rendezvous-url` を `pa-engine` に渡さず、エンジンはビルド時の `VOCROZ_RENDEZVOUS_URL` だけを使う（E1 と合意）。招待 URL の基点とランデブーの通信先が同じ値で、配布物では固定でよく、受け入れテストもビルド時の値で回せるため。別のサーバーに向ける必要が出たら、ADR-0007 と ADR-0028 に引数を足す。
 - 送信スレッドの優先度（MMCSS への登録）は、実機での遅延の計測の後に決める。

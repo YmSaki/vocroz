@@ -1,22 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// remote-pa のエントリポイント。引数をパースし、モードに応じて親機モードか子機モードを実行する
+// remote-pa のエントリポイント。引数をパースし、コンポジションルートを組み立てて実行する
 // （docs/adr/0007-launch-interface.md）。
 //   --version : バージョンを表示して終了
 //   --help    : 引数の一覧を表示して終了
 //   子機モード（--mode=client、--client、--join、vocroz://）: 出演者用の画面で起動
-//   親機モード（指定なし）: 親機の操作卓 UI として起動（コンポジションルートは後続の PR）
+//   親機モード（指定なし）: 親機の操作卓の画面で起動し、pa-engine につなぐ
 
 #include <iostream>
 #include <variant>
 
-#include "vocroz/client/client_app.h"
 #include "vocroz/common/cli.h"
 #include "vocroz/common/version_info.h"
 
 #include "launch_options.h"
 
+#if defined(VOCROZ_REMOTE_PA_HAS_UI)
+#include "composition_root.h"
+#include "win/console_output.h"
+#endif
+
 int main(int argc, char** argv) {
+#if defined(VOCROZ_REMOTE_PA_HAS_UI)
+    vocroz::pa_desktop::win::attach_parent_console();
+#endif
     namespace app = vocroz::pa_desktop;
     const auto parsed = app::parse_launch_options(vocroz::common::make_args(argc, argv));
     if (const auto* error = std::get_if<app::LaunchError>(&parsed)) {
@@ -34,12 +41,13 @@ int main(int argc, char** argv) {
         case app::Command::kRun:
             break;
     }
-    switch (options.mode) {
-        case app::Mode::kClient:
-            return vocroz::client::run_client(vocroz::common::make_args(argc, argv));
-        case app::Mode::kHost:
-            break;
-    }
-    std::cout << vocroz::common::version_line("remote-pa") << " (placeholder)\n";
-    return app::kExitOk;
+
+#if defined(VOCROZ_REMOTE_PA_HAS_UI)
+    app::CompositionRoot root(options);
+    return root.run();
+#else
+    // 画面（WebView2）と WASAPI は Windows で JUCE を使うビルドにしかない。
+    std::cerr << "remote-pa: this build has no user interface\n";
+    return app::kExitFatal;
+#endif
 }

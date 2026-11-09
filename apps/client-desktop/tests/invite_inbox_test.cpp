@@ -48,5 +48,21 @@ TEST(InviteInboxTest, CarriesFailure) {
     EXPECT_EQ(calls, 1);
 }
 
+TEST(InviteInboxTest, AcceptsResolutionsAsInviteResultListener) {
+    // HttpsRendezvousClient には受け箱をリスナーとして渡す。解決の結果は push() と同じく入る。
+    InviteInbox inbox;
+    network::InviteResultListener& listener = inbox;
+    listener.on_invite_resolved(code("ABCDE12345"),
+                                common::make_unexpected(control_protocol::ErrorCode::kRejected));
+
+    int calls = 0;
+    inbox.drain([&](const session::InviteCode&, const InviteInbox::ResolveResult& r) {
+        ++calls;
+        ASSERT_FALSE(r);
+        EXPECT_EQ(r.error(), control_protocol::ErrorCode::kRejected);
+    });
+    EXPECT_EQ(calls, 1);
+}
+
 }  // namespace
 }  // namespace vocroz::client

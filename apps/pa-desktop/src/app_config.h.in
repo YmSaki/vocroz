@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// ビルド時に埋め込む remote-pa の設定（apps/pa-desktop/CMakeLists.txt の configure_file で生成）。
+#pragma once
+
+namespace vocroz::pa_desktop {
+
+/// ランデブーサーバーのベース URL の既定値。CMake の VOCROZ_RENDEZVOUS_URL で決め、
+/// --rendezvous-url で上書きできる（docs/adr/0030-remote-pa-assembly.md）。pa-engine の招待 URL の
+/// 基点と同じ値で、本番のサーバーの置き場所が決まるまでは既定は空。
+inline constexpr const char* kDefaultRendezvousUrl = "@VOCROZ_RENDEZVOUS_URL@";
+
+}  // namespace vocroz::pa_desktop

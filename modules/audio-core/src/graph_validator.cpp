@@ -66,6 +66,16 @@ std::optional<GraphError> validate_node(const NodeSpec& spec, std::size_t fader_
                 return GraphError::kLatencyOutOfRange;
             }
             break;
+        case NodeKind::kRecordTap:
+            if (!spec.recording) {
+                return GraphError::kMissingTrack;
+            }
+            break;
+        case NodeKind::kPlayer:
+            if (!spec.playback) {
+                return GraphError::kMissingTrack;
+            }
+            break;
     }
     if (spec.fader && spec.fader->value >= fader_capacity) {
         return GraphError::kFaderOutOfRange;
@@ -94,9 +104,10 @@ std::optional<GraphError> claim_fader(std::optional<FaderId> fader, std::size_t 
 // 結線 1 本を検証する。
 std::optional<GraphError> validate_connection(const Connection& connection, const NodeSpec& from,
                                               const NodeSpec& to) {
-    // 音声入力を持たないプラグイン（VSTi）への結線も、受け取る先がないので拒否する。
-    if (from.kind == NodeKind::kOutput || to.kind == NodeKind::kSource ||
-        input_channels_of(to) == 0) {
+    // 音声入力を持たないプラグイン（VSTi）と再生ノードへの結線も、受け取る先がないので拒否する。
+    // 録音タップは出力を持たないので、送り元にできない。
+    if (from.kind == NodeKind::kOutput || from.kind == NodeKind::kRecordTap ||
+        to.kind == NodeKind::kSource || input_channels_of(to) == 0) {
         return GraphError::kInvalidConnection;
     }
     // モノラルからステレオへは両チャンネルに複製するが、ステレオからモノラルへの
@@ -108,7 +119,9 @@ std::optional<GraphError> validate_connection(const Connection& connection, cons
         if (from.kind != NodeKind::kStrip && from.kind != NodeKind::kBus) {
             return GraphError::kInvalidSendTap;
         }
-        if (!connection.level) {
+        // センドレベルは、新規参加時に聞こえる音を初期ミュートにするためのもの。録音タップは
+        // 聞こえる音を作らず、フェーダーの位置に関わらず入力を録るのが目的なので要らない。
+        if (!connection.level && to.kind != NodeKind::kRecordTap) {
             return GraphError::kMissingSendLevel;
         }
     }
@@ -160,13 +173,29 @@ std::size_t output_channels_of(const NodeSpec& spec) noexcept {
             return kStereoChannels;
         case NodeKind::kPlugin:
             return spec.plugin_layout.output_channels;
+        case NodeKind::kRecordTap:
+            return 0;
+        case NodeKind::kPlayer:
+            return spec.playback ? spec.playback->channel_count() : 1;
     }
     return 1;
 }
 
 std::size_t input_channels_of(const NodeSpec& spec) noexcept {
-    if (spec.kind == NodeKind::kPlugin) {
-        return spec.plugin_layout.input_channels;
+    switch (spec.kind) {
+        case NodeKind::kPlugin:
+            return spec.plugin_layout.input_channels;
+        case NodeKind::kRecordTap:
+            return spec.recording ? spec.recording->channel_count() : 1;
+        case NodeKind::kPlayer:
+            return 0;
+        case NodeKind::kSource:
+        case NodeKind::kStrip:
+        case NodeKind::kBus:
+        case NodeKind::kDelay:
+        case NodeKind::kLimiter:
+        case NodeKind::kOutput:
+            break;
     }
     return output_channels_of(spec);
 }

@@ -64,4 +64,12 @@ private:
     control_protocol::RoutingInfo info_;
 };
 
+/// 構成から、チャンネルストリップを参照するセンドと手動ディレイを取り除く。
+/// ストリップの entity_id はセッションごとに振り直すので、保存して次の起動に持ち越せるのは
+/// Master、バス、追加の出力、遅延ノードの間の結線だけである。
+/// @param config 適用中の構成
+/// @return バス、追加の出力、遅延ノードと、Master とそれらの間のセンドだけの構成
+[[nodiscard]] control_protocol::RoutingConfig without_strip_references(
+    control_protocol::RoutingConfig config);
+
 }  // namespace vocroz::session

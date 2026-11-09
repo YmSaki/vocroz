@@ -59,6 +59,9 @@ TEST_F(DiagnosticReportTest, MasksNamesButKeepsOtherSettings) {
     host.session_name = "山田家の合奏";
     host.output_device_id = "speaker-1";
     host.master_gain_db = -6.0;
+    host.routing.buses.push_back(
+        control_protocol::RoutingBus{"bus-1", "山田さんの返し", control_protocol::BusKind::kCue});
+    host.routing.outputs.push_back(control_protocol::RoutingOutput{"out-1", "山田 IEM", 2});
     ASSERT_TRUE(store.save_host(host));
     session::ClientSettings client;
     client.display_name = "Vo. 山田";
@@ -69,6 +72,7 @@ TEST_F(DiagnosticReportTest, MasksNamesButKeepsOtherSettings) {
     EXPECT_TRUE(contains(report, "<masked>"));
     EXPECT_TRUE(contains(report, "speaker-1"));
     EXPECT_TRUE(contains(report, "-6.0"));
+    EXPECT_TRUE(contains(report, "bus-1"));
 }
 
 TEST_F(DiagnosticReportTest, DescribesCorruptedAndMissingSettings) {

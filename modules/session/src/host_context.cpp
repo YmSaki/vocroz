@@ -6,6 +6,7 @@
 
 #include "host_context.h"
 
+#include <algorithm>
 #include <tuple>
 #include <utility>
 
@@ -22,6 +23,15 @@ using cp::ErrorCode;
 using cp::SessionState;
 using state::ConnectionEvent;
 using state::SessionEvent;
+
+// 構成にフェーダーを持つバスかセンドとして entity_id があれば true。
+bool has_route_level(const cp::RoutingConfig& config, const std::string& entity_id) {
+    const auto has = [&](const auto& items) {
+        return std::any_of(items.begin(), items.end(),
+                           [&](const auto& item) { return item.entity_id == entity_id; });
+    };
+    return has(config.buses) || has(config.sends);
+}
 
 }  // namespace
 
@@ -67,6 +77,52 @@ void HostContext::forget_strip_in_routing(const std::string& strip_id) {
         }
     }
     publish_routing();
+}
+
+common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_feedback) {
+    if (auto prepared = routing.prepare_commit(approve_feedback, strip_ids()); !prepared) {
+        return prepared;
+    }
+    const auto& staged = *routing.info().staged;
+    if (!ports.mixer.apply_routing(staged.config, staged.check.needs_approval)) {
+        // ミキサーが受け付けなければ今のグラフのまま音を出し続け、ステージングも残す。
+        log(common::LogLevel::kWarning, "ルーティングをミキサーに適用できませんでした");
+        return common::make_unexpected(ErrorCode::kEngineError);
+    }
+    routing.commit();
+    return {};
+}
+
+void HostContext::restore_routing() {
+    auto restored = without_strip_references(settings.routing);
+    if (restored == cp::RoutingConfig{}) {
+        return;
+    }
+    // 起動時にはストリップがないので、ストリップのない状態で検証する。
+    routing.stage(std::move(restored), {});
+    const auto& check = routing.info().staged->check;
+    if (check.issue) {
+        // 壊れた構成や制限の変わった構成では音を出さない（フェイルセーフ）。既定の結線で起動する。
+        std::ignore = routing.discard();
+        log(common::LogLevel::kWarning,
+            "保存したルーティングに問題があるため、既定の結線で起動します");
+        return;
+    }
+    if (check.needs_approval) {
+        // ループの承認は適用 1 回ごとに求めるので、保存した構成でも自動では適用しない。
+        log(common::LogLevel::kInfo, "保存したルーティングはループの承認を待っています");
+        return;
+    }
+    if (const auto committed = commit_staged_routing(false); !committed) {
+        std::ignore = routing.discard();
+        return;
+    }
+    for (const auto& saved : settings.route_gains) {
+        if (auto* level = routing.find_level(saved.entity_id)) {
+            level->gain_db = clamp_fader(saved.gain_db);
+            ports.mixer.set_route_gain(level->entity_id, level->gain_db);
+        }
+    }
 }
 
 void HostContext::deny(PeerHandle peer, ErrorCode reason) {
@@ -218,6 +274,14 @@ void HostContext::mute_master(cp::MasterMuteReason reason) {
 }
 
 void HostContext::save_settings() {
+    const auto& info = routing.info();
+    settings.routing = without_strip_references(info.applied);
+    settings.route_gains.clear();
+    for (const auto& level : info.levels) {
+        if (has_route_level(settings.routing, level.entity_id)) {
+            settings.route_gains.push_back(SavedRouteGain{level.entity_id, level.gain_db});
+        }
+    }
     if (const auto saved = ports.settings.save_host(settings); !saved) {
         log(common::LogLevel::kWarning, "親機の設定を保存できませんでした");
     }
