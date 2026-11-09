@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// ビルド時に埋め込む pa-engine の設定（apps/pa-engine/CMakeLists.txt の configure_file で生成）。
+#pragma once
+
+namespace vocroz::engine {
+
+/// 招待 URL の基点（ランデブーサーバーの HTTPS の URL）。CMake の VOCROZ_RENDEZVOUS_URL で決める。
+/// 本番のサーバーの置き場所は決まっていないので、既定は空で、招待 URL は基点のない形になる。
+inline constexpr const char* kInviteBaseUrl = "@VOCROZ_RENDEZVOUS_URL@";
+
+}  // namespace vocroz::engine
