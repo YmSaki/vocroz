@@ -31,6 +31,7 @@
 | `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作） |
 | `vocroz/session/ports/capture_control.h` | `CaptureControl`（子機のキャプチャと送信への反映） |
 | `vocroz/session/ports/rendezvous_client.h` | `RendezvousClient`（招待の登録、解決、失効） |
+| `vocroz/session/ports/secret_store.h` | `SecretStore`、`SecretSlot`、`SecretError`（親機と子機の静的秘密鍵の保存。`persistence` が DPAPI で実装する） |
 | `vocroz/session/ports/settings_store.h` | `SettingsStore`（設定の読み込みと保存） |
 | `vocroz/session/ports/secure_random.h` | `SecureRandom`（トークンの生成） |
 | `vocroz/session/ports/ui_event_sink.h` | `UiEventSink`（UI へのメッセージ） |

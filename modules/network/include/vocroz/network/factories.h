@@ -7,10 +7,12 @@
 
 #include <cstdint>
 #include <memory>
+#include <string_view>
 
 #include "vocroz/common/result.h"
 #include "vocroz/network/network_error.h"
 #include "vocroz/network/ports/datagram_listener.h"
+#include "vocroz/network/ports/https_transport.h"
 #include "vocroz/network/ports/network_environment.h"
 #include "vocroz/network/ports/port_mapper.h"
 #include "vocroz/network/ports/udp_endpoint.h"
@@ -38,5 +40,16 @@ namespace vocroz::network {
 /// @param random PCP の nonce に使う乱数。戻り値より長く生きること
 /// スレッド安全性: どのスレッドからも呼び出し可能。戻り値は 1 つのスレッドから使う。
 [[nodiscard]] std::unique_ptr<PortMapper> make_port_mapper(transport::RandomSource& random);
+
+/// WinHTTP でランデブーサーバーの招待 API に POST する HttpsTransport を作る。
+/// HttpsRendezvousClient に渡して使う。TLS の証明書は OS の証明書ストアで検証し、
+/// プロキシは OS の設定に従う。リダイレクトには従わない。
+/// @param base_url ランデブーサーバーの URL（例: "https://vocroz.example"）。形式は
+/// parse_rendezvous_url()
+/// @return トランスポート。URL が正しくなければ kInvalidServerUrl、WinHTTP を初期化できなければ
+///         kHttpsConnectFailed。サーバーへの接続は最初の要求のときに行う
+/// スレッド安全性: どのスレッドからも呼び出し可能。戻り値は 1 つのスレッドから使う。
+[[nodiscard]] common::Result<std::unique_ptr<HttpsTransport>, NetworkError>
+make_winhttp_https_transport(std::string_view base_url);
 
 }  // namespace vocroz::network
