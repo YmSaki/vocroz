@@ -84,3 +84,4 @@ Beta5 では、MIDI で VST3 インストゥルメント（VSTi）を鳴らせ�
 - MIDI デバイスの入力（`device`、JUCE の `MidiInput`）、子機の MIDI のメッセージ（`session/src/wire/`）と時刻の写し方、承認と `LOST` の Panic（`session`）、VSTi のホスト（`plugin-host` の `JucePluginProcessor` が `MidiEvent` を JUCE の `MidiBuffer` に写す）は、この ADR に従って続く PR で加える。
 - ADR-0009 の `MidiInput` ポート（MIDI デバイスの列挙、開閉、抜去の通知）は、`device` の PR で `audio-core` に定義する。デバイスから届いたメッセージは、そのデバイスの `MidiInputQueue` に積む。グラフが取り出す側のポートは `MidiSource` で、`MidiInput` とは役割が違う。
 - MIDI のチャンネルによる振り分けと、MIDI のクロックや SysEx は扱わない。必要になったら ADR を追加する。
+- `plugin-host` の `JucePluginProcessor` は、`MidiEvent` を JUCE の `MidiBuffer` の内部形式（int32 のサンプル位置、uint16 の長さ、本体）で末尾に直接書き足し、`MidiBuffer` の内部形式に依存する。`MidiBuffer::addEvent()` は挿入位置を先頭から線形に探すので件数の 2 乗の時間がかかり、Panic の 2,064 件で約 4.5 ms と、1 ブロック（128 サンプル、約 2.7 ms）を超えるためである。JUCE を更新するときは、`plugin-host` の読み戻しのテスト（`JucePluginProcessorTest.PluginReadsBackTheSameMidiEventsInOrder`）が通ることを確かめる。

@@ -119,7 +119,8 @@ void JucePluginProcessor::add_midi(const audio_core::MidiEvent& event) noexcept 
     // 時間がかかる。Panic の 2,064 件で数ミリ秒になり、1 ブロック（128 サンプル、約 2.7 ms）に
     // 収まらない。イベントは sample_offset の昇順で届くので、末尾に MidiBuffer と同じ形式
     // （サンプル位置、長さ、本体）で直接書き足して、件数に比例する時間にする。
-    // 形式は JUCE の内部の取り決めなので、JUCE を上げたら単体テストの読み戻しで確かめる。
+    // 形式は JUCE の内部の取り決めなので、JUCE を上げたら単体テストの読み戻しで確かめる
+    // （docs/adr/0029-midi-and-vsti.md）。
     const int start = midi_.data.size();
     const auto bytes = static_cast<int>(kMidiEventHeaderBytes + event.size);
     midi_.data.insertMultiple(start, 0, bytes);
