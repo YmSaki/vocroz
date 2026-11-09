@@ -2,7 +2,8 @@
 //
 // HostPeerLinks と PeerReceivePath の単体テスト。受信スレッドとコントロールスレッドの間の
 // 中継（PeerReceiveRelay）の代わりに同じスレッドでそのまま渡し、本物の鍵交換、信頼制御層、
-// Opus、ジッターバッファ、ミキサーを通して、子機の音がストリップから出るまでを確かめる。
+// Opus、ジッターバッファ、ミキサーを通して、子機の音がストリップから出るまでと、返送（Minus-Me）が
+// 子機へ届くまでを確かめる。送信スレッドの代わりに、送信待ちに入ったその場で送る。
 
 #include "host_peer_links.h"
 
@@ -25,6 +26,7 @@
 #include "vocroz/transport/control_lane.h"
 #include "vocroz/transport/media_payload.h"
 #include "vocroz/transport/noise_ik_handshake.h"
+#include "vocroz/transport/opus_frame_decoder.h"
 #include "vocroz/transport/opus_frame_encoder.h"
 #include "vocroz/transport/ports/control_message_listener.h"
 #include "vocroz/transport/reliable_control_channel.h"
@@ -39,6 +41,7 @@
 #include "fakes/fake_udp_endpoint.h"
 #include "peer_event_sink.h"
 #include "peer_receive_path.h"
+#include "peer_send_scheduler.h"
 
 namespace vocroz::engine {
 namespace {
@@ -128,6 +131,32 @@ public:
     std::vector<Signal> signals;
 };
 
+// 送信スレッドの代わりに、送信待ちに入ったその場で送る。送ったデータグラムを決定的に確かめるため。
+class InlineSendWorker final : public PeerSendWorker {
+public:
+    void notify() noexcept VOCROZ_NONBLOCKING override {
+        if (sender_ != nullptr) {
+            sender_->pump();
+        }
+    }
+    void start(tp::PeerPacketSender& sender) override {
+        sender_ = &sender;
+    }
+    void stop() override {
+        sender_ = nullptr;
+    }
+
+private:
+    tp::PeerPacketSender* sender_ = nullptr;
+};
+
+class InlineSendScheduler final : public PeerSendScheduler {
+public:
+    std::unique_ptr<PeerSendWorker> create() override {
+        return std::make_unique<InlineSendWorker>();
+    }
+};
+
 class NullRendezvousListener final : public net::HostRendezvousListener {
 public:
     void on_rendezvous_available() override {}
@@ -151,6 +180,9 @@ public:
             EXPECT_TRUE(encoder);
             encoders_[channels - 1].emplace(std::move(encoder).value());
         }
+        auto decoder = tp::OpusFrameDecoder::create(1);
+        EXPECT_TRUE(decoder);
+        decoder_.emplace(std::move(decoder).value());
     }
 
     // 親機の応答を読み、暗号化セッションを確立する。
@@ -212,13 +244,30 @@ public:
         return packet;
     }
 
-    // 親機から届いたパケットを復号し、制御メッセージを取り出す。
+    // 親機から届いたパケットを復号し、制御メッセージを取り出すか、返送のメディアをデコードする。
     void receive(std::span<const std::uint8_t> packet) {
         std::vector<std::uint8_t> plaintext(tp::kMaxPacketBytes);
         const auto opened = channel_->opener.open(packet, plaintext);
-        if (opened && opened.value().type == tp::PacketType::kControl) {
-            static_cast<void>(control_.on_control_packet(opened.value().plaintext));
+        if (!opened) {
+            return;
         }
+        if (opened.value().type == tp::PacketType::kControl) {
+            static_cast<void>(control_.on_control_packet(opened.value().plaintext));
+            return;
+        }
+        const auto media = tp::decode_media_payload(opened.value().plaintext);
+        ASSERT_TRUE(media);
+        // Opus の最長のフレーム（120ms）でも収まる長さ。
+        std::vector<float> pcm(tp::kSampleRate / 8);
+        const auto decoded = decoder_->decode(media.value().opus_payload, pcm);
+        ASSERT_TRUE(decoded);
+        float peak = 0.0F;
+        for (std::size_t i = 0; i < decoded.value(); ++i) {
+            peak = std::max(peak, std::abs(pcm[i]));
+        }
+        returns.push_back(ReturnFrame{.stream_id = media.value().stream_id,
+                                      .mute_epoch = media.value().mute_epoch,
+                                      .peak = peak});
     }
 
     void on_control_message(tp::ControlLane /*lane*/,
@@ -226,8 +275,16 @@ public:
         received.emplace_back(message.begin(), message.end());
     }
 
+    // 親機から届いた返送の 1 フレーム。
+    struct ReturnFrame {
+        std::uint16_t stream_id = 0;
+        std::uint32_t mute_epoch = 0;
+        float peak = 0.0F;  // デコードした音の最大の絶対値
+    };
+
     std::vector<std::uint8_t> initiation;
     std::vector<std::vector<std::uint8_t>> received;
+    std::vector<ReturnFrame> returns;
 
 private:
     std::vector<std::uint8_t> seal_control(std::span<const std::uint8_t> plaintext) {
@@ -242,6 +299,7 @@ private:
     std::optional<tp::NoiseIkHandshake> handshake_;
     std::optional<tp::SecureChannel> channel_;
     std::array<std::optional<tp::OpusFrameEncoder>, 2> encoders_;
+    std::optional<tp::OpusFrameDecoder> decoder_;
     std::uint64_t timestamp_ = 0;
     std::size_t phase_ = 0;
 };
@@ -256,7 +314,7 @@ protected:
           midi_inbox_(clock_),
           rendezvous_(endpoint_, random_, rendezvous_listener_),
           links_(HostPeerLinks::Ports{endpoint_, path_, engine_mixer_, midi_inbox_, rendezvous_,
-                                      events_, host_keys_, clock_, logger_},
+                                      events_, host_keys_, clock_, logger_, sending_},
                  tp::PlayoutConfig{}) {
         relay_.target = &links_;
     }
@@ -330,6 +388,17 @@ protected:
         return peak;
     }
 
+    // 親機が address へ送ったデータグラムを client に届け、送った記録から取り除く。
+    void forward_to(TestClient& client, const net::UdpAddress& address) {
+        std::erase_if(endpoint_.sent, [&](const net::FakeUdpEndpoint::Sent& sent) {
+            if (sent.to != address) {
+                return false;
+            }
+            client.receive(sent.datagram);
+            return true;
+        });
+    }
+
     // ミキサーを frames サンプルぶん描画し、L の最大の絶対値を返す。
     float render_peak(std::size_t frames) {
         std::vector<float> out(frames * 2, 0.0F);
@@ -348,6 +417,7 @@ protected:
     tp::FakeRandomSource random_;
     NullRendezvousListener rendezvous_listener_;
     RecordingEvents events_;
+    InlineSendScheduler sending_;
     tp::StaticKeyPair host_keys_;
     DirectRelay relay_;
     PeerReceivePath path_;
@@ -604,6 +674,86 @@ TEST_F(HostPeerLinksTest, ReplacingRoutesMovesStreamAndReportsEstablishedOnce) {
     engine_mixer_.set_channel_muted("ch-1", true);
     engine_mixer_.set_channel_muted("ch-2", false);
     EXPECT_GT(stream_for_a_while(*client, 0, 1), 0.05F);
+}
+
+TEST_F(HostPeerLinksTest, ReturnIsNotSentWhileMuted) {
+    auto singer = make_client();
+    auto other = make_client();
+    const auto singer_peer = connect(*singer);
+    const auto other_peer = connect(*other, kOtherPath);
+    admit_audible(singer_peer, "ch-1");
+    admit_audible(other_peer, "ch-2");
+    links_.apply_send_mute(other_peer, false, 1);
+    // 返送は初期値でミュートなので、session が解くまで何も送らない。
+    for (int i = 0; i < 40; ++i) {
+        deliver(kOtherPath, other->media_packet(1));
+        static_cast<void>(render_peak(tp::kSampleRate / 200));
+    }
+    forward_to(*singer, kClientAddress);
+    EXPECT_TRUE(singer->returns.empty());
+}
+
+TEST_F(HostPeerLinksTest, ReturnCarriesOthersWithTheNewEpoch) {
+    auto singer = make_client();
+    auto other = make_client();
+    const auto singer_peer = connect(*singer);
+    const auto other_peer = connect(*other, kOtherPath);
+    admit_audible(singer_peer, "ch-1");
+    admit_audible(other_peer, "ch-2");
+    links_.apply_send_mute(other_peer, false, 1);
+    links_.set_return_mute(singer_peer, false, 3);
+    for (int i = 0; i < 40; ++i) {
+        deliver(kOtherPath, other->media_packet(1));
+        static_cast<void>(render_peak(tp::kSampleRate / 200));
+    }
+    forward_to(*singer, kClientAddress);
+    ASSERT_FALSE(singer->returns.empty());
+    float peak = 0.0F;
+    for (const auto& frame : singer->returns) {
+        EXPECT_EQ(frame.stream_id, tp::kReturnStreamId);
+        EXPECT_EQ(frame.mute_epoch, 3U);
+        peak = std::max(peak, frame.peak);
+    }
+    EXPECT_GT(peak, 0.05F);
+}
+
+TEST_F(HostPeerLinksTest, ReturnExcludesTheClientsOwnVoice) {
+    auto singer = make_client();
+    const auto singer_peer = connect(*singer);
+    admit_audible(singer_peer, "ch-1");
+    links_.apply_send_mute(singer_peer, false, 1);
+    links_.set_return_mute(singer_peer, false, 1);
+    float heard_on_master = 0.0F;
+    for (int i = 0; i < 40; ++i) {
+        deliver(kClientAddress, singer->media_packet(1));
+        heard_on_master = std::max(heard_on_master, render_peak(tp::kSampleRate / 200));
+    }
+    forward_to(*singer, kClientAddress);
+    // 親機では聞こえているが、本人への返送には入っていない（無音のフレームだけが届く）。
+    EXPECT_GT(heard_on_master, 0.05F);
+    ASSERT_FALSE(singer->returns.empty());
+    for (const auto& frame : singer->returns) {
+        EXPECT_LT(frame.peak, 0.001F);
+    }
+}
+
+TEST_F(HostPeerLinksTest, ClosedConnectionStopsReturn) {
+    auto singer = make_client();
+    auto other = make_client();
+    const auto singer_peer = connect(*singer);
+    const auto other_peer = connect(*other, kOtherPath);
+    admit_audible(singer_peer, "ch-1");
+    admit_audible(other_peer, "ch-2");
+    links_.apply_send_mute(other_peer, false, 1);
+    links_.set_return_mute(singer_peer, false, 1);
+    links_.close(singer_peer);
+    endpoint_.sent.clear();
+    for (int i = 0; i < 20; ++i) {
+        deliver(kOtherPath, other->media_packet(1));
+        static_cast<void>(render_peak(tp::kSampleRate / 200));
+    }
+    forward_to(*singer, kClientAddress);
+    EXPECT_TRUE(singer->returns.empty());
 }
 
 TEST_F(HostPeerLinksTest, DoesNotWakeReceiveThreadWithoutConnections) {

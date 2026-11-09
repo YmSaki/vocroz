@@ -8,7 +8,7 @@
 
 | ヘッダー | 内容 | 呼ぶスレッド |
 | --- | --- | --- |
-| `vocroz/transport/constants.h` | パケットの最大長（1232 バイト）、鍵の長さ、`kSampleRate`、`FrameDuration`、`frame_samples()`、`kMaxOpusPayloadBytes` | — |
+| `vocroz/transport/constants.h` | パケットの最大長（1232 バイト）、鍵の長さ、`kSampleRate`、`FrameDuration`、`frame_samples()`、`kMaxOpusPayloadBytes`、`kReturnStreamId`（返送の下りストリーム ID） | — |
 | `vocroz/transport/transport_error.h` | `TransportError`（破棄や失敗の原因） | — |
 | `vocroz/transport/packet_header.h` | `PacketType`、`PacketHeader`、`parse_packet_header()`（復号前に接続 ID で届け先を選ぶ） | どこからでも（ヒープ確保なし） |
 | `vocroz/transport/media_payload.h` | `MediaPayload`（ストリーム ID、48kHz タイムスタンプ、ミュート epoch、Opus）、`decode_media_payload()` | どこからでも（ヒープ確保なし） |
@@ -29,8 +29,10 @@
 | `vocroz/transport/liveness_monitor.h` | `LivenessMonitor`（5 秒の受信途絶と再開の判定） | 記録はネットワーク受信（ヒープ確保、ロックなし）、判定はコントロール |
 | `vocroz/transport/reconnect_backoff.h` | `ReconnectBackoff`、`reconnect_delay()`（1、2、4、8、15 秒、±20% のジッター） | コントロール |
 | `vocroz/transport/secure_control_packet_sink.h` | `SecureControlPacketSink`（制御パケットの平文を暗号化して `DatagramSocket` で送る） | sealer を使うスレッド |
+| `vocroz/transport/peer_packet_sender.h` | `PeerPacketSender`（1 つの接続の送信方向。制御パケットの平文とエンコード済みのフレームを SPSC キューで受け取り、`pump()` で暗号化して送る） | 積むのはコントロールとオーディオスレッド、`pump()` は送信スレッド |
+| `vocroz/transport/send_wakeup.h` | `SendWakeup`（`SendNotifier` の実装。送信スレッドを合図で起こす） | `notify()` はどこからでも、`wait()` は送信スレッド |
 | `vocroz/transport/crypto_random_source.h` | `CryptoRandomSource`（libsodium による `RandomSource`） | どこからでも |
-| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`、`MediaFrameSink`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | 各ヘッダーの説明のとおり |
+| `vocroz/transport/ports/` | `DatagramSocket`、`ControlPacketSink`、`RandomSource`、`MediaFrameSink`、`SendNotifier`（ポート）、`ControlMessageListener`、`LivenessListener`（リスナー） | 各ヘッダーの説明のとおり |
 
 ### 使い方
 

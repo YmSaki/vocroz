@@ -20,6 +20,7 @@ target_sources(vocroz_transport PRIVATE
   src/noise_ik_handshake.cpp
   src/opus_frame_decoder.cpp
   src/opus_frame_encoder.cpp
+  src/peer_packet_sender.cpp
   src/playout_stream.cpp
   src/reconnect_backoff.cpp
   src/reliable_control_channel.cpp
@@ -67,12 +68,14 @@ if(VOCROZ_BUILD_TESTS)
     tests/opus_frame_decoder_test.cpp
     tests/opus_frame_encoder_test.cpp
     tests/packet_header_test.cpp
+    tests/peer_packet_sender_test.cpp
     tests/playout_stream_test.cpp
     tests/reconnect_backoff_test.cpp
     tests/reliable_control_channel_test.cpp
     tests/secure_channel_test.cpp
     tests/secure_control_packet_sink_test.cpp
     tests/send_mute_tracker_test.cpp
+    tests/send_wakeup_test.cpp
     tests/signal_monitor_test.cpp
     tests/signal_state_machine_test.cpp
     tests/static_key_pair_test.cpp)
