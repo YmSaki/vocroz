@@ -133,7 +133,122 @@
           "name": "Tp 渡辺",
           "short_id": "#08"
         }
-      ]
+      ],
+      "routing": {
+        "entity_id": "routing",
+        "revision": 5,
+        "applied": {
+          "buses": [
+            {
+              "entity_id": "bus-cue1",
+              "name": "返し 1",
+              "kind": "CUE"
+            },
+            {
+              "entity_id": "bus-fx",
+              "name": "リバーブ",
+              "kind": "USER"
+            }
+          ],
+          "outputs": [
+            {
+              "entity_id": "out-mon",
+              "name": "モニター",
+              "device_channel": 2
+            }
+          ],
+          "sends": [
+            {
+              "entity_id": "send-1",
+              "from": "ch1",
+              "to": "bus-cue1",
+              "tap": "PRE_FADER"
+            },
+            {
+              "entity_id": "send-2",
+              "from": "bus-cue1",
+              "to": "out-mon",
+              "tap": "POST_FADER"
+            },
+            {
+              "entity_id": "send-3",
+              "from": "master",
+              "to": "delay-echo",
+              "tap": "POST_FADER"
+            },
+            {
+              "entity_id": "send-4",
+              "from": "delay-echo",
+              "to": "bus-fx",
+              "tap": "POST_FADER"
+            },
+            {
+              "entity_id": "send-5",
+              "from": "bus-fx",
+              "to": "master",
+              "tap": "POST_FADER"
+            }
+          ],
+          "delays": [
+            {
+              "entity_id": "delay-echo",
+              "delay_ms": 250.0
+            }
+          ],
+          "input_delays": [
+            {
+              "strip_id": "ch2",
+              "delay_ms": 12.5
+            }
+          ]
+        },
+        "feedback_approved": true,
+        "staged": null,
+        "levels": [
+          {
+            "entity_id": "bus-cue1",
+            "revision": 1,
+            "gain_db": 0.0,
+            "muted": true
+          },
+          {
+            "entity_id": "bus-fx",
+            "revision": 1,
+            "gain_db": 0.0,
+            "muted": true
+          },
+          {
+            "entity_id": "send-1",
+            "revision": 1,
+            "gain_db": null,
+            "muted": true
+          },
+          {
+            "entity_id": "send-2",
+            "revision": 1,
+            "gain_db": 0.0,
+            "muted": true
+          },
+          {
+            "entity_id": "send-3",
+            "revision": 1,
+            "gain_db": 0.0,
+            "muted": true
+          },
+          {
+            "entity_id": "send-4",
+            "revision": 1,
+            "gain_db": 0.0,
+            "muted": true
+          },
+          {
+            "entity_id": "send-5",
+            "revision": 1,
+            "gain_db": 0.0,
+            "muted": true
+          }
+        ]
+      }
     }
   },
   {
@@ -158,7 +273,21 @@
         "master_muted": true,
         "master_mute_reason": "OPERATOR"
       },
-      "pending": []
+      "pending": [],
+      "routing": {
+        "entity_id": "routing",
+        "revision": 1,
+        "applied": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "feedback_approved": false,
+        "staged": null,
+        "levels": []
+      }
     }
   },
   {
@@ -451,6 +580,414 @@
       "input_missing": false,
       "send_muted": true,
       "send_level_db": 0.0
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 4,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [
+            {
+              "entity_id": "bus-cue1",
+              "name": "返し 1",
+              "kind": "CUE"
+            },
+            {
+              "entity_id": "bus-fx",
+              "name": "リバーブ",
+              "kind": "USER"
+            }
+          ],
+          "outputs": [
+            {
+              "entity_id": "out-mon",
+              "name": "モニター",
+              "device_channel": 2
+            }
+          ],
+          "sends": [
+            {
+              "entity_id": "send-1",
+              "from": "ch1",
+              "to": "bus-cue1",
+              "tap": "PRE_FADER"
+            },
+            {
+              "entity_id": "send-2",
+              "from": "bus-cue1",
+              "to": "out-mon",
+              "tap": "POST_FADER"
+            },
+            {
+              "entity_id": "send-3",
+              "from": "master",
+              "to": "delay-echo",
+              "tap": "POST_FADER"
+            },
+            {
+              "entity_id": "send-4",
+              "from": "delay-echo",
+              "to": "bus-fx",
+              "tap": "POST_FADER"
+            },
+            {
+              "entity_id": "send-5",
+              "from": "bus-fx",
+              "to": "master",
+              "tap": "POST_FADER"
+            }
+          ],
+          "delays": [
+            {
+              "entity_id": "delay-echo",
+              "delay_ms": 250.0
+            }
+          ],
+          "input_delays": [
+            {
+              "strip_id": "ch2",
+              "delay_ms": 12.5
+            }
+          ]
+        },
+        "check": {
+          "issue": null,
+          "issue_entity_id": null,
+          "looped_entity_ids": ["bus-fx", "delay-echo", "master"],
+          "needs_approval": true
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 6,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "INVALID_ID",
+          "issue_entity_id": "fx",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 7,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "DUPLICATE_ID",
+          "issue_entity_id": "bus-fx",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 8,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "TOO_MANY_ITEMS",
+          "issue_entity_id": null,
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 9,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "UNKNOWN_NODE",
+          "issue_entity_id": "send-9",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 10,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "INVALID_SEND",
+          "issue_entity_id": "send-2",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 11,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "INVALID_SEND_TAP",
+          "issue_entity_id": "send-3",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 12,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "DELAY_OUT_OF_RANGE",
+          "issue_entity_id": "delay-echo",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 13,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "OUTPUT_CHANNEL_OUT_OF_RANGE",
+          "issue_entity_id": "out-mon",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 14,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "OVERLAPPING_OUTPUTS",
+          "issue_entity_id": "out-mon",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 15,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": []
+        },
+        "check": {
+          "issue": "UNDELAYED_LOOP",
+          "issue_entity_id": "bus-fx",
+          "looped_entity_ids": ["bus-fx", "master"],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "route_level_updated",
+    "level": {
+      "entity_id": "send-1",
+      "revision": 2,
+      "gain_db": -6.0,
+      "muted": false
     }
   },
   {

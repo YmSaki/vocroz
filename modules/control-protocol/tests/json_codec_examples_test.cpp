@@ -83,6 +83,23 @@ public:
         see(client.failure_code);
     }
 
+    void see(const RoutingConfig& config) {
+        for (const auto& bus : config.buses) {
+            see(bus.kind);
+        }
+        for (const auto& send : config.sends) {
+            see(send.tap);
+        }
+    }
+
+    void see(const RoutingInfo& routing) {
+        see(routing.applied);
+        if (routing.staged) {
+            see(routing.staged->config);
+            see(routing.staged->check.issue);
+        }
+    }
+
 private:
     std::map<std::string, std::set<int>> seen_;
 };
@@ -122,6 +139,9 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
                         coverage.see(channel);
                     }
                     coverage.see(event.snapshot.master);
+                    coverage.see(event.snapshot.routing);
+                } else if constexpr (std::is_same_v<T, RoutingUpdated>) {
+                    coverage.see(event.routing);
                 } else if constexpr (std::is_same_v<T, ClientSnapshotEvent>) {
                     coverage.see(event.snapshot);
                 } else if constexpr (std::is_same_v<T, SessionUpdated>) {
@@ -151,6 +171,9 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
     EXPECT_TRUE(coverage.covers_all_up_to(ClientState::kFailed));
     EXPECT_TRUE(coverage.covers_all_up_to(ErrorCode::kEngineError));
     EXPECT_TRUE(coverage.covers_all_up_to(NoticeSeverity::kWarning));
+    EXPECT_TRUE(coverage.covers_all_up_to(BusKind::kCue));
+    EXPECT_TRUE(coverage.covers_all_up_to(SendTap::kPreFader));
+    EXPECT_TRUE(coverage.covers_all_up_to(RoutingIssue::kUndelayedLoop));
 }
 
 }  // namespace

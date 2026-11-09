@@ -13,6 +13,149 @@
 namespace vocroz::control_protocol::wire {
 namespace {
 
+// 無名名前空間の write_json() が公開の write_json() を隠さないようにする。
+using wire::write_json;
+
+// ルーティングの構成の要素は構成の中でだけ使うので、公開せずにここで変換する。
+
+nlohmann::json write_json(const RoutingBus& bus) {
+    return {
+        {"entity_id", bus.entity_id},
+        {"name", bus.name},
+        {"kind", enum_json(bus.kind)},
+    };
+}
+
+common::Result<RoutingBus, DecodeError> read_routing_bus(const nlohmann::json& value) {
+    return read_object<RoutingBus>(value, [](ObjectReader& r) {
+        RoutingBus bus;
+        bus.entity_id = r.text("entity_id", kIdentifierRule);
+        bus.name = r.text("name", kTextRule);
+        bus.kind = r.enumeration<BusKind>("kind");
+        return bus;
+    });
+}
+
+nlohmann::json write_json(const RoutingOutput& output) {
+    return {
+        {"entity_id", output.entity_id},
+        {"name", output.name},
+        {"device_channel", output.device_channel},
+    };
+}
+
+common::Result<RoutingOutput, DecodeError> read_routing_output(const nlohmann::json& value) {
+    return read_object<RoutingOutput>(value, [](ObjectReader& r) {
+        RoutingOutput output;
+        output.entity_id = r.text("entity_id", kIdentifierRule);
+        output.name = r.text("name", kTextRule);
+        // チャンネル数の上限は出力デバイスとミキサーの知識なので、範囲は session が確かめる。
+        output.device_channel = r.counter("device_channel");
+        return output;
+    });
+}
+
+nlohmann::json write_json(const RoutingSend& send) {
+    return {
+        {"entity_id", send.entity_id},
+        {"from", send.from},
+        {"to", send.to},
+        {"tap", enum_json(send.tap)},
+    };
+}
+
+common::Result<RoutingSend, DecodeError> read_routing_send(const nlohmann::json& value) {
+    return read_object<RoutingSend>(value, [](ObjectReader& r) {
+        RoutingSend send;
+        send.entity_id = r.text("entity_id", kIdentifierRule);
+        send.from = r.text("from", kIdentifierRule);
+        send.to = r.text("to", kIdentifierRule);
+        send.tap = r.enumeration<SendTap>("tap");
+        return send;
+    });
+}
+
+nlohmann::json write_json(const RoutingDelay& delay) {
+    return {
+        {"entity_id", delay.entity_id},
+        {"delay_ms", delay.delay_ms},
+    };
+}
+
+common::Result<RoutingDelay, DecodeError> read_routing_delay(const nlohmann::json& value) {
+    return read_object<RoutingDelay>(value, [](ObjectReader& r) {
+        RoutingDelay delay;
+        delay.entity_id = r.text("entity_id", kIdentifierRule);
+        delay.delay_ms = r.number("delay_ms", 0.0, kMaxRoutingDelayMs);
+        return delay;
+    });
+}
+
+nlohmann::json write_json(const InputDelay& delay) {
+    return {
+        {"strip_id", delay.strip_id},
+        {"delay_ms", delay.delay_ms},
+    };
+}
+
+common::Result<InputDelay, DecodeError> read_input_delay(const nlohmann::json& value) {
+    return read_object<InputDelay>(value, [](ObjectReader& r) {
+        InputDelay delay;
+        delay.strip_id = r.text("strip_id", kIdentifierRule);
+        delay.delay_ms = r.number("delay_ms", 0.0, kMaxRoutingDelayMs);
+        return delay;
+    });
+}
+
+/// entity_id の文字列を 1 つ読む（配列の要素）。
+common::Result<std::string, DecodeError> read_identifier(const nlohmann::json& value) {
+    if (!value.is_string()) {
+        return common::make_unexpected(DecodeError{DecodeErrorCode::kWrongType, {}});
+    }
+    const auto& text = value.get_ref<const std::string&>();
+    if (!satisfies(text, kIdentifierRule)) {
+        return common::make_unexpected(DecodeError{DecodeErrorCode::kOutOfRange, {}});
+    }
+    return text;
+}
+
+nlohmann::json write_json(const RoutingCheck& check) {
+    return {
+        {"issue", enum_json(check.issue)},
+        {"issue_entity_id", nullable(check.issue_entity_id)},
+        {"looped_entity_ids", check.looped_entity_ids},
+        {"needs_approval", check.needs_approval},
+    };
+}
+
+common::Result<RoutingCheck, DecodeError> read_routing_check(const nlohmann::json& value) {
+    return read_object<RoutingCheck>(value, [](ObjectReader& r) {
+        RoutingCheck check;
+        check.issue = r.nullable_enumeration<RoutingIssue>("issue");
+        check.issue_entity_id = r.nullable_text("issue_entity_id", kIdentifierRule);
+        check.looped_entity_ids = r.list<std::string>("looped_entity_ids", read_identifier);
+        check.needs_approval = r.boolean("needs_approval");
+        return check;
+    });
+}
+
+nlohmann::json write_json(const StagedRouting& staged) {
+    return {
+        {"config", write_json(staged.config)},
+        {"check", write_json(staged.check)},
+    };
+}
+
+common::Result<StagedRouting, DecodeError> read_staged_routing(const nlohmann::json& value) {
+    return read_object<StagedRouting>(value, [](ObjectReader& r) {
+        StagedRouting staged;
+        staged.config = r.nested<RoutingConfig>("config", read_routing_config);
+        staged.check = r.nested<RoutingCheck>("check", read_routing_check);
+        return staged;
+    });
+}
+
+// 要素の write_json() より後に置き、配列の要素の型の write_json() を見つけられるようにする。
 /// DTO の配列を JSON の配列にする。
 template <typename T>
 nlohmann::json write_array(const std::vector<T>& items) {
@@ -136,12 +279,77 @@ common::Result<PendingParticipant, DecodeError> read_pending_participant(
     });
 }
 
+nlohmann::json write_json(const RoutingConfig& config) {
+    return {
+        {"buses", write_array(config.buses)},
+        {"outputs", write_array(config.outputs)},
+        {"sends", write_array(config.sends)},
+        {"delays", write_array(config.delays)},
+        {"input_delays", write_array(config.input_delays)},
+    };
+}
+
+common::Result<RoutingConfig, DecodeError> read_routing_config(const nlohmann::json& value) {
+    return read_object<RoutingConfig>(value, [](ObjectReader& r) {
+        RoutingConfig config;
+        config.buses = r.list<RoutingBus>("buses", read_routing_bus);
+        config.outputs = r.list<RoutingOutput>("outputs", read_routing_output);
+        config.sends = r.list<RoutingSend>("sends", read_routing_send);
+        config.delays = r.list<RoutingDelay>("delays", read_routing_delay);
+        config.input_delays = r.list<InputDelay>("input_delays", read_input_delay);
+        return config;
+    });
+}
+
+nlohmann::json write_json(const RouteLevel& level) {
+    return {
+        {"entity_id", level.entity_id},
+        {"revision", level.revision},
+        {"gain_db", nullable(level.gain_db)},
+        {"muted", level.muted},
+    };
+}
+
+common::Result<RouteLevel, DecodeError> read_route_level(const nlohmann::json& value) {
+    return read_object<RouteLevel>(value, [](ObjectReader& r) {
+        RouteLevel level;
+        level.entity_id = r.text("entity_id", kIdentifierRule);
+        level.revision = r.counter("revision");
+        level.gain_db = r.gain("gain_db");
+        level.muted = r.boolean("muted");
+        return level;
+    });
+}
+
+nlohmann::json write_json(const RoutingInfo& routing) {
+    return {
+        {"entity_id", routing.entity_id},
+        {"revision", routing.revision},
+        {"applied", write_json(routing.applied)},
+        {"feedback_approved", routing.feedback_approved},
+        {"staged", routing.staged ? write_json(*routing.staged) : nlohmann::json(nullptr)},
+        {"levels", write_array(routing.levels)},
+    };
+}
+
+common::Result<RoutingInfo, DecodeError> read_routing_info(const nlohmann::json& value) {
+    return read_object<RoutingInfo>(value, [](ObjectReader& r) {
+        RoutingInfo routing;
+        routing.entity_id = r.text("entity_id", kIdentifierRule);
+        routing.revision = r.counter("revision");
+        routing.applied = r.nested<RoutingConfig>("applied", read_routing_config);
+        routing.feedback_approved = r.boolean("feedback_approved");
+        routing.staged = r.nullable_nested<StagedRouting>("staged", read_staged_routing);
+        routing.levels = r.list<RouteLevel>("levels", read_route_level);
+        return routing;
+    });
+}
+
 nlohmann::json write_json(const MixerSnapshot& snapshot) {
     return {
-        {"session", write_json(snapshot.session)},
-        {"channels", write_array(snapshot.channels)},
-        {"master", write_json(snapshot.master)},
-        {"pending", write_array(snapshot.pending)},
+        {"session", write_json(snapshot.session)}, {"channels", write_array(snapshot.channels)},
+        {"master", write_json(snapshot.master)},   {"pending", write_array(snapshot.pending)},
+        {"routing", write_json(snapshot.routing)},
     };
 }
 
@@ -152,6 +360,7 @@ common::Result<MixerSnapshot, DecodeError> read_mixer_snapshot(const nlohmann::j
         snapshot.channels = r.list<ChannelStrip>("channels", read_channel_strip);
         snapshot.master = r.nested<MasterStrip>("master", read_master_strip);
         snapshot.pending = r.list<PendingParticipant>("pending", read_pending_participant);
+        snapshot.routing = r.nested<RoutingInfo>("routing", read_routing_info);
         return snapshot;
     });
 }

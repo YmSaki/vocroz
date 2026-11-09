@@ -31,6 +31,8 @@ export class ClientStore extends Store<ClientViewState> {
       case "channel_removed":
       case "master_updated":
       case "pending_updated":
+      case "routing_updated":
+      case "route_level_updated":
       case "ack":
       case "reject":
       case "gain_ack":

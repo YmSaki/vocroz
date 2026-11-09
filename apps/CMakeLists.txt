@@ -5,6 +5,7 @@
 #   pa-engine  : 親機の音声エンジン（セッション・音声の状態をすべて保持する）
 #   pa-updater : セッションがないときだけ動く短命の更新プロセス
 #   vocroz     : 現行版の remote-pa を起動する起動スタブ（Windows だけ）
+#   pa-plugin-scanner : pa-engine が起動する VST3 のスキャン用ヘルパー（JUCE があるときだけ）
 
 # 実行ファイルを作り、--version のスモークテストを登録する。
 #   vocroz_add_app(<target> <output_name> <source>...)
@@ -25,6 +26,7 @@ add_subdirectory(pa-desktop)
 add_subdirectory(pa-engine)
 add_subdirectory(updater)
 add_subdirectory(launcher)
+add_subdirectory(plugin-scanner)
 
 # VC++ ランタイムを、バージョン別フォルダと起動スタブの隣に同梱する（app-local 配置）。
 # 管理者権限の要る再頒布パッケージを使わず、ユーザー単位の導入のままにするため。

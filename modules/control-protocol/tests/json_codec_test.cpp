@@ -293,6 +293,111 @@ TEST(JsonCodecTest, RejectsInvalidEngineMessages) {
         (DecodeError{DecodeErrorCode::kUnknownType, "type"}));
 }
 
+/// 正しい stage_routing。テストごとに config の 1 か所だけ壊して使う。
+nlohmann::json valid_stage_routing() {
+    return {
+        {"type", "stage_routing"},
+        {"request_id", "r1"},
+        {"entity_id", "routing"},
+        {"expected_revision", 1},
+        {"config",
+         {{"buses", {{{"entity_id", "bus-cue"}, {"name", "返し"}, {"kind", "CUE"}}}},
+          {"outputs", nlohmann::json::array()},
+          {"sends",
+           {{{"entity_id", "send-1"}, {"from", "ch1"}, {"to", "bus-cue"}, {"tap", "PRE_FADER"}}}},
+          {"delays", {{{"entity_id", "delay-1"}, {"delay_ms", 100.0}}}},
+          {"input_delays", {{{"strip_id", "ch1"}, {"delay_ms", 0}}}}}}};
+}
+
+TEST(JsonCodecTest, DecodesStageRouting) {
+    const auto result = decode_ui_to_engine(valid_stage_routing().dump());
+    ASSERT_TRUE(result) << result.error().field;
+    const auto& command = std::get<DiscreteCommand>(result.value());
+    const auto& config = std::get<StageRouting>(command.body).config;
+    ASSERT_EQ(config.sends.size(), 1U);
+    EXPECT_EQ(config.sends[0], (RoutingSend{"send-1", "ch1", "bus-cue", SendTap::kPreFader}));
+    EXPECT_EQ(config.buses[0].kind, BusKind::kCue);
+    EXPECT_EQ(config.delays[0].delay_ms, 100.0);
+}
+
+TEST(JsonCodecTest, RejectsInvalidRoutingConfig) {
+    auto message = valid_stage_routing();
+    message["config"]["delays"][0]["delay_ms"] = kMaxRoutingDelayMs + 1;
+    EXPECT_EQ(ui_error(message),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.delays.delay_ms"}));
+
+    message = valid_stage_routing();
+    message["config"]["input_delays"][0]["delay_ms"] = -1;
+    EXPECT_EQ(ui_error(message),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.input_delays.delay_ms"}));
+
+    message = valid_stage_routing();
+    message["config"]["sends"][0]["tap"] = "pre";
+    EXPECT_EQ(ui_error(message), (DecodeError{DecodeErrorCode::kOutOfRange, "config.sends.tap"}));
+
+    message = valid_stage_routing();
+    message["config"]["sends"][0]["level"] = 0;
+    EXPECT_EQ(ui_error(message),
+              (DecodeError{DecodeErrorCode::kUnknownField, "config.sends.level"}));
+
+    message = valid_stage_routing();
+    message["config"]["buses"][0]["entity_id"] = "bus cue";
+    EXPECT_EQ(ui_error(message),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.buses.entity_id"}));
+
+    message = valid_stage_routing();
+    message["config"].erase("outputs");
+    EXPECT_EQ(ui_error(message), (DecodeError{DecodeErrorCode::kMissingField, "config.outputs"}));
+
+    message = valid_stage_routing();
+    message["config"]["outputs"] = {
+        {{"entity_id", "out-1"}, {"name", "Mon"}, {"device_channel", -2}}};
+    EXPECT_EQ(ui_error(message),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.outputs.device_channel"}));
+}
+
+TEST(JsonCodecTest, RoundTripsRoutingWithoutStagedConfig) {
+    RoutingInfo routing;
+    routing.entity_id = "routing";
+    routing.revision = 2;
+    routing.levels.push_back(RouteLevel{"bus-1", 1, std::nullopt, true});
+    const EngineToUiMessage message = RoutingUpdated{routing};
+    const auto json = nlohmann::json::parse(encode_engine_to_ui(message));
+    EXPECT_TRUE(json["routing"]["staged"].is_null());
+    EXPECT_TRUE(json["routing"]["levels"][0]["gain_db"].is_null());
+    const auto decoded = decode_engine_to_ui(json.dump());
+    ASSERT_TRUE(decoded);
+    EXPECT_EQ(decoded.value(), message);
+}
+
+TEST(JsonCodecTest, RejectsInvalidRoutingCheck) {
+    nlohmann::json routing = {
+        {"entity_id", "routing"},
+        {"revision", 1},
+        {"applied",
+         {{"buses", nlohmann::json::array()},
+          {"outputs", nlohmann::json::array()},
+          {"sends", nlohmann::json::array()},
+          {"delays", nlohmann::json::array()},
+          {"input_delays", nlohmann::json::array()}}},
+        {"feedback_approved", false},
+        {"levels", nlohmann::json::array()},
+    };
+    routing["staged"] = {{"config", routing["applied"]},
+                         {"check",
+                          {{"issue", "LOOP"},
+                           {"issue_entity_id", nullptr},
+                           {"looped_entity_ids", nlohmann::json::array()},
+                           {"needs_approval", false}}}};
+    EXPECT_EQ(engine_error({{"type", "routing_updated"}, {"routing", routing}}),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "routing.staged.check.issue"}));
+
+    routing["staged"]["check"]["issue"] = nullptr;
+    routing["staged"]["check"]["looped_entity_ids"] = {1};
+    EXPECT_EQ(engine_error({{"type", "routing_updated"}, {"routing", routing}}),
+              (DecodeError{DecodeErrorCode::kWrongType, "routing.staged.check.looped_entity_ids"}));
+}
+
 TEST(JsonCodecTest, EncodesNegativeInfinityAndNonFiniteValuesAsNull) {
     const auto gain = nlohmann::json::parse(encode_ui_to_engine(SetGain{"ch1", 2, std::nullopt}));
     EXPECT_TRUE(gain.at("gain_db").is_null());

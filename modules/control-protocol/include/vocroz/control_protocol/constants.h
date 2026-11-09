@@ -23,6 +23,10 @@ inline constexpr double kMinFiniteGainDb = -60.0;
 /// 大きいほうに合わせる。entity ごとの上限は session が判断する。
 inline constexpr double kMaxGainDb = 12.0;
 
+/// ルーティングの遅延（手動ディレイと遅延ノード）の最大値（ms）。遅延ノードの上限（2
+/// 秒）に合わせる。 entity ごとの範囲は session が判断する。
+inline constexpr double kMaxRoutingDelayMs = 2000.0;
+
 /// revision とシーケンス番号の最大値。UI（JavaScript）の数値で正確に表せる最大の整数（2^53 - 1）。
 inline constexpr std::uint64_t kMaxCounter = (std::uint64_t{1} << 53) - 1;
 

@@ -60,6 +60,25 @@ export type ErrorCode =
   | "INVALID_STATE"
   | "ENGINE_ERROR";
 
+/** ルーティングのバスの種類。処理は同じで、表示と既定の送り方だけが違う。 */
+export type BusKind = "USER" | "CUE";
+
+/** センドを取り出す位置。PRE_FADER は送り元のフェーダーとミュートの前で、センドのミュートでだけ止まる。 */
+export type SendTap = "POST_FADER" | "PRE_FADER";
+
+/** ステージングしたルーティングを適用できない理由。 */
+export type RoutingIssue =
+  | "INVALID_ID"
+  | "DUPLICATE_ID"
+  | "TOO_MANY_ITEMS"
+  | "UNKNOWN_NODE"
+  | "INVALID_SEND"
+  | "INVALID_SEND_TAP"
+  | "DELAY_OUT_OF_RANGE"
+  | "OUTPUT_CHANNEL_OUT_OF_RANGE"
+  | "OVERLAPPING_OUTPUTS"
+  | "UNDELAYED_LOOP";
+
 // ---------------------------------------------------------------------------
 // 親機モードの状態
 // ---------------------------------------------------------------------------
@@ -119,12 +138,95 @@ export interface PendingParticipant {
   short_id: string;
 }
 
+/** ルーティングのバス。entity_id は "bus-" で始める。 */
+export interface RoutingBus {
+  entity_id: string;
+  name: string;
+  kind: BusKind;
+}
+
+/** 追加の物理出力。メインの出力と同じデバイスの、device_channel から 2 チャンネルに書く。entity_id は "out-" で始める。 */
+export interface RoutingOutput {
+  entity_id: string;
+  name: string;
+  device_channel: number;
+}
+
+/**
+ * センド（ノードからノードへの結線）。entity_id は "send-" で始める。
+ * ストリップから Master と、Master からメインの出力への結線は暗黙にあるので書かない。
+ */
+export interface RoutingSend {
+  entity_id: string;
+  from: string;
+  to: string;
+  tap: SendTap;
+}
+
+/** フィードバック経路の遅延ノード。entity_id は "delay-" で始める。 */
+export interface RoutingDelay {
+  entity_id: string;
+  delay_ms: number;
+}
+
+/** 入力ストリップの手動ディレイ。 */
+export interface InputDelay {
+  strip_id: string;
+  delay_ms: number;
+}
+
+/** ルーティングの構成。UI がステージングし、エンジンが検証して適用する。 */
+export interface RoutingConfig {
+  buses: RoutingBus[];
+  outputs: RoutingOutput[];
+  sends: RoutingSend[];
+  delays: RoutingDelay[];
+  input_delays: InputDelay[];
+}
+
+/** ステージングした構成の検証の結果。 */
+export interface RoutingCheck {
+  /** 適用できない理由。null なら適用できる（needs_approval なら承認が要る）。 */
+  issue: RoutingIssue | null;
+  issue_entity_id: string | null;
+  /** ループに含まれるノード。ルーティング画面で強調する。 */
+  looped_entity_ids: string[];
+  /** 遅延ノードを通るループがあり、適用にはオペレーターの承認が要る。 */
+  needs_approval: boolean;
+}
+
+/** ステージング中の構成と検証の結果。 */
+export interface StagedRouting {
+  config: RoutingConfig;
+  check: RoutingCheck;
+}
+
+/** バスかセンドのフェーダーとミュート。新しいバスとセンドはミュートで作られる。 */
+export interface RouteLevel {
+  entity_id: string;
+  revision: number;
+  gain_db: GainDb;
+  muted: boolean;
+}
+
+/** ルーティング全体の状態。entity_id は "routing"。 */
+export interface RoutingInfo {
+  entity_id: string;
+  revision: number;
+  applied: RoutingConfig;
+  /** 適用中の構成のループを、オペレーターが承認して適用した。 */
+  feedback_approved: boolean;
+  staged: StagedRouting | null;
+  levels: RouteLevel[];
+}
+
 /** 親機モードの全状態。接続時にエンジンから届く。 */
 export interface MixerSnapshot {
   session: SessionInfo;
   channels: ChannelStrip[];
   master: MasterStrip;
   pending: PendingParticipant[];
+  routing: RoutingInfo;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +282,11 @@ export type DiscreteCommandBody =
   | { type: "join"; invite: string }
   | { type: "leave" }
   | { type: "select_input"; device_id: string | null }
-  | { type: "set_send_mute"; muted: boolean };
+  | { type: "set_send_mute"; muted: boolean }
+  | { type: "stage_routing"; config: RoutingConfig }
+  | { type: "commit_routing"; approve_feedback: boolean }
+  | { type: "discard_routing" }
+  | { type: "set_route_mute"; muted: boolean };
 
 /** 離散コマンド。 */
 export type DiscreteCommand = DiscreteCommandBase & DiscreteCommandBody;
@@ -254,6 +360,8 @@ export type EngineToUiMessage =
   | { type: "master_updated"; master: MasterStrip }
   | { type: "pending_updated"; pending: PendingParticipant[] }
   | { type: "client_updated"; client: ClientSnapshot }
+  | { type: "routing_updated"; routing: RoutingInfo }
+  | { type: "route_level_updated"; level: RouteLevel }
   | AckMessage
   | RejectMessage
   | GainAckMessage

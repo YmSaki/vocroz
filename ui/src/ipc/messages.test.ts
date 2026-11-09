@@ -18,12 +18,25 @@ import type {
   ConnectionState,
   EngineToUiMessage,
   ErrorCode,
+  InputDelay,
   InputDevice,
   MasterMuteReason,
   MasterStrip,
+  BusKind,
   MixerSnapshot,
   OutputDeviceState,
   PendingParticipant,
+  RouteLevel,
+  RoutingBus,
+  RoutingCheck,
+  RoutingConfig,
+  RoutingDelay,
+  RoutingInfo,
+  RoutingIssue,
+  RoutingOutput,
+  RoutingSend,
+  SendTap,
+  StagedRouting,
   SessionInfo,
   SessionState,
   SignalState,
@@ -65,6 +78,13 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
   leave: keysOf<UiMessageOf<"leave">>(kDiscreteKeys),
   select_input: keysOf<UiMessageOf<"select_input">>({ ...kDiscreteKeys, device_id: true }),
   set_send_mute: keysOf<UiMessageOf<"set_send_mute">>({ ...kDiscreteKeys, muted: true }),
+  stage_routing: keysOf<UiMessageOf<"stage_routing">>({ ...kDiscreteKeys, config: true }),
+  commit_routing: keysOf<UiMessageOf<"commit_routing">>({
+    ...kDiscreteKeys,
+    approve_feedback: true,
+  }),
+  discard_routing: keysOf<UiMessageOf<"discard_routing">>(kDiscreteKeys),
+  set_route_mute: keysOf<UiMessageOf<"set_route_mute">>({ ...kDiscreteKeys, muted: true }),
 };
 
 /** エンジンから UI への種別ごとのフィールド。 */
@@ -77,6 +97,8 @@ const kEngineMessageKeys: { [K in EngineToUiMessage["type"]]: string[] } = {
   master_updated: keysOf<EngineMessageOf<"master_updated">>({ type: true, master: true }),
   pending_updated: keysOf<EngineMessageOf<"pending_updated">>({ type: true, pending: true }),
   client_updated: keysOf<EngineMessageOf<"client_updated">>({ type: true, client: true }),
+  routing_updated: keysOf<EngineMessageOf<"routing_updated">>({ type: true, routing: true }),
+  route_level_updated: keysOf<EngineMessageOf<"route_level_updated">>({ type: true, level: true }),
   ack: keysOf<EngineMessageOf<"ack">>({ type: true, request_id: true, applied_revision: true }),
   reject: keysOf<EngineMessageOf<"reject">>({ type: true, request_id: true, error_code: true }),
   gain_ack: keysOf<EngineMessageOf<"gain_ack">>({
@@ -136,6 +158,44 @@ const kMixerSnapshotKeys = keysOf<MixerSnapshot>({
   channels: true,
   master: true,
   pending: true,
+  routing: true,
+});
+const kRoutingKeys = keysOf<RoutingInfo>({
+  entity_id: true,
+  revision: true,
+  applied: true,
+  feedback_approved: true,
+  staged: true,
+  levels: true,
+});
+const kRoutingConfigKeys = keysOf<RoutingConfig>({
+  buses: true,
+  outputs: true,
+  sends: true,
+  delays: true,
+  input_delays: true,
+});
+const kRoutingBusKeys = keysOf<RoutingBus>({ entity_id: true, name: true, kind: true });
+const kRoutingOutputKeys = keysOf<RoutingOutput>({
+  entity_id: true,
+  name: true,
+  device_channel: true,
+});
+const kRoutingSendKeys = keysOf<RoutingSend>({ entity_id: true, from: true, to: true, tap: true });
+const kRoutingDelayKeys = keysOf<RoutingDelay>({ entity_id: true, delay_ms: true });
+const kInputDelayKeys = keysOf<InputDelay>({ strip_id: true, delay_ms: true });
+const kStagedKeys = keysOf<StagedRouting>({ config: true, check: true });
+const kCheckKeys = keysOf<RoutingCheck>({
+  issue: true,
+  issue_entity_id: true,
+  looped_entity_ids: true,
+  needs_approval: true,
+});
+const kRouteLevelKeys = keysOf<RouteLevel>({
+  entity_id: true,
+  revision: true,
+  gain_db: true,
+  muted: true,
 });
 const kClientKeys = keysOf<ClientSnapshot>({
   entity_id: true,
@@ -199,6 +259,21 @@ const kErrorCodes: Record<ErrorCode, true> = {
   ENGINE_ERROR: true,
 };
 
+const kBusKinds: Record<BusKind, true> = { USER: true, CUE: true };
+const kSendTaps: Record<SendTap, true> = { POST_FADER: true, PRE_FADER: true };
+const kRoutingIssues: Record<RoutingIssue, true> = {
+  INVALID_ID: true,
+  DUPLICATE_ID: true,
+  TOO_MANY_ITEMS: true,
+  UNKNOWN_NODE: true,
+  INVALID_SEND: true,
+  INVALID_SEND_TAP: true,
+  DELAY_OUT_OF_RANGE: true,
+  OUTPUT_CHANNEL_OUT_OF_RANGE: true,
+  OVERLAPPING_OUTPUTS: true,
+  UNDELAYED_LOOP: true,
+};
+
 /** JSON の例に現れた状態の値を集める。 */
 class Seen {
   private readonly values = new Map<object, Set<string>>();
@@ -244,6 +319,37 @@ function checkPending(pending: PendingParticipant[]): void {
   for (const participant of pending) expectKeys(participant, kPendingKeys);
 }
 
+function checkRoutingConfig(config: RoutingConfig, seen: Seen): void {
+  expectKeys(config, kRoutingConfigKeys);
+  for (const bus of config.buses) {
+    expectKeys(bus, kRoutingBusKeys);
+    seen.add(kBusKinds, bus.kind);
+  }
+  for (const output of config.outputs) expectKeys(output, kRoutingOutputKeys);
+  for (const send of config.sends) {
+    expectKeys(send, kRoutingSendKeys);
+    seen.add(kSendTaps, send.tap);
+  }
+  for (const delay of config.delays) expectKeys(delay, kRoutingDelayKeys);
+  for (const delay of config.input_delays) expectKeys(delay, kInputDelayKeys);
+}
+
+function checkRouteLevel(level: RouteLevel): void {
+  expectKeys(level, kRouteLevelKeys);
+}
+
+function checkRouting(routing: RoutingInfo, seen: Seen): void {
+  expectKeys(routing, kRoutingKeys);
+  checkRoutingConfig(routing.applied, seen);
+  if (routing.staged !== null) {
+    expectKeys(routing.staged, kStagedKeys);
+    checkRoutingConfig(routing.staged.config, seen);
+    expectKeys(routing.staged.check, kCheckKeys);
+    seen.add(kRoutingIssues, routing.staged.check.issue);
+  }
+  for (const level of routing.levels) checkRouteLevel(level);
+}
+
 function checkClient(client: ClientSnapshot, seen: Seen): void {
   expectKeys(client, kClientKeys);
   for (const device of client.input_devices) expectKeys(device, kInputDeviceKeys);
@@ -260,6 +366,7 @@ function checkEngineMessage(message: EngineToUiMessage, seen: Seen): void {
       for (const channel of message.snapshot.channels) checkChannel(channel, seen);
       checkMaster(message.snapshot.master, seen);
       checkPending(message.snapshot.pending);
+      checkRouting(message.snapshot.routing, seen);
       return;
     case "client_snapshot":
       checkClient(message.snapshot, seen);
@@ -278,6 +385,12 @@ function checkEngineMessage(message: EngineToUiMessage, seen: Seen): void {
       return;
     case "client_updated":
       checkClient(message.client, seen);
+      return;
+    case "routing_updated":
+      checkRouting(message.routing, seen);
+      return;
+    case "route_level_updated":
+      checkRouteLevel(message.level);
       return;
     case "reject":
       seen.add(kErrorCodes, message.error_code);
@@ -323,6 +436,9 @@ describe("messages", () => {
       kMasterMuteReasons,
       kClientStates,
       kErrorCodes,
+      kBusKinds,
+      kSendTaps,
+      kRoutingIssues,
     ]) {
       expect(seen.coversAll(table)).toBe(true);
     }

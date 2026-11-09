@@ -94,6 +94,119 @@ struct PendingParticipant {
     friend bool operator==(const PendingParticipant&, const PendingParticipant&) = default;
 };
 
+/// ルーティングのバス（ユーザーバス、キューバス）。ステレオで、フェーダーとミュートを持つ。
+/// entity_id は "bus-" で始める（ストリップなどエンジンが振る ID と衝突させないため）。
+struct RoutingBus {
+    std::string entity_id;
+    std::string name;
+    BusKind kind = BusKind::kUser;
+
+    friend bool operator==(const RoutingBus&, const RoutingBus&) = default;
+};
+
+/// 追加の物理出力。メインの出力（Master の出力先）とは別に、同じ出力デバイスの別のチャンネルの組へ
+/// 書き出す。entity_id は "out-" で始める。
+struct RoutingOutput {
+    std::string entity_id;
+    std::string name;
+    /// 書き出す先頭のチャンネル（0 始まり）。ステレオなので device_channel と次のチャンネルに書く。
+    std::uint64_t device_channel = 0;
+
+    friend bool operator==(const RoutingOutput&, const RoutingOutput&) = default;
+};
+
+/// センド（ノードからノードへの結線）。フェーダー（センドレベル）とミュートを持つ。
+/// entity_id は "send-" で始める。ストリップから Master と、Master からメインの出力への結線は
+/// 暗黙にあるので、センドには書かない。
+struct RoutingSend {
+    std::string entity_id;
+    /// 送り元のノード（ストリップ、"master"、バス、遅延ノード）の entity_id。
+    std::string from;
+    /// 送り先のノード（"master"、バス、出力、遅延ノード）の entity_id。
+    std::string to;
+    SendTap tap = SendTap::kPostFader;
+
+    friend bool operator==(const RoutingSend&, const RoutingSend&) = default;
+};
+
+/// フィードバック経路の遅延ノード。ループを通してよい唯一のノード。entity_id は "delay-" で始める。
+struct RoutingDelay {
+    std::string entity_id;
+    double delay_ms = 0.0;
+
+    friend bool operator==(const RoutingDelay&, const RoutingDelay&) = default;
+};
+
+/// 入力ストリップの手動ディレイ。書かれていないストリップは 0 ms。
+struct InputDelay {
+    std::string strip_id;
+    double delay_ms = 0.0;
+
+    friend bool operator==(const InputDelay&, const InputDelay&) = default;
+};
+
+/// ルーティングの構成。UI がステージングし、エンジンが検証して適用する。
+struct RoutingConfig {
+    std::vector<RoutingBus> buses;
+    std::vector<RoutingOutput> outputs;
+    std::vector<RoutingSend> sends;
+    std::vector<RoutingDelay> delays;
+    std::vector<InputDelay> input_delays;
+
+    friend bool operator==(const RoutingConfig&, const RoutingConfig&) = default;
+};
+
+/// ステージングした構成の検証の結果。
+struct RoutingCheck {
+    /// 適用できない理由。std::nullopt なら適用できる（ループがあれば承認が要る）。
+    std::optional<RoutingIssue> issue;
+    /// 理由の原因になった entity_id。わかるときだけ値を持つ。
+    std::optional<std::string> issue_entity_id;
+    /// ループに含まれるノードの entity_id（昇順）。ルーティング画面で強調するために使う。
+    std::vector<std::string> looped_entity_ids;
+    /// 適用するにはオペレーターの承認が要る（遅延ノードを通るループだけがある）。
+    bool needs_approval = false;
+
+    friend bool operator==(const RoutingCheck&, const RoutingCheck&) = default;
+};
+
+/// ステージング中の構成と、その検証の結果。
+struct StagedRouting {
+    RoutingConfig config;
+    RoutingCheck check;
+
+    friend bool operator==(const StagedRouting&, const StagedRouting&) = default;
+};
+
+/// バスかセンドのフェーダーとミュート。entity_id はバスかセンドのもの。
+/// 構成とは別の entity にし、フェーダーの操作でルーティング全体の revision を進めないようにする。
+struct RouteLevel {
+    std::string entity_id;
+    Revision revision = 0;
+    GainDb gain_db = 0.0;
+    /// 初期ミュートの要件により既定値は true。新しいバスとセンドはミュートで作られる。
+    bool muted = true;
+
+    friend bool operator==(const RouteLevel&, const RouteLevel&) = default;
+};
+
+/// ルーティング全体の状態。entity_id は "routing"。
+/// revision は、適用中の構成かステージング中の構成が変わったときに進む。
+struct RoutingInfo {
+    std::string entity_id;
+    Revision revision = 0;
+    /// 適用中の構成。
+    RoutingConfig applied;
+    /// 適用中の構成のループを、オペレーターが承認して適用したなら true。
+    bool feedback_approved = false;
+    /// ステージング中の構成。なければ std::nullopt。
+    std::optional<StagedRouting> staged;
+    /// 適用中の構成のバスとセンドのフェーダーとミュート。applied のバス、センドの順に並ぶ。
+    std::vector<RouteLevel> levels;
+
+    friend bool operator==(const RoutingInfo&, const RoutingInfo&) = default;
+};
+
 /// 親機モードの全状態。UI の接続時にエンジンが送る。
 struct MixerSnapshot {
     SessionInfo session;
@@ -101,6 +214,7 @@ struct MixerSnapshot {
     std::vector<ChannelStrip> channels;
     MasterStrip master;
     std::vector<PendingParticipant> pending;
+    RoutingInfo routing;
 
     friend bool operator==(const MixerSnapshot&, const MixerSnapshot&) = default;
 };
