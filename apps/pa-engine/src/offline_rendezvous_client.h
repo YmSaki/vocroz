@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // ランデブーサーバーに届かないときと同じ結果を返す RendezvousClient。
-// 招待の HTTPS（network、N1 の #18 の続きの PR）が入るまでの仮の実装で、セッションの作成は
-// UNREACHABLE で失敗する。これはオフラインの会場での振る舞い（セッションの作成と参加だけを
-// 不可とし、ミキサーとローカルの入出力は使える。docs/adr/0008-runtime-behavior.md）と同じ。
-// N1 のマージ後にコンポジションルートで差し替えて、このファイルは消す。
+// ランデブーサーバーの URL がビルドで与えられていない（VOCROZ_RENDEZVOUS_URL が空）か、
+// HTTPS の通信を始められないときに使い、セッションの作成は UNREACHABLE で失敗する。
+// これはオフラインの会場での振る舞い（セッションの作成と参加だけを不可とし、ミキサーと
+// ローカルの入出力は使える。docs/adr/0008-runtime-behavior.md）と同じ。
 #pragma once
-
-#include <functional>
 
 #include "vocroz/common/result.h"
 #include "vocroz/control_protocol/states.h"
 #include "vocroz/session/ports/rendezvous_client.h"
 
 #include "control_loop.h"
+#include "invite_registration_handler.h"
 
 namespace vocroz::engine {
 
@@ -23,9 +22,7 @@ namespace vocroz::engine {
 class OfflineRendezvousClient final : public session::RendezvousClient {
 public:
     /// 登録の結果を受け取る処理（HostSession::on_invite_registered()）。
-    using RegistrationHandler = std::function<void(
-        const session::InviteToken&,
-        const common::Result<session::RegisteredInvite, control_protocol::ErrorCode>&)>;
+    using RegistrationHandler = InviteRegistrationHandler;
 
     /// @param loop 結果を積むループ。このオブジェクトより長く生存させる
     explicit OfflineRendezvousClient(ControlLoop& loop) noexcept : loop_(loop) {}
