@@ -43,7 +43,7 @@ if (auto started = output.value()->start(mixer, listener); !started) { /* AudioD
 ### MIDI 入力
 
 JUCE の MIDI は、ポートの一覧、開閉、切断の通知をメッセージスレッドで扱います。そのため MIDI 入力は、`juce::ScopedJuceInitialiser_GUI` を持ち、メッセージループを回すプロセスでだけ使えます。
-`remote-pa` はもともとメッセージループを回しています。`pa-engine` で親機の MIDI 機器を使うときは、`pa-engine` にもメッセージループが要ります。
+`remote-pa` はもともとメッセージループを回しています。`pa-engine` は、MIDI とプラグインのエディターで共有する JUCE のメッセージスレッドを 1 本持ちます（[ADR-0039](../../docs/adr/0039-pa-engine-juce-message-thread.md)）。
 
 ```cpp
 // JUCE のメッセージスレッドで。

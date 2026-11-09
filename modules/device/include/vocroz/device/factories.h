@@ -52,7 +52,8 @@ make_wasapi_audio_input(std::string_view endpoint_id, common::Logger& logger);
 
 /// JUCE の MidiInput による MIDI 入力ポートの一覧を作る（docs/adr/0029-midi-and-vsti.md）。
 /// JUCE の MIDI はメッセージスレッドで動くので、ScopedJuceInitialiser_GUI を作り、
-/// メッセージループを回すプロセスでだけ使う。
+/// メッセージループを回すプロセスでだけ使う（pa-engine は専用のメッセージスレッドを持つ。
+/// docs/adr/0039-pa-engine-juce-message-thread.md）。
 /// @return 一覧。list() は JUCE のメッセージスレッドから呼ぶ
 /// スレッド安全性: JUCE のメッセージスレッドから呼ぶ。
 [[nodiscard]] std::unique_ptr<audio_core::MidiDeviceCatalog> make_juce_midi_device_catalog();
