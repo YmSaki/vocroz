@@ -6,7 +6,7 @@
 
 namespace vocroz::client {
 
-SenderThread::SenderThread(PacketSender& sender, SendWakeup& wakeup)
+SenderThread::SenderThread(PacketSender& sender, transport::SendWakeup& wakeup)
     : sender_(sender), wakeup_(wakeup), thread_([this] { run(); }) {}
 
 SenderThread::~SenderThread() {

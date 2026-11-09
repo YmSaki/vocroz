@@ -55,7 +55,7 @@ protected:
         return f;
     }
 
-    SendWakeup wakeup_;
+    transport::SendWakeup wakeup_;
     PacketSender sender_{wakeup_};
     transport::FakeDatagramSocket socket_;
     std::unique_ptr<transport::SecureChannel> host_;

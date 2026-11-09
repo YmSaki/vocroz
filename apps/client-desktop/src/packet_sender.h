@@ -18,10 +18,10 @@
 #include "vocroz/common/spsc_queue.h"
 #include "vocroz/transport/ports/datagram_socket.h"
 #include "vocroz/transport/secure_channel.h"
+#include "vocroz/transport/send_wakeup.h"
 
 #include "client_constants.h"
 #include "encoded_frame.h"
-#include "send_wakeup.h"
 
 namespace vocroz::client {
 
@@ -58,7 +58,7 @@ struct ControlPlaintext {
 class PacketSender {
 public:
     /// @param wakeup 送るものを入れたときに鳴らす合図。このオブジェクトより長く生存させる
-    explicit PacketSender(SendWakeup& wakeup) noexcept;
+    explicit PacketSender(transport::SendWakeup& wakeup) noexcept;
     ~PacketSender();
     PacketSender(const PacketSender&) = delete;
     PacketSender& operator=(const PacketSender&) = delete;
@@ -95,7 +95,7 @@ private:
     void apply_path_updates() noexcept;
     void send_sealed(std::size_t bytes, std::atomic<std::uint64_t>& sent_counter) noexcept;
 
-    SendWakeup& wakeup_;
+    transport::SendWakeup& wakeup_;
     common::SpscQueue<EncodedFrame, kEncodedFrameQueueCapacity> frames_;
     common::SpscQueue<ControlPlaintext, kControlPlaintextQueueCapacity> control_;
     // 所有権はキューの中では生のポインターで持ち、取り出した側が unique_ptr に戻す。

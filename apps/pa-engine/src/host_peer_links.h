@@ -12,6 +12,10 @@
 // 子機は応答が届くまで同じ 1 つ目のメッセージを送り直し、複数の経路から同じものが届くこともある。
 // 接続 ID が同じものは重複として、保存した応答を送り直すだけにする（接続を作り直さない）。
 //
+// 子機への送信（制御パケットと返送のメディア）は、接続ごとの PeerPacketSender に積み、送信スレッド
+// （PeerSendScheduler が作る）が暗号化して送る。返送のエンコーダーは承認でミキサーの返送に
+// つなぎ、閉じるときに外す（docs/adr/0036-return-monitor.md）。
+//
 // session への通知（PeerEventSink）は、処理の最後にまとめて行う。通知の中から session が
 // PeerLink を呼んでも、処理中の接続を壊さないようにするため。
 #pragma once
@@ -39,12 +43,14 @@
 #include "peer_event_sink.h"
 #include "peer_receive_listener.h"
 #include "peer_receive_path.h"
+#include "peer_send_scheduler.h"
 
 namespace vocroz::engine {
 
 /// 親機側の、子機との接続の集まり。
 /// スレッド安全性: すべてのメンバー関数をコントロールスレッドから呼ぶ。
-/// 破棄する前に、受信スレッド（UdpEndpoint）を止める。
+/// 破棄する前に、受信スレッド（UdpEndpoint）を止める。UdpEndpoint を閉じる前には
+/// stop_sending() で送信スレッドを止める。
 class HostPeerLinks final : public session::PeerLink, public PeerReceiveListener {
 public:
     /// 注入する依存。どれもこのオブジェクトより長く生存させる（AGENTS.md 4.3）。
@@ -57,6 +63,7 @@ public:
         const transport::StaticKeyPair& keys;  ///< 親機の静的鍵
         const common::Clock& clock;
         common::Logger& logger;
+        PeerSendScheduler& sending;  ///< 接続ごとの送信を回すもの
     };
 
     /// @param ports   注入する依存
@@ -69,6 +76,10 @@ public:
     /// 時刻で決まる処理（信頼制御層の再送とキープアライブ、受信途絶の判定）を進め、
     /// 積めなかった指示を積み直し、受信スレッドを起こす。コントロールスレッドの周期ごとに呼ぶ。
     void poll();
+
+    /// すべての接続の送信を止める（送信待ちに残ったものは送り切る）。
+    /// オーディオ出力を閉じた後、UdpEndpoint を閉じる前に呼ぶ。
+    void stop_sending();
 
     /// 今ある接続（閉じている途中のものを除く）の数を返す。
     [[nodiscard]] std::size_t peer_count() const noexcept;
@@ -89,6 +100,7 @@ public:
     void on_receive_released(session::PeerHandle peer) override;
 
 private:
+    struct Outbound;
     struct Peer;
 
     // 閉じている途中のものを除いて探す。
@@ -98,6 +110,9 @@ private:
     // 対応に合わせてストリームとストリップの接続を置き換える。すべてつなげたら true。
     [[nodiscard]] bool apply_routes(Peer& peer, const std::vector<session::StreamRoute>& routes);
     void detach_strip(Peer& peer, const std::string& strip_id);
+    void create_return_encoder(Peer& peer);
+    // 返送のエンコーダーを、子機自身の入力のストリップを抜いた返送につなぐ。
+    void attach_return(Peer& peer, const std::vector<session::StreamRoute>& routes);
     void begin_close(Peer& peer);
     void command(const ReceiveCommand& command);
     void flush_commands();
@@ -116,6 +131,9 @@ private:
     std::map<std::string, session::PeerHandle, std::less<>> strip_owners_;
     // キューが満杯で積めなかった指示。順序を保って次の poll() で積み直す。
     std::deque<ReceiveCommand> pending_commands_;
+    // 破棄した接続の送信方向。ミキサーの古いグラフが返送のエンコーダーを参照しているかもしれない
+    // ので、参照がここだけになるまで保ち、送信スレッドをコントロールスレッドで止める。
+    std::vector<std::shared_ptr<Outbound>> released_outbound_;
     std::vector<std::function<void()>> events_;
 };
 

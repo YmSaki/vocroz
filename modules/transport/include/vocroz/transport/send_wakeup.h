@@ -2,23 +2,25 @@
 //
 // 送信スレッドを起こす合図。オーディオスレッドとコントロールスレッドが、送るものを SPSC キューに
 // 入れた直後に notify() を呼ぶ。送信スレッドは合図があるまで眠り、ポーリングの周期ぶんの遅延を
-// 音声に足さない。
+// 音声に足さない。子機の送信スレッドと、親機の接続ごとの送信スレッドの両方で使う
+// （docs/adr/0036-return-monitor.md）。
 #pragma once
 
 #include <atomic>
 #include <cstdint>
 
 #include "vocroz/audio_core/realtime.h"
+#include "vocroz/transport/ports/send_notifier.h"
 
-namespace vocroz::client {
+namespace vocroz::transport {
 
 /// 送信スレッドを起こす合図。
-class SendWakeup {
+class SendWakeup final : public SendNotifier {
 public:
     /// 送信スレッドを起こす。合図は数えるだけで、待っているスレッドがなくても失われない。
     /// スレッド安全性: どのスレッドからも同時に呼び出し可能。オーディオスレッドから呼び出し可能
     /// （アトミックな加算と、待っているスレッドを起こすだけでブロックしない）。
-    void notify() noexcept VOCROZ_NONBLOCKING {
+    void notify() noexcept VOCROZ_NONBLOCKING override {
         generation_.fetch_add(1, std::memory_order_release);
         generation_.notify_one();
     }
@@ -41,4 +43,4 @@ private:
     std::atomic<std::uint32_t> generation_{0};
 };
 
-}  // namespace vocroz::client
+}  // namespace vocroz::transport

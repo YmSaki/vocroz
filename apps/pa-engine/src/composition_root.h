@@ -50,6 +50,7 @@
 #include "peer_receive_relay.h"
 #include "rendezvous_id_tap.h"
 #include "session_peer_events.h"
+#include "thread_peer_send_scheduler.h"
 #include "ui_event_publisher.h"
 #include "ui_message_receiver.h"
 #include "win/execution_state_sleep_inhibitor.h"
@@ -132,6 +133,9 @@ private:
     PeerReceivePath peer_receive_;
     network::ReceiveRouter router_;
     std::unique_ptr<network::NetworkEnvironment> network_environment_;
+    // 子機ごとの送信スレッドを作る。送信スレッドは endpoint_ で送るので、shutdown() で
+    // endpoint_ より先に止める（docs/adr/0036-return-monitor.md）。
+    ThreadPeerSendScheduler peer_sending_;
     std::unique_ptr<HostPeerLinks> peer_links_;
     std::unique_ptr<network::UdpEndpoint> endpoint_;
     // endpoint_ で送るので、endpoint_ より後に宣言する（先に破棄する）。

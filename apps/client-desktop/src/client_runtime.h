@@ -31,6 +31,7 @@
 #include "vocroz/session/ports/settings_store.h"
 #include "vocroz/transport/opus_frame_encoder.h"
 #include "vocroz/transport/ports/random_source.h"
+#include "vocroz/transport/send_wakeup.h"
 #include "vocroz/transport/static_key_pair.h"
 
 #include "capture_processor.h"
@@ -41,7 +42,6 @@
 #include "invite_inbox.h"
 #include "packet_sender.h"
 #include "peer_inbox.h"
-#include "send_wakeup.h"
 #include "sender_thread.h"
 #include "ui_bridge.h"
 
@@ -130,7 +130,7 @@ private:
 
     Ports ports_;
     transport::StaticKeyPair keys_;
-    SendWakeup wakeup_;
+    transport::SendWakeup wakeup_;
     PacketSender sender_;
     CaptureProcessor processor_;
     ClientCapture capture_;

@@ -115,7 +115,7 @@ protected:
     net::FakeUdpEndpoint endpoint_;
     PeerInbox inbox_;
     net::ReceiveRouter router_{inbox_};
-    SendWakeup wakeup_;
+    transport::SendWakeup wakeup_;
     PacketSender sender_{wakeup_};
     FakeNetworkEnvironment environment_;
     transport::StaticKeyPair keys_ = test::make_keys();

@@ -6,18 +6,21 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <utility>
 
 #include "vocroz/network/peer_datagram_socket.h"
 #include "vocroz/transport/constants.h"
 #include "vocroz/transport/control_lane.h"
 #include "vocroz/transport/liveness_monitor.h"
+#include "vocroz/transport/media_stream_encoder.h"
 #include "vocroz/transport/noise_ik_handshake.h"
+#include "vocroz/transport/opus_frame_encoder.h"
 #include "vocroz/transport/packet_header.h"
+#include "vocroz/transport/peer_packet_sender.h"
 #include "vocroz/transport/ports/control_message_listener.h"
 #include "vocroz/transport/ports/liveness_listener.h"
 #include "vocroz/transport/reliable_control_channel.h"
-#include "vocroz/transport/secure_control_packet_sink.h"
 
 #include "playout_source.h"
 
@@ -46,8 +49,33 @@ cp::SignalState to_protocol(transport::SignalState state) {
 
 }  // namespace
 
-// 1 つの接続（子機 1 台との暗号化セッション）。送信方向と信頼制御層はコントロールスレッドが、
-// receive は受信スレッドが使う。
+// 1 つの接続の送信方向。制御パケットと返送のメディアを送信待ちに積み、送信スレッドが暗号化して
+// 送る。返送のエンコーダーはミキサーのグラフからも参照されるので、Peer とは別に共有で持つ。
+struct HostPeerLinks::Outbound {
+    Outbound(network::UdpEndpoint& endpoint, const network::UdpAddress& to,
+             transport::PacketSealer sealer, std::unique_ptr<PeerSendWorker> worker_in)
+        : socket(endpoint, to),
+          worker(std::move(worker_in)),
+          packets(std::move(sealer), socket, transport::kReturnStreamId, *worker) {
+        worker->start(packets);
+    }
+    Outbound(const Outbound&) = delete;
+    Outbound& operator=(const Outbound&) = delete;
+    // packets を破棄する前に、それを回す送信スレッドを止める。
+    ~Outbound() {
+        worker->stop();
+    }
+
+    network::PeerDatagramSocket socket;
+    std::unique_ptr<PeerSendWorker> worker;
+    transport::PeerPacketSender packets;
+    // 返送（Minus-Me）のエンコーダー。作れなかったら空で、返送は送らない。初期値はミュートなので、
+    // session がミュートを解くまで何も送らない（docs/adr/0036-return-monitor.md）。
+    std::optional<transport::MediaStreamEncoder> encoder;
+};
+
+// 1 つの接続（子機 1 台との暗号化セッション）。信頼制御層はコントロールスレッドが、
+// receive は受信スレッドが、outbound の送信待ちの取り出しは送信スレッドが使う。
 struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport::LivenessListener {
     // 1 本のストリーム（子機の入力 1 つ）。
     struct Stream {
@@ -62,12 +90,12 @@ struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport:
         : owner(owner_in),
           handle(handle_in),
           address(from),
-          socket(owner_in.ports_.endpoint, from),
-          sealer(std::move(secure.sealer)),
-          sink(sealer, socket),
-          control(owner_in.ports_.clock, sink, *this),
+          outbound(std::make_shared<Outbound>(owner_in.ports_.endpoint, from,
+                                              std::move(secure.sealer),
+                                              owner_in.ports_.sending.create())),
+          control(owner_in.ports_.clock, outbound->packets, *this),
           liveness(owner_in.ports_.clock, *this),
-          receive(handle_in, std::move(secure.opener), from, liveness, socket,
+          receive(handle_in, std::move(secure.opener), from, liveness, outbound->socket,
                   owner_in.ports_.clock.now()),
           initiation(initiation_in.begin(), initiation_in.end()),
           response(std::move(response_in)) {}
@@ -99,9 +127,7 @@ struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport:
     session::PeerHandle handle;
     // 鍵交換の 1 つ目のメッセージの送信元。同じ送信元からの申請の張り直しを見分けるのに使う。
     network::UdpAddress address;
-    network::PeerDatagramSocket socket;
-    transport::PacketSealer sealer;
-    transport::SecureControlPacketSink sink;
+    std::shared_ptr<Outbound> outbound;
     transport::ReliableControlChannel control;
     transport::LivenessMonitor liveness;
     ReceivePeer receive;
@@ -124,11 +150,8 @@ struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport:
     bool reported_admission = false;
     // 受信スレッドに取り外しを指示した。on_receive_released() で破棄する。
     bool closing = false;
-    // 返送（Minus-Me）のミュートと世代番号。返送は初期値で OFF なのでミュートで始める。
-    // 下りの送信（返送のエンコーダーと送信）を組み立てたら、ここからエンコーダーへ渡す
-    // （docs/adr/0036-return-monitor.md）。
-    bool return_muted = true;
-    std::uint32_t return_epoch = 0;
+    // 返送のエンコーダーをミキサーの返送につないでいる。
+    bool return_attached = false;
 };
 
 HostPeerLinks::HostPeerLinks(Ports ports, const transport::PlayoutConfig& playout)
@@ -138,8 +161,21 @@ HostPeerLinks::HostPeerLinks(Ports ports, const transport::PlayoutConfig& playou
 
 HostPeerLinks::~HostPeerLinks() = default;
 
+void HostPeerLinks::stop_sending() {
+    for (auto& [handle, peer] : peers_) {
+        peer->outbound->worker->stop();
+    }
+    for (auto& outbound : released_outbound_) {
+        outbound->worker->stop();
+    }
+}
+
 void HostPeerLinks::poll() {
     flush_commands();
+    // ミキサーの古いグラフが外れて参照がここだけになった送信方向を、送信スレッドごと破棄する。
+    std::erase_if(released_outbound_, [](const std::shared_ptr<Outbound>& outbound) {
+        return outbound.use_count() == 1;
+    });
     const auto now = ports_.clock.now();
     for (auto& [handle, peer] : peers_) {
         if (peer->closing) {
@@ -183,6 +219,7 @@ void HostPeerLinks::admit(session::PeerHandle peer,
     }
     found->admitted = true;
     const bool connected = apply_routes(*found, routes);
+    attach_return(*found, routes);
     if (found->reported_admission) {
         // 再接続や申告の変更での置き換え。接続はもう確立しているので、失敗は記録だけにする。
         return;
@@ -272,6 +309,29 @@ bool HostPeerLinks::apply_routes(Peer& peer, const std::vector<session::StreamRo
     return connected;
 }
 
+void HostPeerLinks::attach_return(Peer& peer, const std::vector<session::StreamRoute>& routes) {
+    auto& encoder = peer.outbound->encoder;
+    if (!encoder) {
+        return;
+    }
+    // Minus-Me は、この子機の入力をつないだストリップをすべて抜く。同じキー（接続）でつなぎ直すと
+    // 前の除外が置き換わるので、入力の申告が変わっても新しい対応で抜き直せる。
+    std::vector<std::string> own_strips;
+    for (const auto& route : routes) {
+        if (std::find(own_strips.begin(), own_strips.end(), route.strip_id) == own_strips.end()) {
+            own_strips.push_back(route.strip_id);
+        }
+    }
+    // エンコーダーは送信方向（Outbound）の一部として生かす。グラフが参照している間は、
+    // 接続を破棄しても送信方向は残る。
+    std::shared_ptr<audio_core::AudioSink> sink(peer.outbound, &*encoder);
+    if (ports_.mixer.attach_return(peer.handle, std::move(own_strips), std::move(sink))) {
+        peer.return_attached = true;
+    } else {
+        ports_.logger.log(common::LogLevel::kError, "子機への返送をミキサーにつなげませんでした");
+    }
+}
+
 void HostPeerLinks::detach_strip(Peer& peer, const std::string& strip_id) {
     const auto owner = strip_owners_.find(strip_id);
     if (owner != strip_owners_.end() && owner->second == peer.handle) {
@@ -293,10 +353,16 @@ void HostPeerLinks::apply_send_mute(session::PeerHandle peer, bool send_muted,
 }
 
 void HostPeerLinks::set_return_mute(session::PeerHandle peer, bool muted, std::uint32_t epoch) {
-    // 下りの送信はまだ組み立てていないので、状態だけを持つ（送るものはない）。
-    if (Peer* const found = find(peer)) {
-        found->return_muted = muted;
-        found->return_epoch = epoch;
+    Peer* const found = find(peer);
+    if (found == nullptr || !found->outbound->encoder) {
+        return;
+    }
+    // 返送ごとの音量は持たないので、送信レベルは 1 のまま。
+    if (!found->outbound->encoder->set_params(
+            transport::StreamSendParams{.muted = muted, .mute_epoch = epoch, .gain = 1.0F})) {
+        // オーディオスレッドが止まっていて設定が溜まりきった。エンコーダーは最後に受け取った
+        // 設定のまま（初期値はミュート）なので、記録だけにする。
+        ports_.logger.log(common::LogLevel::kWarning, "子機への返送の設定を渡せませんでした");
     }
 }
 
@@ -334,7 +400,11 @@ void HostPeerLinks::on_signal_state(session::PeerHandle peer, transport::SignalS
 void HostPeerLinks::on_receive_released(session::PeerHandle peer) {
     // 受信スレッドがもう参照しないので、復号器とジッターバッファを破棄してよい。
     // ジッターバッファはミキサーの古いグラフが参照していれば、その破棄で外れる。
-    peers_.erase(peer);
+    // 送信方向は、グラフの参照が外れるまで released_outbound_ で保つ。
+    if (const auto found = peers_.find(peer); found != peers_.end()) {
+        released_outbound_.push_back(found->second->outbound);
+        peers_.erase(found);
+    }
     dispatch_events();
 }
 
@@ -405,10 +475,22 @@ void HostPeerLinks::accept(const network::UdpAddress& from,
         handle, std::make_unique<Peer>(*this, handle, from, std::move(secure).value(), datagram,
                                        std::move(response)));
     Peer& peer = *entry->second;
+    create_return_encoder(peer);
     command(ReceiveCommand{.kind = ReceiveCommand::Kind::kAttach, .peer = &peer.receive});
     static_cast<void>(ports_.endpoint.send_to(from, peer.response));
     // 子機の 1 つ目のメッセージが届いた経路が開いたので、その候補へのホールパンチは要らない。
     ports_.rendezvous.mark_established(from);
+}
+
+void HostPeerLinks::create_return_encoder(Peer& peer) {
+    // 返送はミキサーのモノラルのバス（Minus-Me）なので、モノラルでエンコードする。
+    auto opus = transport::OpusFrameEncoder::create(transport::OpusEncoderConfig{});
+    if (!opus) {
+        // 返送がなくても子機の音は親機に届くので、接続は続ける。
+        ports_.logger.log(common::LogLevel::kError, "子機への返送のエンコーダーを作れませんでした");
+        return;
+    }
+    peer.outbound->encoder.emplace(std::move(opus).value(), peer.outbound->packets);
 }
 
 void HostPeerLinks::begin_close(Peer& peer) {
@@ -419,6 +501,10 @@ void HostPeerLinks::begin_close(Peer& peer) {
     }
     for (const auto& strip : strips) {
         detach_strip(peer, strip);
+    }
+    if (peer.return_attached) {
+        ports_.mixer.detach_return(peer.handle);
+        peer.return_attached = false;
     }
     command(ReceiveCommand{.kind = ReceiveCommand::Kind::kDetach, .peer = &peer.receive});
 }

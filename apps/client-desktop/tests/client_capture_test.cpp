@@ -40,7 +40,7 @@ public:
 
 class ClientCaptureTest : public ::testing::Test {
 protected:
-    SendWakeup wakeup_;
+    transport::SendWakeup wakeup_;
     PacketSender sender_{wakeup_};
     CaptureProcessor processor_{transport::OpusFrameEncoder::create({}).value(), sender_};
     RecordingOpener opener_;

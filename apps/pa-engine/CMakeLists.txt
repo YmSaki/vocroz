@@ -29,6 +29,7 @@ add_library(pa_engine_core STATIC
   src/rendezvous_id_tap.cpp
   src/session_peer_events.cpp
   src/stderr_logger.cpp
+  src/thread_peer_send_scheduler.cpp
   src/ui_event_publisher.cpp
   src/ui_message_receiver.cpp)
 target_include_directories(pa_engine_core PUBLIC src ${CMAKE_CURRENT_BINARY_DIR}/generated)
@@ -80,6 +81,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/offline_rendezvous_client_test.cpp
     tests/peer_receive_relay_test.cpp
     tests/rendezvous_id_tap_test.cpp
+    tests/thread_peer_send_scheduler_test.cpp
     tests/ui_event_publisher_test.cpp
     tests/ui_message_receiver_test.cpp)
   target_link_libraries(pa_engine_tests PRIVATE
