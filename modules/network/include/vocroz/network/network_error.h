@@ -38,6 +38,10 @@ enum class NetworkError {
     kHostNotFound,
     /// 直結もホールパンチも成立しなかった。
     kUnreachable,
+    /// ランデブーサーバーの HTTPS に接続できなかった（TCP の接続か TLS のハンドシェイクの失敗）。
+    kHttpsConnectFailed,
+    /// ランデブーサーバーの URL の形式が正しくない（https でない、ホスト名がない、など）。
+    kInvalidServerUrl,
 };
 
 }  // namespace vocroz::network
