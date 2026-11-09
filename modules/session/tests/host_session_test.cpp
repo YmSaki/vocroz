@@ -213,7 +213,7 @@ TEST_F(HostSessionTest, StartsMutedWithDefaultsWhenSettingsAreCorrupted) {
 }
 
 TEST_F(HostSessionTest, RestoresTheMasterFaderButNeverTheMute) {
-    settings_.host() = HostSettings{"日曜リハーサル", "dev-1", -6.0};
+    settings_.host() = HostSettings{"日曜リハーサル", "dev-1", -6.0, {}, {}};
     session();
     EXPECT_TRUE(mixer_.master_muted());
     EXPECT_EQ(mixer_.master_gain_db(), cp::GainDb{-6.0});
@@ -223,7 +223,7 @@ TEST_F(HostSessionTest, RestoresTheMasterFaderButNeverTheMute) {
 // --- セッションの作成と招待 ---
 
 TEST_F(HostSessionTest, CreatingASessionRegistersAnInviteAndBecomesReady) {
-    settings_.host() = HostSettings{"日曜リハーサル", std::nullopt, 0.0};
+    settings_.host() = HostSettings{"日曜リハーサル", std::nullopt, 0.0, {}, {}};
     ASSERT_TRUE(command("session", cp::CreateSession{}));
     EXPECT_EQ(session().snapshot().session.state, SessionState::kCreating);
     ASSERT_EQ(rendezvous_.registrations().size(), 1U);
@@ -948,6 +948,90 @@ TEST_F(HostSessionTest, BusesAndOutputsOutliveTheSession) {
     EXPECT_EQ(routing.applied.outputs.size(), 1U);
     ASSERT_EQ(routing.applied.sends.size(), 1U);
     EXPECT_EQ(routing.applied.sends[0].entity_id, "send-2");
+}
+
+// --- ルーティングの保存と復元 ---
+
+TEST_F(HostSessionTest, SavesTheRoutingWithoutStripReferencesWhenApplied) {
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{cue_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    session().handle_ui_message(cp::SetGain{"bus-cue", 1, -3.0});
+    ASSERT_TRUE(command("session", cp::EndSession{}));
+
+    const auto& saved = *settings_.host();
+    EXPECT_EQ(saved.routing.buses, cue_routing(a).buses);
+    EXPECT_EQ(saved.routing.outputs, cue_routing(a).outputs);
+    ASSERT_EQ(saved.routing.sends.size(), 1U);
+    EXPECT_EQ(saved.routing.sends[0].entity_id, "send-2");
+    EXPECT_TRUE(saved.routing.input_delays.empty());
+    const std::vector<SavedRouteGain> gains{{"bus-cue", -3.0}, {"send-2", 0.0}};
+    EXPECT_EQ(saved.route_gains, gains);
+}
+
+TEST_F(HostSessionTest, RestoresTheSavedRoutingMutedWithItsFaders) {
+    auto config = echo_routing();
+    config.sends.pop_back();  // ループを切り、承認の要らない構成にする
+    HostSettings saved;
+    saved.routing = config;
+    saved.route_gains = {{"bus-fx", -6.0}, {"send-1", 20.0}, {"bus-gone", 3.0}};
+    settings_.host() = saved;
+
+    const auto routing = session().snapshot().routing;
+    EXPECT_EQ(routing.applied, config);
+    EXPECT_FALSE(routing.staged);
+    EXPECT_EQ(mixer_.routing(), config);
+    for (const auto& level : routing.levels) {
+        EXPECT_TRUE(level.muted) << level.entity_id;
+        EXPECT_TRUE(mixer_.routes().at(level.entity_id).muted) << level.entity_id;
+    }
+    EXPECT_EQ(session().snapshot().routing.levels[0].gain_db, cp::GainDb{-6.0});
+    // フェーダーの範囲を超える値は、操作と同じ +10 dB に丸める。
+    EXPECT_EQ(mixer_.routes().at("send-1").gain_db, cp::GainDb{10.0});
+}
+
+TEST_F(HostSessionTest, StagesASavedLoopUntilTheOperatorApprovesIt) {
+    HostSettings saved;
+    saved.routing = echo_routing();
+    settings_.host() = saved;
+
+    const auto routing = session().snapshot().routing;
+    EXPECT_EQ(routing.applied, cp::RoutingConfig{});
+    ASSERT_TRUE(routing.staged);
+    EXPECT_TRUE(routing.staged->check.needs_approval);
+    EXPECT_EQ(mixer_.apply_routing_count(), 0);
+    ASSERT_TRUE(command("routing", cp::CommitRouting{true}));
+    EXPECT_EQ(mixer_.routing(), echo_routing());
+}
+
+TEST_F(HostSessionTest, DoesNotRestoreARoutingWithAnIssue) {
+    // Master とバスの間の、遅延のないループ。
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-fx", "FX", cp::BusKind::kUser});
+    config.sends.push_back(cp::RoutingSend{"send-1", "master", "bus-fx", cp::SendTap::kPostFader});
+    config.sends.push_back(cp::RoutingSend{"send-2", "bus-fx", "master", cp::SendTap::kPostFader});
+    HostSettings saved;
+    saved.routing = config;
+    settings_.host() = saved;
+
+    const auto routing = session().snapshot().routing;
+    EXPECT_EQ(routing.applied, cp::RoutingConfig{});
+    EXPECT_FALSE(routing.staged);
+    EXPECT_EQ(mixer_.apply_routing_count(), 0);
+}
+
+TEST_F(HostSessionTest, DoesNotRestoreARoutingTheMixerRefuses) {
+    mixer_.reject_routing();
+    auto config = echo_routing();
+    config.sends.pop_back();
+    HostSettings saved;
+    saved.routing = config;
+    settings_.host() = saved;
+
+    const auto routing = session().snapshot().routing;
+    EXPECT_EQ(routing.applied, cp::RoutingConfig{});
+    EXPECT_FALSE(routing.staged);
 }
 
 }  // namespace

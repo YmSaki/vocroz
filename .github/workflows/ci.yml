@@ -21,6 +21,18 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
+      # remote-pa は画面（ui/dist）を実行ファイルに埋め込むので、configure の前に UI をビルドする
+      # （docs/adr/0020-ipc-pipe-and-webui-bridge.md）。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Build UI
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
       # JUCE を使うターゲットも含めてビルドする（VOCROZ_WITH_JUCE は Windows では既定で ON）。
       - name: Configure
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DVOCROZ_WITH_JUCE=ON

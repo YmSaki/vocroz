@@ -144,7 +144,16 @@ common::Result<void, DiagnosticReportError> write_diagnostic_report(
     report += "== 親機の設定 ==\n";
     report += describe_settings<session::HostSettings>(
         input.data_dir / kHostSettingsFileName, decode_host_settings, encode_host_settings,
-        [](session::HostSettings& s) { mask_free_text(s.session_name); });
+        [](session::HostSettings& s) {
+            // バスと出力の名前もオペレーターが自由に付けるので、人名が入りうる。
+            mask_free_text(s.session_name);
+            for (auto& bus : s.routing.buses) {
+                mask_free_text(bus.name);
+            }
+            for (auto& extra_output : s.routing.outputs) {
+                mask_free_text(extra_output.name);
+            }
+        });
     report += "== 子機の設定 ==\n";
     report += describe_settings<session::ClientSettings>(
         input.data_dir / kClientSettingsFileName, decode_client_settings, encode_client_settings,

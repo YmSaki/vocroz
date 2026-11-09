@@ -7,10 +7,22 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "vocroz/control_protocol/entities.h"
 
 namespace vocroz::session {
+
+/// 保存するバスかセンドのフェーダーの値。ミュートは保存しない（復元したバスとセンドはミュートで
+/// 始まる）。
+struct SavedRouteGain {
+    /// バスかセンドの entity_id。
+    std::string entity_id;
+    /// フェーダー（dB）。
+    control_protocol::GainDb gain_db = 0.0;
+
+    friend bool operator==(const SavedRouteGain&, const SavedRouteGain&) = default;
+};
 
 /// 親機の設定。
 struct HostSettings {
@@ -21,6 +33,12 @@ struct HostSettings {
     std::optional<std::string> output_device_id;
     /// Master のフェーダー（dB）。ミュートとは別の値なので保存してよい。
     control_protocol::GainDb master_gain_db = 0.0;
+    /// 適用中のルーティングの構成のうち、バス、追加の出力、遅延ノードと、それらの間のセンド。
+    /// チャンネルストリップの entity_id はセッションごとに振り直すので、ストリップを参照する
+    /// センドと手動ディレイは保存しない（docs/adr/0033-routing-persistence.md）。
+    control_protocol::RoutingConfig routing;
+    /// routing のバスとセンドのフェーダーの値。
+    std::vector<SavedRouteGain> route_gains;
 
     friend bool operator==(const HostSettings&, const HostSettings&) = default;
 };

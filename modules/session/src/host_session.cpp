@@ -53,6 +53,7 @@ public:
         // 保存した値がどうであれ、Master はミュートで始める（設定の破損時も同じ）。
         ctx.ports.mixer.set_master_muted(true);
         ctx.ports.mixer.set_master_gain(ctx.master.gain_db);
+        ctx.restore_routing();
         ctx.refresh_output_devices();
         open_saved_output_device();
     }

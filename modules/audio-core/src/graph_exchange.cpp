@@ -43,6 +43,11 @@ RenderGraph* GraphExchange::acquire() noexcept VOCROZ_NONBLOCKING {
     if (retired_.load(std::memory_order_acquire) == nullptr) {
         RenderGraph* incoming = pending_.exchange(nullptr, std::memory_order_acq_rel);
         if (incoming != nullptr) {
+            // 退役させる前に発音中のノートを引き継ぐ。退役させた後はコントロールスレッドが
+            // いつ破棄してもよいので、ここでしか読めない。
+            if (active_ != nullptr) {
+                incoming->adopt_midi_state(*active_);
+            }
             retired_.store(active_, std::memory_order_release);
             active_ = incoming;
         }

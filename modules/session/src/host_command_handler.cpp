@@ -266,24 +266,18 @@ HostCommandHandler::CommandResult HostCommandHandler::stage_routing(
 }
 
 HostCommandHandler::CommandResult HostCommandHandler::commit_routing(bool approve_feedback) {
-    if (auto prepared = ctx_.routing.prepare_commit(approve_feedback, ctx_.strip_ids());
-        !prepared) {
+    if (auto committed = ctx_.commit_staged_routing(approve_feedback); !committed) {
         // 検証し直した結果が変わっていることがあるので、拒否の理由を UI が示せるよう知らせる。
         ctx_.publish_routing();
-        return common::make_unexpected(prepared.error());
+        return common::make_unexpected(committed.error());
     }
-    const auto& staged = *ctx_.routing.info().staged;
-    if (!ctx_.ports.mixer.apply_routing(staged.config, staged.check.needs_approval)) {
-        // ミキサーが受け付けなければ今のグラフのまま音を出し続け、ステージングも残す。
-        ctx_.log(common::LogLevel::kWarning, "ルーティングをミキサーに適用できませんでした");
-        return common::make_unexpected(ErrorCode::kEngineError);
-    }
-    ctx_.routing.commit();
     // 消えたバスとセンドの seq は、同じ entity_id が作り直されたときに古い値と比べないよう忘れる。
     std::erase_if(last_route_gain_seq_, [this](const auto& entry) {
         return ctx_.routing.find_level(entry.first) == nullptr;
     });
     ctx_.publish_routing();
+    // 本番中に落ちても、次の起動で同じバスと出力の構成に戻れるよう、適用のたびに保存する。
+    ctx_.save_settings();
     return ctx_.routing.info().revision;
 }
 

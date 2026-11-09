@@ -10,13 +10,14 @@ import type {
   MixerSnapshot,
   OutputDevice,
   PendingParticipant,
-  RoutingInfo,
+  RouteLevel,
   SessionInfo,
   SetGainCommand,
   SignalState,
   UiToEngineMessage,
 } from "../messages";
 import { FakeEngineBase, type FakeEngineOptions } from "./fake-engine-base";
+import { FakeRouting } from "./fake-routing";
 
 /** フェイクエンジンの初期状態の種類。demo は画面を一通り確かめられる参加者をあらかじめ置く。 */
 export type MixerScenario = "demo" | "empty";
@@ -71,7 +72,7 @@ const kOutputDevices: OutputDevice[] = [
   { id: "broken", name: "HDMI (開けないデバイス)" },
 ];
 
-function initialSnapshot(scenario: MixerScenario): MixerSnapshot {
+function initialSnapshot(scenario: MixerScenario): Omit<MixerSnapshot, "routing"> {
   const master: MasterStrip = {
     entity_id: kMasterId,
     revision: 1,
@@ -93,16 +94,7 @@ function initialSnapshot(scenario: MixerScenario): MixerSnapshot {
     output_devices: kOutputDevices,
     update_available: null,
   };
-  // ルーティングは空（バスも追加の出力もない）から始める。
-  const routing: RoutingInfo = {
-    entity_id: kRoutingId,
-    revision: 1,
-    applied: { buses: [], outputs: [], sends: [], delays: [], input_delays: [] },
-    feedback_approved: false,
-    staged: null,
-    levels: [],
-  };
-  if (scenario === "empty") return { session, channels: [], master, pending: [], routing };
+  if (scenario === "empty") return { session, channels: [], master, pending: [] };
   return {
     session: {
       ...session,
@@ -122,13 +114,14 @@ function initialSnapshot(scenario: MixerScenario): MixerSnapshot {
     ],
     master,
     pending: [{ entity_id: "pending1", revision: 1, name: "Tp 渡辺", short_id: "#08" }],
-    routing,
   };
 }
 
 /** 親機モードのフェイクエンジン。 */
 export class FakeMixerEngine extends FakeEngineBase {
-  private state: MixerSnapshot;
+  private state: Omit<MixerSnapshot, "routing">;
+  /** ルーティングは空（バスも追加の出力もない）から始める。 */
+  private readonly routing = new FakeRouting(kRoutingId);
   private nextIndex: number;
 
   constructor(options: FakeMixerEngineOptions = {}) {
@@ -139,7 +132,7 @@ export class FakeMixerEngine extends FakeEngineBase {
 
   /** 現在の状態（テストでの確認用）。 */
   snapshot(): MixerSnapshot {
-    return this.state;
+    return { ...this.state, routing: this.routing.info() };
   }
 
   /** 出力デバイスの抜去を再現する。エンジンは別のデバイスに切り替えず、Master を安全ミュートにする。 */
@@ -190,7 +183,7 @@ export class FakeMixerEngine extends FakeEngineBase {
   protected receive(message: UiToEngineMessage): void {
     switch (message.type) {
       case "hello":
-        this.emit({ type: "mixer_snapshot", snapshot: this.state });
+        this.emit({ type: "mixer_snapshot", snapshot: this.snapshot() });
         return;
       case "set_gain":
         this.applyGain(message);
@@ -203,18 +196,16 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "reject_participant":
       case "remove_strip":
       case "select_output":
+      case "stage_routing":
+      case "commit_routing":
+      case "discard_routing":
+      case "set_route_mute":
         this.applyCommand(message);
         return;
       case "join":
       case "leave":
       case "select_input":
       case "set_send_mute":
-      // ルーティング画面はまだないので、フェイクエンジンもルーティングを変えない。
-      // 画面を作る PR で、ステージングと適用を再現する。
-      case "stage_routing":
-      case "commit_routing":
-      case "discard_routing":
-      case "set_route_mute":
         this.reject(message, "INVALID_STATE");
         return;
     }
@@ -242,6 +233,10 @@ export class FakeMixerEngine extends FakeEngineBase {
   }
 
   private applyGain(message: SetGainCommand): void {
+    if (this.routing.level(message.entity_id) !== undefined) {
+      this.applyRouteGain(message);
+      return;
+    }
     const target =
       message.entity_id === kMasterId
         ? this.state.master
@@ -256,6 +251,19 @@ export class FakeMixerEngine extends FakeEngineBase {
       entity_id: message.entity_id,
       seq: message.seq,
       applied_revision: target.revision,
+    });
+  }
+
+  private applyRouteGain(message: SetGainCommand): void {
+    const level = this.routing.setGain(message.entity_id, message.gain_db);
+    if (level === undefined) return;
+    this.emitRouteLevel(level);
+    if (this.dropAcks) return;
+    this.emit({
+      type: "gain_ack",
+      entity_id: message.entity_id,
+      seq: message.seq,
+      applied_revision: level.revision,
     });
   }
 
@@ -285,9 +293,14 @@ export class FakeMixerEngine extends FakeEngineBase {
         }
         this.ack(command, this.updateSession({ state: "ENDING", invite_url: null }));
         this.later(() => {
-          for (const c of this.state.channels)
-            this.emit({ type: "channel_removed", entity_id: c.entity_id });
+          const removed = this.state.channels.map((c) => c.entity_id);
+          for (const id of removed) this.emit({ type: "channel_removed", entity_id: id });
           this.state = { ...this.state, channels: [], pending: [] };
+          // バスや出力の構成はセッションをまたいで残し、消えたストリップへの参照だけを片付ける。
+          let routingChanged = false;
+          for (const id of removed)
+            routingChanged = this.routing.forgetStrip(id, []) || routingChanged;
+          if (routingChanged) this.emitRouting();
           this.emit({ type: "pending_updated", pending: [] });
           this.updateMaster({ master_muted: true, master_mute_reason: "OPERATOR" });
           this.updateSession({ state: "IDLE", name: "" }, false);
@@ -327,17 +340,44 @@ export class FakeMixerEngine extends FakeEngineBase {
         };
         this.ack(command, revision + 1);
         this.emit({ type: "channel_removed", entity_id: command.entity_id });
+        if (this.routing.forgetStrip(command.entity_id, this.stripIds())) this.emitRouting();
         this.refreshSessionState();
+        return;
+      }
+      case "stage_routing":
+        if (command.entity_id !== kRoutingId) return this.reject(command, "INVALID_STATE");
+        // ステージングは検証の結果を示すための段階なので、問題のある構成も受け付ける。
+        this.ack(command, this.routing.stage(command.config, this.stripIds()));
+        this.emitRouting();
+        return;
+      case "commit_routing":
+      case "discard_routing": {
+        if (command.entity_id !== kRoutingId) return this.reject(command, "INVALID_STATE");
+        const result =
+          command.type === "commit_routing"
+            ? this.routing.commit(command.approve_feedback, this.stripIds())
+            : this.routing.discard();
+        if (!result.ok) {
+          this.reject(command, result.error);
+          // 検証し直した結果が変わっていることがあるので、理由を画面が示せるよう知らせる。
+          this.emitRouting();
+          return;
+        }
+        this.ack(command, result.revision);
+        this.emitRouting();
+        return;
+      }
+      case "set_route_mute": {
+        const level = this.routing.setMute(command.entity_id, command.muted);
+        if (level === undefined) return this.reject(command, "INVALID_STATE");
+        this.ack(command, level.revision);
+        this.emitRouteLevel(level);
         return;
       }
       case "join":
       case "leave":
       case "select_input":
       case "set_send_mute":
-      case "stage_routing":
-      case "commit_routing":
-      case "discard_routing":
-      case "set_route_mute":
         this.reject(command, "INVALID_STATE");
         return;
     }
@@ -391,10 +431,24 @@ export class FakeMixerEngine extends FakeEngineBase {
   private revisionOf(entityId: string): number | undefined {
     if (entityId === kSessionId) return this.state.session.revision;
     if (entityId === kMasterId) return this.state.master.revision;
+    if (entityId === kRoutingId) return this.routing.info().revision;
     return (
       this.state.channels.find((c) => c.entity_id === entityId)?.revision ??
-      this.state.pending.find((p) => p.entity_id === entityId)?.revision
+      this.state.pending.find((p) => p.entity_id === entityId)?.revision ??
+      this.routing.level(entityId)?.revision
     );
+  }
+
+  private stripIds(): string[] {
+    return this.state.channels.map((c) => c.entity_id);
+  }
+
+  private emitRouting(): void {
+    this.emit({ type: "routing_updated", routing: this.routing.info() });
+  }
+
+  private emitRouteLevel(level: RouteLevel): void {
+    this.emit({ type: "route_level_updated", level });
   }
 
   /**

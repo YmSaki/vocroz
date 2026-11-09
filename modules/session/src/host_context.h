@@ -108,6 +108,19 @@ struct HostContext {
     /// @param strip_id 削除したストリップ。registry からは取り除き済みであること
     void forget_strip_in_routing(const std::string& strip_id);
 
+    /// ステージング中のルーティングを検証し直し、ミキサーへ適用して適用中にする。UI
+    /// には知らせない。
+    /// @param approve_feedback オペレーターが遅延ノードを通るループを承認した
+    /// @return 適用できなければ INVALID_STATE（構成の問題、承認がない）か ENGINE_ERROR（ミキサーが
+    ///         受け付けない）。どちらの場合も今のグラフとステージングをそのまま残す
+    [[nodiscard]] common::Result<void, control_protocol::ErrorCode> commit_staged_routing(
+        bool approve_feedback);
+
+    /// 保存したルーティングの構成を起動時に戻す。問題のない構成はそのまま適用し、バスとセンドは
+    /// 保存したフェーダーの値とミュートで始める。承認の要るループがあればステージングに置いて
+    /// オペレーターの承認を待ち、問題のある構成は戻さない（docs/adr/0033-routing-persistence.md）。
+    void restore_routing();
+
     /// 今あるチャンネルストリップの entity_id。ルーティングの検証に使う。
     [[nodiscard]] std::vector<std::string> strip_ids() const;
 

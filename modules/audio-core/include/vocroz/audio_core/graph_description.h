@@ -14,8 +14,11 @@
 #include <optional>
 #include <vector>
 
+#include "vocroz/audio_core/playback_track.h"
 #include "vocroz/audio_core/ports/audio_source.h"
+#include "vocroz/audio_core/ports/midi_source.h"
 #include "vocroz/audio_core/ports/plugin_processor.h"
+#include "vocroz/audio_core/recording_track.h"
 
 namespace vocroz::audio_core {
 
@@ -51,6 +54,12 @@ enum class NodeKind {
     /// プラグイン（VST3 のエフェクトと VSTi）。チャンネル数は PluginBusLayout で決まり、
     /// 報告された遅延はプラグイン遅延補正（PDC）の対象になる
     kPlugin,
+    /// 録音タップ。入力の加算を RecordingTrack に書く。チャンネル数は RecordingTrack で決まり、
+    /// 出力を持たない（後段へつながない）
+    kRecordTap,
+    /// 再生ノード（メディアプレイヤー）。PlaybackTrack の再生音を出す。入力を持たず、
+    /// 出力のチャンネル数は PlaybackTrack で決まる
+    kPlayer,
 };
 
 /// ノードの記述。各種類のファクトリー関数で作る。
@@ -73,6 +82,10 @@ struct NodeSpec {
     /// kPlugin: 処理の遅延（0〜kMaxLatencyCompensationSamples）。make_plugin() が
     /// PluginProcessor::latency_samples() から写す。PDC はこの値で計算する。
     std::size_t latency_samples = 0;
+    /// kRecordTap のときの書き込み先。
+    std::shared_ptr<RecordingTrack> recording;
+    /// kPlayer のときの読み込み元。
+    std::shared_ptr<PlaybackTrack> playback;
 
     /// ソースノードを作る。
     /// @param id ノードの識別子
@@ -118,6 +131,19 @@ struct NodeSpec {
     /// @param plugin 処理の呼び出し先（null にしない）
     /// スレッド安全性: コントロールスレッドから呼ぶ（PluginProcessor の取得関数を呼ぶため）。
     [[nodiscard]] static NodeSpec make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin);
+
+    /// 録音タップを作る。録音したいストリップかバス（またはソース）からつなぐ。
+    /// フェーダーの前を録るなら SendTap::kPreFader でつなぐ。録音タップへのプリフェーダーの結線は、
+    /// 聞こえる音を作らないのでセンドレベルを付けなくてよい。
+    /// 録音の開始と停止は、このノードを含むグラフの適用で表す（recording_track.h）。
+    /// @param id ノードの識別子
+    /// @param track 書き込み先（null にしない）
+    [[nodiscard]] static NodeSpec make_record_tap(NodeId id, std::shared_ptr<RecordingTrack> track);
+
+    /// 再生ノードを作る。出力を任意のバスかストリップへつなぐ。
+    /// @param id ノードの識別子
+    /// @param track 読み込み元（null にしない）
+    [[nodiscard]] static NodeSpec make_player(NodeId id, std::shared_ptr<PlaybackTrack> track);
 };
 
 /// 結線が送り元のどの位置から信号を取り出すか。
@@ -149,10 +175,33 @@ struct Connection {
     std::optional<FaderId> level;
 };
 
+/// グラフ内の MIDI ソースの識別子。1 つのグラフの中で一意にする。NodeId とは別の名前空間。
+struct MidiSourceId {
+    std::uint32_t value = 0;  ///< 識別子の値
+    friend constexpr auto operator<=>(MidiSourceId, MidiSourceId) = default;
+};
+
+/// MIDI ソース（MIDI デバイス 1 台、子機 1 台など）の記述。
+/// MIDI は PCM の結線とは独立に流すので、ノードではなくグラフの外側の入力として記述する。
+struct MidiSourceSpec {
+    MidiSourceId id;                     ///< ソースの識別子
+    std::shared_ptr<MidiSource> source;  ///< イベントの取り出し先（null にしない）
+};
+
+/// MIDI の経路。from のイベントを、プラグインノード to の process() に渡す。
+/// 1 つのソースを複数のプラグインへ、複数のソースを 1 つのプラグインへつないでよい。
+/// 経路を外すと、その経路で発音中だったノートには、外した後の最初のブロックで Note Off を送る。
+struct MidiConnection {
+    MidiSourceId from;  ///< 送り元の MIDI ソース
+    NodeId to;          ///< 送り先のプラグインノード
+};
+
 /// 音声グラフ全体の記述。ノードの並び順は処理順に影響しない（結線から決める）。
 struct GraphDescription {
-    std::vector<NodeSpec> nodes;          ///< ノード
-    std::vector<Connection> connections;  ///< 結線
+    std::vector<NodeSpec> nodes;                   ///< ノード
+    std::vector<Connection> connections;           ///< 結線
+    std::vector<MidiSourceSpec> midi_sources;      ///< MIDI ソース
+    std::vector<MidiConnection> midi_connections;  ///< MIDI の経路
     /// 遅延ノードを通るループ（フィードバック経路）を、オペレーターが承認済みなら true。
     /// 遅延ノードを通らないループは、この値に関わらず適用できない。
     bool feedback_approved = false;
@@ -173,7 +222,8 @@ enum class GraphError {
     kDuplicateFader,   ///< 同じフェーダーを複数のノードが使っている
     kDuplicateMeter,   ///< 同じメーターを複数のノードが使っている
     kInvalidSendTap,  ///< プリフェーダーのセンドの送り元がストリップでもバスでもない
-    kMissingSendLevel,         ///< プリフェーダーのセンドにセンドレベルがない
+    /// プリフェーダーのセンドにセンドレベルがない（録音タップへの結線を除く）
+    kMissingSendLevel,
     kDelayOutOfRange,          ///< 手動ディレイか遅延ノードの遅延が範囲外
     kOutputChannelOutOfRange,  ///< 出力ノードのチャンネルが kMaxOutputChannels を超える
     kOverlappingOutputs,  ///< 複数の出力ノードが同じ出力デバイスのチャンネルに書く
@@ -181,6 +231,12 @@ enum class GraphError {
     kInvalidPluginLayout,  ///< プラグインのチャンネル数が範囲外（入力 0〜2、出力 1〜2）
     /// プラグインの遅延か、合流する経路の遅延の差が kMaxLatencyCompensationSamples を超える
     kLatencyOutOfRange,
+    kMissingTrack,  ///< 録音タップに RecordingTrack が、再生ノードに PlaybackTrack がない
+    kDuplicateMidiSource,  ///< 同じ MidiSourceId の MIDI ソースが複数ある
+    kMissingMidiSource,    ///< MIDI ソースに MidiSource がない
+    /// MIDI の経路が、存在しない MIDI
+    /// ソースかノードを指しているか、送り先がプラグインノードでないか、 同じ経路が重複している
+    kInvalidMidiConnection,
 };
 
 }  // namespace vocroz::audio_core

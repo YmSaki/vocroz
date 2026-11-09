@@ -79,6 +79,8 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
         node.input_channel_count = input_channels_of(spec);
         node.buffer_channel_count = std::max(node.channel_count, node.input_channel_count);
         node.plugin = spec.plugin;
+        node.recording = spec.recording;
+        node.playback = spec.playback;
         assign_buffers(node.channels, node.buffer_channel_count, next_buffer);
         if (plan.has_pre_fader_send[spec_index]) {
             assign_buffers(node.pre_fader, node.channel_count, next_buffer);
@@ -114,6 +116,7 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
             node.inputs.push_back(std::move(input));
         }
     }
+    graph->midi_.build(description, plan, position_of);
     return graph;
 }
 
@@ -159,11 +162,13 @@ void RenderGraph::keep_pre_fader(Node& node, std::size_t frames) noexcept VOCROZ
     }
 }
 
-void RenderGraph::process_plugin(Node& node, std::size_t frames) noexcept VOCROZ_NONBLOCKING {
+void RenderGraph::process_plugin(Node& node, std::size_t frames,
+                                 std::span<const MidiEvent> midi) noexcept VOCROZ_NONBLOCKING {
     if (!node.plugin_failed) {
         PluginProcessContext context;
         context.channels = std::span<float* const>(node.channels.data(), node.buffer_channel_count);
         context.frames = frames;
+        context.midi = midi;
         const bool ok = node.plugin->process(context) == PluginProcessStatus::kOk;
         // NaN や無限大は、後段のバスとリミッターを通っても元に戻らない。
         // 出力全体を壊すので、失敗と同じに扱う。
@@ -178,8 +183,9 @@ void RenderGraph::process_plugin(Node& node, std::size_t frames) noexcept VOCROZ
     }
 }
 
-void RenderGraph::process_node(Node& node, std::size_t frames, FaderBank& faders,
+void RenderGraph::process_node(std::size_t position, std::size_t frames, FaderBank& faders,
                                MeterBank& meters) noexcept VOCROZ_NONBLOCKING {
+    Node& node = nodes_[position];
     float* const* channels = node.channels.data();
     switch (node.kind) {
         case NodeKind::kSource:
@@ -223,16 +229,27 @@ void RenderGraph::process_node(Node& node, std::size_t frames, FaderBank& faders
             break;
         case NodeKind::kPlugin:
             mix_inputs(node, frames, faders);
-            process_plugin(node, frames);
+            // 失敗したプラグインにも経路の処理は続ける。発音中のノートの追跡を、届いたイベントと
+            // 食い違わせないため。
+            process_plugin(node, frames, midi_.events_for(position));
+            break;
+        case NodeKind::kRecordTap:
+            mix_inputs(node, frames, faders);
+            node.recording->push(channels, frames);
+            break;
+        case NodeKind::kPlayer:
+            node.playback->render(channels, frames);
             break;
     }
 }
 
-std::span<const OutputBlock> RenderGraph::process(std::size_t frames, FaderBank& faders,
-                                                  MeterBank& meters) noexcept VOCROZ_NONBLOCKING {
+std::span<const OutputBlock> RenderGraph::process(
+    std::size_t frames, FaderBank& faders, MeterBank& meters,
+    const MidiBlockClock& midi_clock) noexcept VOCROZ_NONBLOCKING {
     frames = std::min(frames, kBlockSize);
-    for (Node& node : nodes_) {
-        process_node(node, frames, faders, meters);
+    midi_.pull_sources(midi_clock, frames);
+    for (std::size_t position = 0; position < nodes_.size(); ++position) {
+        process_node(position, frames, faders, meters);
     }
     // 遅延ノードの入力（ループで戻ってくる信号を含む）は、このブロックの処理がすべて終わってから
     // 決まるので、最後にまとめて書き込む。遅延は 1 ブロック以上なので、書いたサンプルは
@@ -245,6 +262,10 @@ std::span<const OutputBlock> RenderGraph::process(std::size_t frames, FaderBank&
         }
     }
     return outputs_;
+}
+
+void RenderGraph::adopt_midi_state(const RenderGraph& previous) noexcept VOCROZ_NONBLOCKING {
+    midi_.adopt(previous.midi_);
 }
 
 }  // namespace vocroz::audio_core

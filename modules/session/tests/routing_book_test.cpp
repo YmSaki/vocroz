@@ -145,5 +145,26 @@ TEST(RoutingBookTest, RemovingAStripDropsItsSendsAndInputDelayFromTheAppliedRout
     EXPECT_NE(book.find_level("bus-cue"), nullptr);
 }
 
+TEST(WithoutStripReferencesTest, KeepsOnlyRoutesBetweenMasterBusesOutputsAndDelays) {
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-a", "A", cp::BusKind::kUser});
+    config.outputs.push_back(cp::RoutingOutput{"out-a", "A", 2});
+    config.delays.push_back(cp::RoutingDelay{"delay-a", 100.0});
+    config.sends.push_back(cp::RoutingSend{"send-1", "ch1", "bus-a", cp::SendTap::kPreFader});
+    config.sends.push_back(cp::RoutingSend{"send-2", "bus-a", "out-a", cp::SendTap::kPostFader});
+    config.sends.push_back(cp::RoutingSend{"send-3", "master", "delay-a", cp::SendTap::kPostFader});
+    config.sends.push_back(cp::RoutingSend{"send-4", "delay-a", "ch2", cp::SendTap::kPostFader});
+    config.input_delays.push_back(cp::InputDelay{"ch1", 5.0});
+
+    const auto kept = without_strip_references(config);
+    EXPECT_EQ(kept.buses, config.buses);
+    EXPECT_EQ(kept.outputs, config.outputs);
+    EXPECT_EQ(kept.delays, config.delays);
+    ASSERT_EQ(kept.sends.size(), 2U);
+    EXPECT_EQ(kept.sends[0].entity_id, "send-2");
+    EXPECT_EQ(kept.sends[1].entity_id, "send-3");
+    EXPECT_TRUE(kept.input_delays.empty());
+}
+
 }  // namespace
 }  // namespace vocroz::session

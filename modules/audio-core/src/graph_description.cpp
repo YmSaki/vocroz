@@ -70,4 +70,20 @@ NodeSpec NodeSpec::make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugi
     return spec;
 }
 
+NodeSpec NodeSpec::make_record_tap(NodeId id, std::shared_ptr<RecordingTrack> track) {
+    NodeSpec spec;
+    spec.id = id;
+    spec.kind = NodeKind::kRecordTap;
+    spec.recording = std::move(track);
+    return spec;
+}
+
+NodeSpec NodeSpec::make_player(NodeId id, std::shared_ptr<PlaybackTrack> track) {
+    NodeSpec spec;
+    spec.id = id;
+    spec.kind = NodeKind::kPlayer;
+    spec.playback = std::move(track);
+    return spec;
+}
+
 }  // namespace vocroz::audio_core

@@ -72,9 +72,22 @@ Linux で JUCE を使う場合は `-DVOCROZ_WITH_JUCE=ON` を付け、GTK と We
 cd ui && npm ci && npm test && npm run build
 ```
 
+Windows で `remote-pa` をビルドするときは、画面を実行ファイルに埋め込むため、CMake の configure の前に `ui` をビルドしておいてください（`ui/dist` がないと configure が止まります）。
+
 CMake の構成時に、コミット前の自動整形（`.githooks/pre-commit`）が有効になります。CMake を使わずに作業する場合は、最初に `git config core.hooksPath .githooks` を実行してください。
 
-現時点では各プログラムとも `--version` に応答するだけです。親機・子機としての起動手順は、機能の実装に合わせてこの節に追記します。
+1 台の PC で親機と子機を動かすには、ランデブーサーバーを手元で起動し、`remote-pa` を 2 つ、別のデータフォルダで起動します（`docs/adr/0030-remote-pa-assembly.md`）。
+ランデブーサーバーの URL は、ビルド時の `-DVOCROZ_RENDEZVOUS_URL=<URL>` で埋め込みます。手元のサーバーなら `http://127.0.0.1:8080` を使えます（http はループバックだけ）。
+子機モードは起動時の `--rendezvous-url=<URL>` でも上書きできます。親機モードの `pa-engine` は今のところビルド時の値だけを使います。
+
+```bat
+rem 親機モード（pa-engine は remote-pa が同じフォルダから起動する）
+remote-pa.exe --data-dir=%TEMP%\vocroz-host
+rem 子機モード（親機の画面で作った招待コードを入力する）
+remote-pa.exe --client --data-dir=%TEMP%\vocroz-client
+```
+
+親機の画面を閉じても `pa-engine` は止まらず、もう一度開くと同じエンジンにつながります。セッションも画面もない状態が 30 秒続くと、`pa-engine` は自分で終わります。
 
 ランデブーサーバーの起動方法と API は [infra/rendezvous/README.md](infra/rendezvous/README.md) にあります。
 

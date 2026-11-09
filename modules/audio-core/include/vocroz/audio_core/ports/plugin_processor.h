@@ -32,7 +32,8 @@ struct PluginProcessContext {
     std::span<float* const> channels;
     /// 処理するサンプル数（kBlockSize 以下）。
     std::size_t frames = 0;
-    /// このブロックの MIDI イベント（sample_offset の昇順）。エフェクトには空の範囲を渡す。
+    /// このブロックの MIDI イベント（sample_offset の昇順、frames 未満）。MIDI の経路
+    /// （GraphDescription::midi_connections）がつながっていないプラグインには空の範囲を渡す。
     std::span<const MidiEvent> midi;
 };
 
