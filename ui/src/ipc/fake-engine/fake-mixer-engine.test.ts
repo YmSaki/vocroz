@@ -90,4 +90,41 @@ describe("FakeMixerEngine", () => {
     });
     expect(engine.snapshot().master.master_muted).toBe(true);
   });
+  it("ルーティングをステージングし、検証してから適用する", () => {
+    const timers = new FakeTimers();
+    const engine = new FakeMixerEngine({ timers, meterIntervalMs: 0 });
+    const received: EngineToUiMessage[] = [];
+    engine.subscribe((m) => received.push(m));
+    const config = {
+      buses: [{ entity_id: "bus-cue", name: "返し", kind: "CUE" as const }],
+      outputs: [{ entity_id: "out-mon", name: "モニター", device_channel: 2 }],
+      sends: [
+        { entity_id: "send-1", from: "ch1", to: "bus-cue", tap: "PRE_FADER" as const },
+        { entity_id: "send-2", from: "bus-cue", to: "out-mon", tap: "POST_FADER" as const },
+      ],
+      delays: [],
+      input_delays: [],
+    };
+    engine.send({
+      type: "stage_routing",
+      request_id: "r1",
+      entity_id: "routing",
+      expected_revision: 1,
+      config,
+    });
+    timers.advance(100);
+    expect(received).toContainEqual({ type: "ack", request_id: "r1", applied_revision: 2 });
+    expect(engine.snapshot().routing.staged?.check.issue).toBeNull();
+    engine.send({
+      type: "commit_routing",
+      request_id: "r2",
+      entity_id: "routing",
+      expected_revision: 2,
+      approve_feedback: false,
+    });
+    timers.advance(100);
+    expect(engine.snapshot().routing.applied).toEqual(config);
+    expect(engine.snapshot().routing.levels.every((l) => l.muted)).toBe(true);
+    expect(received.at(-1)).toMatchObject({ type: "routing_updated" });
+  });
 });

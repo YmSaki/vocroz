@@ -129,6 +129,18 @@
     border-bottom: 1px solid var(--color-border);
 }
 
+.mixer-toolbar__button {
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--color-text);
+    background: var(--color-button);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
 .mixer-main {
     display: flex;
     flex: 1;

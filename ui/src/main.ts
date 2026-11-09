@@ -11,6 +11,7 @@ import { readLaunchConfig, type UiMode } from "./ipc/launch-config";
 import type { Transport } from "./ipc/transport";
 import { ClientScreen } from "./screens/client/ClientScreen";
 import { MixerScreen } from "./screens/mixer/MixerScreen";
+import { RoutingScreen } from "./screens/routing/RoutingScreen";
 import { connectContinuousFeedback, connectNotices } from "./screens/shared/feedback";
 import { ClientStore } from "./state/client-store";
 import { MeterStore } from "./state/meter-store";
@@ -62,7 +63,16 @@ async function main(): Promise<void> {
   } else {
     const store = new MixerStore();
     client.subscribe((message) => store.apply(message));
-    render(h(MixerScreen, { client, store, optimistic, meters, toasts }), root);
+    // ルーティング画面は同じウィンドウで切り替えて開く（docs/adr/0033-routing-persistence.md）。
+    // ストアは画面をまたいで共有するので、切り替えてもエンジンの状態を取り直さない。
+    const showMixer = (): void =>
+      render(
+        h(MixerScreen, { client, store, optimistic, meters, toasts, onOpenRouting: showRouting }),
+        root,
+      );
+    const showRouting = (): void =>
+      render(h(RoutingScreen, { client, store, optimistic, toasts, onClose: showMixer }), root);
+    showMixer();
   }
   // 購読をつないでから全状態を要求し、スナップショットを取りこぼさないようにする。
   client.hello();
