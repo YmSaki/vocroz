@@ -207,6 +207,7 @@ nlohmann::json write_json(const SessionInfo& session) {
         {"output_device_id", nullable(session.output_device_id)},
         {"output_devices", write_array(session.output_devices)},
         {"update_available", nullable(session.update_available)},
+        {"latency_target_ms", session.latency_target_ms},
     };
 }
 
@@ -224,6 +225,8 @@ common::Result<SessionInfo, DecodeError> read_session_info(const nlohmann::json&
         session.output_device_id = r.nullable_text("output_device_id", kDeviceIdRule);
         session.output_devices = r.list<OutputDevice>("output_devices", read_output_device);
         session.update_available = r.nullable_text("update_available", kTextRule);
+        session.latency_target_ms =
+            r.number("latency_target_ms", kMinLatencyTargetMs, kMaxLatencyTargetMs);
         return session;
     });
 }

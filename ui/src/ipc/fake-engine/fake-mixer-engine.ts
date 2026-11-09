@@ -6,6 +6,7 @@ import type {
   ChannelStrip,
   ConnectionState,
   DiscreteCommand,
+  LinkStat,
   MasterStrip,
   MixerSnapshot,
   OutputDevice,
@@ -39,6 +40,11 @@ const kConnectDelayMs = 800;
 const kUnmuteDelayMs = 2500;
 const kResumeDelayMs = 200;
 const kJoinRequestDelayMs = 2000;
+/** 受信の統計値を送る周期（ms）。エンジンと同じく 1 Hz ほどにする。 */
+const kLinkStatsIntervalMs = 1000;
+/** エンジンが受け付ける目標遅延の範囲（ms）。control-protocol の kMinLatencyTargetMs と kMaxLatencyTargetMs と同じ値。 */
+const kMinLatencyTargetMs = 10;
+const kMaxLatencyTargetMs = 250;
 
 function channel(
   index: number,
@@ -98,6 +104,7 @@ function initialSnapshot(scenario: MixerScenario): Omit<MixerSnapshot, "routing"
     output_device_id: kDefaultOutput.id,
     output_devices: kOutputDevices,
     update_available: null,
+    latency_target_ms: 20,
   };
   if (scenario === "empty") return { session, channels: [], master, pending: [] };
   return {
@@ -136,6 +143,7 @@ export class FakeMixerEngine extends FakeEngineBase {
   /** ルーティングは空（バスも追加の出力もない）から始める。 */
   private readonly routing = new FakeRouting(kRoutingId);
   private nextIndex: number;
+  private sinceLinkStatsMs = 0;
 
   constructor(options: FakeMixerEngineOptions = {}) {
     super(options);
@@ -193,6 +201,32 @@ export class FakeMixerEngine extends FakeEngineBase {
     );
   }
 
+  /**
+   * 受信の統計値を送る。信号を受けているチャンネルだけに、それらしい揺らぎとバッファの長さを付ける。
+   * バッファは目標遅延を上限にして、揺らぎの数倍をためている様子を再現する。
+   */
+  sendLinkStats(): void {
+    const stats: Record<string, LinkStat> = {};
+    const limit = this.state.session.latency_target_ms;
+    for (const c of this.state.channels) {
+      if (c.connection_state !== "CONNECTED") continue;
+      if (c.signal_state !== "RECEIVING") {
+        stats[c.entity_id] = { jitter_ms: null, buffer_ms: null };
+        continue;
+      }
+      const jitter = 1 + this.random() * 5;
+      stats[c.entity_id] = { jitter_ms: jitter, buffer_ms: Math.min(limit, 5 + jitter * 3) };
+    }
+    this.emit({ type: "link_stats", stats });
+  }
+
+  protected override onMeterTick(intervalMs: number): void {
+    this.sinceLinkStatsMs += intervalMs;
+    if (this.sinceLinkStatsMs < kLinkStatsIntervalMs) return;
+    this.sinceLinkStatsMs = 0;
+    this.sendLinkStats();
+  }
+
   protected receive(message: UiToEngineMessage): void {
     switch (message.type) {
       case "hello":
@@ -213,6 +247,7 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "commit_routing":
       case "discard_routing":
       case "set_route_mute":
+      case "set_latency_target":
         this.applyCommand(message);
         return;
       case "join":
@@ -392,6 +427,13 @@ export class FakeMixerEngine extends FakeEngineBase {
         this.emitRouteLevel(level);
         return;
       }
+      case "set_latency_target":
+        if (command.entity_id !== kSessionId) return this.reject(command, "INVALID_STATE");
+        if (command.target_ms < kMinLatencyTargetMs || command.target_ms > kMaxLatencyTargetMs) {
+          return this.reject(command, "INVALID_STATE");
+        }
+        this.ack(command, this.updateSession({ latency_target_ms: command.target_ms }));
+        return;
       case "join":
       case "leave":
       case "select_input":

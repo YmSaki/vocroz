@@ -13,6 +13,7 @@ target_sources(vocroz_transport PRIVATE
   src/drift_controller.cpp
   src/drift_resampler.cpp
   src/jitter_buffer.cpp
+  src/jitter_estimator.cpp
   src/liveness_monitor.cpp
   src/media_frame.cpp
   src/media_stream_encoder.cpp
@@ -58,6 +59,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/drift_controller_test.cpp
     tests/drift_resampler_test.cpp
     tests/jitter_buffer_test.cpp
+    tests/jitter_estimator_test.cpp
     tests/liveness_monitor_test.cpp
     tests/media_frame_test.cpp
     tests/media_payload_test.cpp

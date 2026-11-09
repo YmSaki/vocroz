@@ -19,6 +19,7 @@
 #include "fakes/fake_mixer_control.h"
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
+#include "fakes/fake_playout_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
@@ -44,8 +45,9 @@ protected:
 
     HostSession& session() {
         if (!session_) {
-            session_.emplace(config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_,
-                                                         settings_, random_, clock_, logger_});
+            session_.emplace(
+                config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_,
+                                            random_, clock_, logger_, playout_});
             session_->start();
         }
         return *session_;
@@ -183,6 +185,7 @@ protected:
     FakeUiEventSink ui_;
     FakeMixerControl mixer_;
     FakeOutputDeviceControl outputs_;
+    FakePlayoutControl playout_;
     FakePeerLink peers_;
     FakeRendezvousClient rendezvous_;
     FakeSettingsStore settings_;
@@ -695,6 +698,48 @@ TEST_F(HostSessionTest, HelloListsTheOutputDevicesAgain) {
     ASSERT_EQ(devices.size(), 1U);
     EXPECT_EQ(devices[0].id, "dev-new");
 }
+
+// --- 目標レイテンシー ---
+
+TEST_F(HostSessionTest, AppliesTheDefaultLatencyTargetAtStart) {
+    session();
+    EXPECT_EQ(playout_.target(), 20ms);
+    EXPECT_EQ(session().snapshot().session.latency_target_ms, kDefaultLatencyTargetMs);
+}
+
+TEST_F(HostSessionTest, RestoresTheSavedLatencyTargetAndIgnoresAnOutOfRangeOne) {
+    HostSettings saved;
+    saved.latency_target_ms = 45.5;
+    settings_.host() = saved;
+    session();
+    EXPECT_EQ(playout_.target(), 45500us);
+    EXPECT_EQ(session().snapshot().session.latency_target_ms, 45.5);
+
+    session_.reset();
+    saved.latency_target_ms = 5000.0;
+    settings_.host() = saved;
+    session();
+    EXPECT_EQ(playout_.target(), 20ms);
+}
+
+TEST_F(HostSessionTest, SettingTheLatencyTargetAdvancesTheRevisionAndIsSaved) {
+    const auto before = revision_of("session");
+    const auto applied = command("session", cp::SetLatencyTarget{60.0});
+    ASSERT_TRUE(applied);
+    EXPECT_GT(*applied, before);
+    EXPECT_EQ(playout_.target(), 60ms);
+    EXPECT_EQ(session().snapshot().session.latency_target_ms, 60.0);
+    ASSERT_TRUE(settings_.host());
+    EXPECT_EQ(settings_.host()->latency_target_ms, 60.0);
+}
+
+TEST_F(HostSessionTest, LatencyTargetBelongsToTheSessionEntity) {
+    EXPECT_FALSE(command("master", cp::SetLatencyTarget{60.0}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    EXPECT_EQ(playout_.target(), 20ms);
+}
+
+// --- 出力デバイスの抜去 ---
 
 TEST_F(HostSessionTest, LosingTheOutputDeviceSafetyMutesTheMaster) {
     outputs_.add("dev-1", "スピーカー");

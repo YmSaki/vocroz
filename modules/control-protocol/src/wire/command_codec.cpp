@@ -109,6 +109,13 @@ void read_fields(ObjectReader& r, SetReturnMute& command) {
     command.muted = r.boolean("muted");
 }
 
+void write_fields(nlohmann::json& out, const SetLatencyTarget& command) {
+    out["target_ms"] = command.target_ms;
+}
+void read_fields(ObjectReader& r, SetLatencyTarget& command) {
+    command.target_ms = r.number("target_ms", kMinLatencyTargetMs, kMaxLatencyTargetMs);
+}
+
 void write_fields(nlohmann::json& out, const SetGain& command) {
     out["entity_id"] = command.entity_id;
     out["seq"] = command.seq;

@@ -7,6 +7,9 @@
 #include "host_context.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
 #include <tuple>
 #include <utility>
 
@@ -91,6 +94,13 @@ common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_
     }
     routing.commit();
     return {};
+}
+
+void HostContext::apply_latency_target(double target_ms) {
+    session.latency_target_ms = target_ms;
+    settings.latency_target_ms = target_ms;
+    ports.playout.set_latency_target(
+        std::chrono::microseconds{static_cast<std::int64_t>(std::llround(target_ms * 1000.0))});
 }
 
 void HostContext::restore_routing() {

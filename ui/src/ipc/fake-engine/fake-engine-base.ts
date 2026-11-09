@@ -70,6 +70,14 @@ export abstract class FakeEngineBase implements Transport {
   /** メーターの値を作る。 */
   protected abstract meterLevels(): Record<string, number | null>;
 
+  /**
+   * メーターを送るたびに呼ぶ。メーターより遅い周期の観測値（受信の統計値など）を送るのに使う。
+   * @param intervalMs メーターの周期（ms）
+   */
+  protected onMeterTick(intervalMs: number): void {
+    void intervalMs;
+  }
+
   /** UI へメッセージを送る。 */
   protected emit(message: EngineToUiMessage): void {
     for (const listener of this.listeners) listener(message);
@@ -103,6 +111,7 @@ export abstract class FakeEngineBase implements Transport {
   private startMeters(intervalMs: number): void {
     const tick = () => {
       this.emit({ type: "meters", levels: this.meterLevels() });
+      this.onMeterTick(intervalMs);
       this.meterTimer = this.timers.setTimeout(tick, intervalMs);
     };
     this.meterTimer = this.timers.setTimeout(tick, intervalMs);

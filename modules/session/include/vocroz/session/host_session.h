@@ -28,6 +28,7 @@
 #include "vocroz/session/ports/mixer_control.h"
 #include "vocroz/session/ports/output_device_control.h"
 #include "vocroz/session/ports/peer_link.h"
+#include "vocroz/session/ports/playout_control.h"
 #include "vocroz/session/ports/rendezvous_client.h"
 #include "vocroz/session/ports/secure_random.h"
 #include "vocroz/session/ports/settings_store.h"
@@ -60,6 +61,7 @@ public:
         SecureRandom& random;
         const common::Clock& clock;
         common::Logger& logger;
+        PlayoutControl& playout;
     };
 
     /// @param config 固定の設定

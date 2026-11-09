@@ -608,6 +608,22 @@ TEST_F(HostPeerLinksTest, RoutesEachStreamToItsStrip) {
     EXPECT_GT(stream_for_a_while(*client, 1, 2), 0.05F);
 }
 
+TEST_F(HostPeerLinksTest, LatencyTargetReachesCurrentAndLaterStreams) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    // 承認より前に変えた目標で、あとから作るストリームを作れる。
+    links_.set_latency_target(std::chrono::milliseconds{250});
+    admit_audible(peer, "ch-1");
+    EXPECT_EQ(events_.log, (std::vector<std::string>{"established:1"}));
+    // 受信中のストリームへも配る。範囲内の値なので、ストリームは受け付ける。
+    links_.set_latency_target(std::chrono::milliseconds{10});
+    links_.apply_send_mute(peer, false, 1);
+    EXPECT_GT(stream_for_a_while(*client, 0, 1), 0.05F);
+    for (const auto& entry : logger_.entries()) {
+        EXPECT_NE(entry.level, common::LogLevel::kWarning) << entry.message;
+    }
+}
+
 TEST_F(HostPeerLinksTest, ReplacingRoutesMovesStreamAndReportsEstablishedOnce) {
     auto client = make_client();
     const auto peer = connect(*client);

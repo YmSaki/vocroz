@@ -148,6 +148,49 @@ void read_fields(ObjectReader& r, Meters& event) {
     }
 }
 
+void write_fields(nlohmann::json& out, const LinkStats& event) {
+    // メーターと同じく、UI が entity_id で引けるようオブジェクトで送る。
+    auto stats = nlohmann::json::object();
+    for (const auto& stat : event.stats) {
+        stats[stat.entity_id] = {{"jitter_ms", nullable(stat.jitter_ms)},
+                                 {"buffer_ms", nullable(stat.buffer_ms)}};
+    }
+    out["stats"] = std::move(stats);
+}
+void read_fields(ObjectReader& r, LinkStats& event) {
+    const nlohmann::json* stats = r.object("stats");
+    if (stats == nullptr) {
+        return;
+    }
+    event.stats.reserve(stats->size());
+    // nlohmann/json のオブジェクトはキーの昇順に並ぶので、stats も entity_id の昇順になる。
+    for (const auto& [entity_id, value] : stats->items()) {
+        if (!satisfies(entity_id, kIdentifierRule)) {
+            r.fail(DecodeErrorCode::kOutOfRange, "stats");
+            return;
+        }
+        const auto read = [&](const char* key) -> std::optional<std::optional<double>> {
+            const auto it = value.find(key);
+            if (it == value.end() || (!it->is_null() && !it->is_number())) {
+                return std::nullopt;
+            }
+            return it->is_null() ? std::optional<double>{}
+                                 : std::optional<double>{it->get<double>()};
+        };
+        if (!value.is_object()) {
+            r.fail(DecodeErrorCode::kWrongType, "stats");
+            return;
+        }
+        const auto jitter = read("jitter_ms");
+        const auto buffer = read("buffer_ms");
+        if (!jitter || !buffer) {
+            r.fail(DecodeErrorCode::kWrongType, "stats");
+            return;
+        }
+        event.stats.push_back(LinkStat{entity_id, *jitter, *buffer});
+    }
+}
+
 void write_fields(nlohmann::json& out, const Notice& event) {
     out["severity"] = enum_json(event.severity);
     out["code"] = event.code;

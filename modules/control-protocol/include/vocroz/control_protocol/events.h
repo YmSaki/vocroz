@@ -116,6 +116,24 @@ struct Meters {
     friend bool operator==(const Meters&, const Meters&) = default;
 };
 
+/// 1 本の受信ストリームの回線の観測値。
+struct LinkStat {
+    /// チャンネルストリップの entity_id。
+    std::string entity_id;
+    /// 実測の到着間隔のジッター（ms）。まだ測れていなければ std::nullopt。
+    std::optional<double> jitter_ms;
+    /// ジッターバッファの今の目標の深さ（ms）。再生していなければ std::nullopt。
+    std::optional<double> buffer_ms;
+    friend bool operator==(const LinkStat&, const LinkStat&) = default;
+};
+
+/// 回線の観測値（link_stats）。エンジンが 1 Hz ほどで送る。観測値なので revision を持たない。
+struct LinkStats {
+    /// entity_id の昇順。
+    std::vector<LinkStat> stats;
+    friend bool operator==(const LinkStats&, const LinkStats&) = default;
+};
+
 /// エンジンからの通知（notice）。UI は非モーダルのトーストで表示する。
 struct Notice {
     NoticeSeverity severity = NoticeSeverity::kInfo;
@@ -130,6 +148,6 @@ struct Notice {
 using EngineToUiMessage =
     std::variant<MixerSnapshotEvent, ClientSnapshotEvent, SessionUpdated, ChannelUpdated,
                  ChannelRemoved, MasterUpdated, PendingUpdated, ClientUpdated, RoutingUpdated,
-                 RouteLevelUpdated, Ack, Reject, GainAck, Meters, Notice>;
+                 RouteLevelUpdated, Ack, Reject, GainAck, Meters, LinkStats, Notice>;
 
 }  // namespace vocroz::control_protocol

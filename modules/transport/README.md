@@ -19,7 +19,8 @@
 | `vocroz/transport/opus_frame_encoder.h` | `OpusFrameEncoder`（モノラルかステレオ。ステレオはインターリーブの PCM）。`create()` はオーディオスレッド外、`encode()` はオーディオスレッドから呼び出し可能 | 子機のオーディオスレッド |
 | `vocroz/transport/media_stream_encoder.h` | `MediaStreamEncoder`（`AudioSink` の実装。送信レベルとミュートのランプ、世代番号、Opus のエンコード、ミュート中の送信停止）、`StreamSendParams` | `set_params()` はコントロール、`push()` はオーディオスレッド |
 | `vocroz/transport/opus_frame_decoder.h` | `OpusFrameDecoder`（モノラルかステレオ）。`decode()`、`conceal()`（PLC）、`reset()` | オーディオスレッド |
-| `vocroz/transport/playout_stream.h` | `PlayoutStream`。1 ストリームの受信から PCM までをまとめたもの | `enqueue()` はネットワーク受信スレッド、`render()` はオーディオスレッド |
+| `vocroz/transport/playout_stream.h` | `PlayoutStream`。1 ストリームの受信から PCM までをまとめたもの。`set_max_delay()` で目標遅延（ジッターバッファの上限）を変える | `enqueue()` はネットワーク受信スレッド、`render()` はオーディオスレッド、`set_max_delay()` はどこからでも（次の `render()` で反映） |
+| `vocroz/transport/jitter_estimator.h` | `JitterEstimator`。到着間隔の揺らぎ（RFC 3550 の interarrival jitter）の推定 | ネットワーク受信スレッド（ヒープ確保なし） |
 | `vocroz/transport/signal_monitor.h` | `SignalMonitor`。信号状態の判定と、古い世代のフレームの選別 | ネットワーク受信スレッド |
 | `vocroz/transport/signal_state.h` | `SignalState`、`canonical_name()` | どこからでも |
 | `vocroz/transport/send_mute_tracker.h` | `SendMuteTracker`。世代番号による送信ミュートの追跡 | 1 スレッドから |

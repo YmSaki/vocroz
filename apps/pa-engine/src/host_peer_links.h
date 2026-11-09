@@ -16,10 +16,14 @@
 // （PeerSendScheduler が作る）が暗号化して送る。返送のエンコーダーは承認でミキサーの返送に
 // つなぎ、閉じるときに外す（docs/adr/0036-return-monitor.md）。
 //
+// 全体の目標レイテンシー（PlayoutControl）もここで持つ。ジッターバッファを作るのがここなので、
+// 今あるストリームに配り、あとから作るストリームも同じ目標で作る（docs/adr/0037-latency-target-and-link-stats.md）。
+//
 // session への通知（PeerEventSink）は、処理の最後にまとめて行う。通知の中から session が
 // PeerLink を呼んでも、処理中の接続を壊さないようにするため。
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -36,6 +40,7 @@
 #include "vocroz/network/ports/udp_endpoint.h"
 #include "vocroz/network/udp_address.h"
 #include "vocroz/session/ports/peer_link.h"
+#include "vocroz/session/ports/playout_control.h"
 #include "vocroz/transport/playout_stream.h"
 #include "vocroz/transport/static_key_pair.h"
 
@@ -51,7 +56,9 @@ namespace vocroz::engine {
 /// スレッド安全性: すべてのメンバー関数をコントロールスレッドから呼ぶ。
 /// 破棄する前に、受信スレッド（UdpEndpoint）を止める。UdpEndpoint を閉じる前には
 /// stop_sending() で送信スレッドを止める。
-class HostPeerLinks final : public session::PeerLink, public PeerReceiveListener {
+class HostPeerLinks final : public session::PeerLink,
+                            public session::PlayoutControl,
+                            public PeerReceiveListener {
 public:
     /// 注入する依存。どれもこのオブジェクトより長く生存させる（AGENTS.md 4.3）。
     struct Ports {
@@ -90,6 +97,9 @@ public:
     void apply_send_mute(session::PeerHandle peer, bool send_muted, std::uint32_t epoch) override;
     void set_return_mute(session::PeerHandle peer, bool muted, std::uint32_t epoch) override;
     void close(session::PeerHandle peer) override;
+
+    // --- session::PlayoutControl ---
+    void set_latency_target(std::chrono::microseconds target) override;
 
     // --- PeerReceiveListener（PeerReceiveRelay がコントロールスレッドで呼ぶ） ---
     void on_handshake_initiation(const network::UdpAddress& from,

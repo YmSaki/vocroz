@@ -24,6 +24,7 @@ session::HostSettings sample_host() {
     s.routing.delays.push_back(cp::RoutingDelay{"delay-1", 12.5});
     s.routing.input_delays.push_back(cp::InputDelay{"ch1", 3.0});
     s.route_gains = {{"bus-1", -3.0}, {"send-1", std::nullopt}};
+    s.latency_target_ms = 40.0;
     return s;
 }
 
@@ -126,6 +127,12 @@ TEST(SettingsCodecTest, ReadsHostSettingsSavedBeforeRoutingWasPersisted) {
     EXPECT_EQ(decoded->session_name, "a");
     EXPECT_EQ(decoded->routing, control_protocol::RoutingConfig{});
     EXPECT_TRUE(decoded->route_gains.empty());
+    EXPECT_EQ(decoded->latency_target_ms, session::kDefaultLatencyTargetMs);
+}
+
+TEST(SettingsCodecTest, RejectsLatencyTargetOfWrongType) {
+    EXPECT_FALSE(decode_host_settings(
+        R"({"schema_version":1,"session_name":"a","output_device_id":null,"master_gain_db":-3,"latency_target_ms":"20"})"));
 }
 
 TEST(SettingsCodecTest, RejectsMalformedRouting) {
