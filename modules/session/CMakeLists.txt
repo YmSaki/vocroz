@@ -13,6 +13,7 @@ add_library(vocroz_session STATIC
   src/invite_book.cpp
   src/invite_code.cpp
   src/participant_registry.cpp
+  src/plugin_catalog.cpp
   src/request_deduplicator.cpp
   src/state/client_state_machine.cpp
   src/state/connection_state_machine.cpp
@@ -24,7 +25,7 @@ target_include_directories(vocroz_session
   PUBLIC include
   PRIVATE src)
 target_link_libraries(vocroz_session
-  PUBLIC vocroz::common vocroz::control_protocol)
+  PUBLIC vocroz::audio_core vocroz::common vocroz::control_protocol)
 vocroz_set_warnings(vocroz_session)
 
 if(VOCROZ_BUILD_TESTS)
@@ -44,6 +45,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/invite_code_test.cpp
     tests/output_device_state_machine_test.cpp
     tests/participant_registry_test.cpp
+    tests/plugin_catalog_test.cpp
     tests/peer_message_codec_test.cpp
     tests/request_deduplicator_test.cpp
     tests/session_state_machine_test.cpp

@@ -1,6 +1,6 @@
 # session
 
-親機と子機のセッションの規則を持つドメインのモジュールです。依存してよいのは `transport`、`control-protocol`、`audio-core`、`common` で（AGENTS.md 4.2）、今は `control-protocol` と `common` だけを使っています。
+親機と子機のセッションの規則を持つドメインのモジュールです。依存してよいのは `transport`、`control-protocol`、`audio-core`、`common` で（AGENTS.md 4.2）、今は `control-protocol`、`audio-core`（プラグインの処理の型）、`common` を使っています。
 分担、制御メッセージの形式、再接続トークンと招待の扱いは `docs/adr/0022-session-domain.md` で決めています。
 
 ## 責務
@@ -11,6 +11,7 @@
 - 参加者とチャンネルストリップの状態、コマンドの適用（revision の競合の拒否、重複した `request_id` の無視）と認可
 - 初期ミュート、出力デバイスの抜去時の Master の `SAFETY` ミュート、子機の「入力なし」の検知
 - 子機と親機の間の制御メッセージのエンコードとデコード（信頼境界、`src/wire/`）
+- プラグインの一覧: スキャンの記録のキャッシュ、読み込み不可のファイルの記録、スキャンの進行（`PluginCatalog`、`docs/adr/0032-plugin-catalog-and-loader.md`）
 
 ワイヤーフォーマットの外枠と暗号化（`transport`）、DSP（`audio-core`）、ソケットと HTTP（`network`）、設定ファイルの形式（`persistence`）は持ちません。
 
@@ -31,6 +32,12 @@
 | `vocroz/session/ports/settings_store.h` | `SettingsStore`（設定の読み込みと保存） |
 | `vocroz/session/ports/secure_random.h` | `SecureRandom`（トークンの生成） |
 | `vocroz/session/ports/ui_event_sink.h` | `UiEventSink`（UI へのメッセージ） |
+| `vocroz/session/plugin_catalog.h` | `PluginCatalog`、`PluginScanProgress`（プラグインの一覧とスキャンの進行） |
+| `vocroz/session/plugin_description.h` | `PluginDescription`（スキャンで見つけたプラグインの記述） |
+| `vocroz/session/plugin_scan_record.h` | `PluginFile`、`PluginScanRecord`、`PluginScanStatus`、`PluginScanFailure` |
+| `vocroz/session/ports/plugin_scanner.h` | `PluginScanner`（プラグインファイルの列挙とスキャン） |
+| `vocroz/session/ports/plugin_catalog_store.h` | `PluginCatalogStore`（スキャンの記録の保存） |
+| `vocroz/session/ports/plugin_loader.h` | `PluginLoader`、`PluginInstance`（プラグインの読み込みと状態の保存と復元） |
 
 テストでは `vocroz::session_fakes` をリンクすると、`fakes/fake_<役割名>.h` で各ポートのフェイクを使えます。
 
