@@ -75,6 +75,7 @@ ADR-0020 の名前付きパイプのサーバーは、UI の接続をまたい�
 - 設定は `make_json_settings_store()`。`MemorySettingsStore` は消した。
 - 親機の長期鍵は `make_dpapi_secret_store()` に保存し、起動のたびに読み込む（`load_host_keys()`）。ない、壊れている、長さが不正なら作り直して保存する。読み込みが I/O の失敗なら、保存した鍵を上書きしないよう、その起動だけの鍵を使う。秘密鍵から鍵ペアを作り直すため、transport に `StaticKeyPair::from_private_key()` を足した。
 - ランデブーサーバーとの通信は network の `HttpsRendezvousClient`。結果は作業用のスレッドから届くので、`InviteResultRelay` がコントロールスレッドのループに積んで session に渡す。`VOCROZ_RENDEZVOUS_URL` が空か、HTTPS の通信を始められないときは、`OfflineRendezvousClient`（セッションを作れない。オフラインの会場と同じ振る舞い）を使う。
+- `pa-engine.exe` に `pa-updater` と同じアプリケーションマニフェスト（`activeCodePage` を UTF-8）を入れた。`remote-pa` が渡す `--data-dir` は `%LOCALAPPDATA%` の下なので、ユーザー名に日本語を含むと argv が化けるため。
 
 ## 理由
 

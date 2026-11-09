@@ -42,7 +42,8 @@ if(WIN32)
     src/win/execution_state_sleep_inhibitor.cpp
     src/win/known_paths.cpp
     src/win/minidump_crash_handler.cpp
-    src/win/win32_named_mutex.cpp)
+    src/win/win32_named_mutex.cpp
+    src/pa-engine.manifest)
   target_compile_definitions(pa_engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
   target_link_libraries(pa_engine PRIVATE
     vocroz::ipc
