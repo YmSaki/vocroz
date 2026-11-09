@@ -47,6 +47,16 @@ void HarnessMixer::set_master_gain(control_protocol::GainDb gain_db) {
     master_gain_db_ = gain_db;
 }
 
+bool HarnessMixer::apply_routing(const control_protocol::RoutingConfig& /*config*/,
+                                 bool /*feedback_approved*/) {
+    return true;
+}
+
+void HarnessMixer::set_route_muted(const std::string& /*entity_id*/, bool /*muted*/) {}
+
+void HarnessMixer::set_route_gain(const std::string& /*entity_id*/,
+                                  control_protocol::GainDb /*gain_db*/) {}
+
 void HarnessMixer::accumulate(const std::string& strip_id, std::span<const float> input,
                               std::span<float> out) const {
     const auto found = channels_.find(strip_id);

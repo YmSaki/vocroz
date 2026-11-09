@@ -15,6 +15,9 @@ add_library(vocroz_session STATIC
   src/participant_registry.cpp
   src/plugin_catalog.cpp
   src/request_deduplicator.cpp
+  src/routing_book.cpp
+  src/routing_delay.cpp
+  src/routing_validator.cpp
   src/state/client_state_machine.cpp
   src/state/connection_state_machine.cpp
   src/state/output_device_state_machine.cpp
@@ -48,6 +51,8 @@ if(VOCROZ_BUILD_TESTS)
     tests/plugin_catalog_test.cpp
     tests/peer_message_codec_test.cpp
     tests/request_deduplicator_test.cpp
+    tests/routing_book_test.cpp
+    tests/routing_validator_test.cpp
     tests/session_state_machine_test.cpp
     tests/text_utils_test.cpp)
   # 単体テストは src/ の内部の型（状態機械、制御メッセージの形式）も直接確かめる。

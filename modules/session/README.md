@@ -1,7 +1,7 @@
 # session
 
-親機と子機のセッションの規則を持つドメインのモジュールです。依存してよいのは `transport`、`control-protocol`、`audio-core`、`common` で（AGENTS.md 4.2）、今は `control-protocol`、`audio-core`（プラグインの処理の型）、`common` を使っています。
-分担、制御メッセージの形式、再接続トークンと招待の扱いは `docs/adr/0022-session-domain.md` で決めています。
+親機と子機のセッションの規則を持つドメインのモジュールです。依存してよいのは `transport`、`control-protocol`、`audio-core`、`common` で（AGENTS.md 4.2）、今は `control-protocol`、`audio-core`（ルーティングのループの検出と、プラグインの処理の型）、`common` を使っています。
+分担、制御メッセージの形式、再接続トークンと招待の扱いは `docs/adr/0022-session-domain.md` で、ルーティングのステージングと適用は `docs/adr/0026-routing-staging.md` で決めています。
 
 ## 責務
 
@@ -11,6 +11,7 @@
 - 参加者とチャンネルストリップの状態、コマンドの適用（revision の競合の拒否、重複した `request_id` の無視）と認可
 - 初期ミュート、出力デバイスの抜去時の Master の `SAFETY` ミュート、子機の「入力なし」の検知
 - 子機と親機の間の制御メッセージのエンコードとデコード（信頼境界、`src/wire/`）
+- ルーティングのステージング、検証（参照、組み合わせ、値の範囲、ループ）、ループの承認、適用と、バスとセンドのミュートとフェーダー（`src/routing_book`、`src/routing_validator`）
 - プラグインの一覧: スキャンの記録のキャッシュ、読み込み不可のファイルの記録、スキャンの進行（`PluginCatalog`、`docs/adr/0032-plugin-catalog-and-loader.md`）
 
 ワイヤーフォーマットの外枠と暗号化（`transport`）、DSP（`audio-core`）、ソケットと HTTP（`network`）、設定ファイルの形式（`persistence`）は持ちません。
@@ -23,8 +24,9 @@
 | `vocroz/session/client_session.h` | `ClientSession`（子機。`remote-pa` の子機モードが使う） |
 | `vocroz/session/invite_code.h` | `InviteCode`、`parse_invite()`、`parse_invite_code()`、`make_invite_url()` |
 | `vocroz/session/identifiers.h` | `HostPublicKey`、`InviteToken`、`ReconnectToken`、`RendezvousId`、`RevokeKey`、`PeerHandle` |
+| `vocroz/session/routing_delay.h` | `delay_samples()`（ルーティングの遅延の ms からサンプル数への換算） |
 | `vocroz/session/settings.h` | `HostSettings`、`ClientSettings`、`SettingsError` |
-| `vocroz/session/ports/mixer_control.h` | `MixerControl`（親機のミキサーへの反映） |
+| `vocroz/session/ports/mixer_control.h` | `MixerControl`（親機のミキサーへの反映。ルーティングの適用を含む） |
 | `vocroz/session/ports/peer_link.h` | `PeerLink`（親機から子機との接続の操作） |
 | `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作） |
 | `vocroz/session/ports/capture_control.h` | `CaptureControl`（子機のキャプチャと送信への反映） |

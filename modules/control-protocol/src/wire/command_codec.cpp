@@ -8,6 +8,7 @@
 
 #include <type_traits>
 
+#include "wire/entity_codec.h"
 #include "wire/field_rules.h"
 #include "wire/json_values.h"
 #include "wire/message_types.h"
@@ -48,6 +49,27 @@ void write_fields(nlohmann::json& out, const SetSendMute& command) {
     out["muted"] = command.muted;
 }
 void read_fields(ObjectReader& r, SetSendMute& command) {
+    command.muted = r.boolean("muted");
+}
+
+void write_fields(nlohmann::json& out, const StageRouting& command) {
+    out["config"] = write_json(command.config);
+}
+void read_fields(ObjectReader& r, StageRouting& command) {
+    command.config = r.nested<RoutingConfig>("config", read_routing_config);
+}
+
+void write_fields(nlohmann::json& out, const CommitRouting& command) {
+    out["approve_feedback"] = command.approve_feedback;
+}
+void read_fields(ObjectReader& r, CommitRouting& command) {
+    command.approve_feedback = r.boolean("approve_feedback");
+}
+
+void write_fields(nlohmann::json& out, const SetRouteMute& command) {
+    out["muted"] = command.muted;
+}
+void read_fields(ObjectReader& r, SetRouteMute& command) {
     command.muted = r.boolean("muted");
 }
 

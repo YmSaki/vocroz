@@ -36,6 +36,16 @@ public:
     void set_master_muted(bool muted) override;
     void set_master_gain(control_protocol::GainDb gain_db) override;
 
+    /// ルーティングは結合テストの対象外なので、構成を受け付けるだけで音の経路は変えない
+    /// （ストリップから Master への暗黙の経路だけで鳴らす）。
+    /// @return 常に true
+    [[nodiscard]] bool apply_routing(const control_protocol::RoutingConfig& config,
+                                     bool feedback_approved) override;
+    /// ルーティングを扱わないので何もしない。
+    void set_route_muted(const std::string& entity_id, bool muted) override;
+    /// ルーティングを扱わないので何もしない。
+    void set_route_gain(const std::string& entity_id, control_protocol::GainDb gain_db) override;
+
     /// ストリップの PCM を、そのストリップのミュートとゲインを掛けて out に足す。
     /// ミキサーにないストリップは足さない（承認前の接続や削除済みのストリップの音を出さない）。
     /// @param strip_id ストリップ
