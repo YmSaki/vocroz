@@ -47,4 +47,15 @@ inline constexpr std::size_t kMaxLatencyCompensationSamples = kSampleRate;
 /// 多チャンネルのオーディオインターフェース（ADAT を含めて 32〜64 チャンネル）を想定する。
 inline constexpr std::size_t kMaxOutputChannels = 64;
 
+/// 録音トラックのリングバッファの既定の長さ（フレーム、4 秒）。
+/// ディスクの書き込みがこの時間を超えて止まると、超えたぶんを欠落として記録する。
+/// HDD のスピンアップやウイルス対策ソフトの走査で数秒止まることがあるので、それを吸収できる
+/// 長さにする。ステレオ 1 トラックで約 1.5MB、32 トラックでも約 48MB に収まる。
+inline constexpr std::size_t kDefaultRecordingBufferFrames = 4 * kSampleRate;
+
+/// 再生トラックの先読みの既定の長さ（フレーム、2 秒）。
+/// デコードとディスクの読み込みがこの時間を超えて遅れると、遅れたぶんを無音で埋める。
+/// 再生は録音と違って読み直せるので、録音より短くしてメモリを抑える。
+inline constexpr std::size_t kDefaultPlaybackBufferFrames = 2 * kSampleRate;
+
 }  // namespace vocroz::audio_core

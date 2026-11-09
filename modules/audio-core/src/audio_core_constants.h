@@ -35,6 +35,25 @@ inline constexpr float kRmsTimeConstantSeconds = 0.3F;
 /// 約 10.7ms）の間にフェーダーのドラッグと一括のミュートが重なっても溢れない大きさにする。
 inline constexpr std::size_t kParameterQueueCapacity = 256;
 
+/// ディスク I/O スレッドが 1 回に書き出す、または読み込むフレーム数（約 85ms）。
+/// 小さすぎるとファイルへの呼び出しの回数が増え、大きすぎると作業領域が増える。
+/// WAV と FLAC のエンコーダーが効率よく処理できる 4096 フレームにする。
+inline constexpr std::size_t kDiskChunkFrames = 4096;
+
+/// 録音の欠落（リングバッファの溢れ）の位置を、オーディオスレッドからディスク I/O スレッドへ
+/// 渡すキューの容量。欠落の記録 1 件の後には必ず書き込めたブロックが続くので、ディスク I/O
+/// スレッドが 1 回の排出で 64 件を超えて溜めることはまずない。溢れたら次の欠落とまとめて記録する。
+inline constexpr std::size_t kRecordingGapQueueCapacity = 64;
+
+/// 再生トラックの位置の移動（シーク）を、ディスク I/O スレッドからオーディオスレッドへ渡す
+/// キューの容量。オーディオスレッドはブロックごとにすべて取り出すので、少なくてよい。
+inline constexpr std::size_t kPlaybackSegmentQueueCapacity = 16;
+
+/// 再生の開始、停止、シークのフェードの長さ（サンプル、10ms）。
+/// 波形の途中で音を出したり止めたりするとクリックノイズが出るので、フェーダーと同じ
+/// 5〜20ms の範囲でランプを掛ける。
+inline constexpr std::size_t kPlaybackFadeSamples = 480;
+
 /// MIDI ソース 1 つから 1 ブロック（kBlockSize）に取り出すイベントの上限。
 /// 1 ブロック（約 2.7ms）に MIDI 1.0 の DIN の帯域（約 1 件/ms）の 100 倍近くを受けられる。
 /// 超えたぶんはソースに残り、次のブロックで送る（落とさない）。
