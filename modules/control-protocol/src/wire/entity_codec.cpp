@@ -432,6 +432,8 @@ nlohmann::json write_json(const ClientSnapshot& snapshot) {
         {"send_muted", snapshot.send_muted},
         {"send_level_db", snapshot.send_level_db},
         {"return_muted", snapshot.return_muted},
+        {"input_channels", snapshot.input_channels},
+        {"app_audio", snapshot.app_audio},
     };
 }
 
@@ -449,6 +451,8 @@ common::Result<ClientSnapshot, DecodeError> read_client_snapshot(const nlohmann:
         snapshot.send_muted = r.boolean("send_muted");
         snapshot.send_level_db = r.number("send_level_db", kMinFiniteGainDb, kMaxGainDb);
         snapshot.return_muted = r.boolean("return_muted");
+        snapshot.input_channels = small_count(r, "input_channels", kMaxInputChannels);
+        snapshot.app_audio = r.boolean("app_audio");
         return snapshot;
     });
 }

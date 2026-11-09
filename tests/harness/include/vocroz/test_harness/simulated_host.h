@@ -4,7 +4,8 @@
 // session の HostSession を、transport の部品（Noise_IK
 // の応答側、暗号化、信頼制御層、死活監視、再生）と
 // シミュレーションのネットワークにつなぐ。接続ごとに PeerHandle を振り、PeerLink ポートで
-// 承認（admit）されるまで、その接続のメディアをミキサーへ流さない。
+// 承認（admit）されるまで、その接続のメディアをミキサーへ流さない。承認後は、子機の入力の申告に
+// 従ってストリーム ID ごとに再生側を作り、それぞれのストリップへ流す。
 // UI、ランデブーサーバー、設定、乱数は session のフェイクを使い、テストから直接操作する。
 #pragma once
 
@@ -41,6 +42,15 @@ struct HostPeerStats {
     std::uint64_t media_before_admission = 0;
     /// 承認後に再生側へ渡したメディアフレーム。
     std::uint64_t media_admitted = 0;
+    /// 承認後に届いたが、申告のないストリームなので捨てたメディアフレーム。
+    std::uint64_t media_unrouted = 0;
+};
+
+/// 1 本のストリップに流し込んだ、直前の render() のブロック（フェーダーとミュートを掛ける前）。
+/// モノラルのストリップは左右に同じ値を入れる。
+struct StripOutput {
+    std::vector<float> left;
+    std::vector<float> right;
 };
 
 /// 結合テストの親機。
@@ -91,6 +101,13 @@ public:
     /// @param out 書き込み先
     void render(std::span<float> out);
 
+    /// ストリップに流し込んだ直前の render() のブロック。流し込んでいないストリップなら nullptr。
+    /// @param strip_id ストリップの entity_id
+    [[nodiscard]] const StripOutput* strip_output(const std::string& strip_id) const {
+        const auto it = strip_outputs_.find(strip_id);
+        return it == strip_outputs_.end() ? nullptr : &it->second;
+    }
+
     /// 接続の数（閉じたものを除く）。
     [[nodiscard]] std::size_t peer_count() const noexcept;
 
@@ -98,6 +115,7 @@ public:
     [[nodiscard]] HostPeerStats total_stats() const noexcept;
 
 private:
+    struct Route;
     struct Peer;
 
     // session::PeerLink
@@ -133,6 +151,7 @@ private:
     std::vector<std::function<void()>> deferred_;
     common::Clock::TimePoint next_tick_{};
     std::vector<float> scratch_;
+    std::map<std::string, StripOutput> strip_outputs_;
     HostPeerStats closed_stats_;
 };
 

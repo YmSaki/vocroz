@@ -6,6 +6,7 @@
 
 #include "packet_sender.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -62,16 +63,35 @@ protected:
     std::vector<std::uint8_t> plaintext_;
 };
 
+TEST_F(PacketSenderTest, SendsFramesOfEveryLaneWithTheirStreamIds) {
+    // マイクとアプリ音声は別のオーディオスレッドから、別の経路で入る。
+    install_path();
+    auto app = frame(960, 1);
+    app.stream_id = 1;
+    ASSERT_TRUE(sender_.push_frame(kAppAudioLane, app));
+    ASSERT_TRUE(sender_.push_frame(kMicrophoneLane, frame(480, 1)));
+    EXPECT_FALSE(sender_.push_frame(kCaptureLaneCount, frame(0, 0)));
+    sender_.pump();
+
+    ASSERT_EQ(socket_.datagrams.size(), 2U);
+    std::vector<std::uint16_t> ids;
+    for (std::size_t i = 0; i < 2; ++i) {
+        ids.push_back(transport::decode_media_payload(open(i).plaintext).value().stream_id);
+    }
+    std::ranges::sort(ids);
+    EXPECT_EQ(ids, (std::vector<std::uint16_t>{0, 1}));
+}
+
 TEST_F(PacketSenderTest, SealsFramesAsMediaPackets) {
     install_path();
-    ASSERT_TRUE(sender_.push_frame(frame(480, 2)));
+    ASSERT_TRUE(sender_.push_frame(kMicrophoneLane, frame(480, 2)));
     sender_.pump();
 
     ASSERT_EQ(socket_.datagrams.size(), 1U);
     const auto opened = open(0);
     EXPECT_EQ(opened.type, transport::PacketType::kMedia);
     const auto media = transport::decode_media_payload(opened.plaintext).value();
-    EXPECT_EQ(media.stream_id, kMicStreamId);
+    EXPECT_EQ(media.stream_id, 0U);
     EXPECT_EQ(media.timestamp, 480U);
     EXPECT_EQ(media.mute_epoch, 2U);
     EXPECT_EQ(media.opus_payload.size(), 3U);
@@ -80,7 +100,7 @@ TEST_F(PacketSenderTest, SealsFramesAsMediaPackets) {
 
 TEST_F(PacketSenderTest, SealsControlBeforeMediaWithOneSequence) {
     install_path();
-    ASSERT_TRUE(sender_.push_frame(frame(0, 0)));
+    ASSERT_TRUE(sender_.push_frame(kMicrophoneLane, frame(0, 0)));
     const std::vector<std::uint8_t> control = {1, 2, 3};
     ASSERT_TRUE(sender_.push_control(control));
     sender_.pump();
@@ -94,7 +114,7 @@ TEST_F(PacketSenderTest, SealsControlBeforeMediaWithOneSequence) {
 }
 
 TEST_F(PacketSenderTest, DropsPacketsWithoutPath) {
-    ASSERT_TRUE(sender_.push_frame(frame(0, 0)));
+    ASSERT_TRUE(sender_.push_frame(kMicrophoneLane, frame(0, 0)));
     ASSERT_TRUE(sender_.push_control(std::vector<std::uint8_t>{1}));
     sender_.pump();
 
@@ -118,7 +138,7 @@ TEST_F(PacketSenderTest, DoesNotSendControlQueuedForPreviousPath) {
 TEST_F(PacketSenderTest, StopsSendingAfterPathIsCleared) {
     install_path();
     sender_.set_path(nullptr);
-    ASSERT_TRUE(sender_.push_frame(frame(0, 0)));
+    ASSERT_TRUE(sender_.push_frame(kMicrophoneLane, frame(0, 0)));
     sender_.pump();
 
     EXPECT_TRUE(socket_.datagrams.empty());
@@ -132,7 +152,7 @@ TEST_F(PacketSenderTest, RejectsControlLongerThanPlaintextLimit) {
 TEST_F(PacketSenderTest, CountsSendFailures) {
     install_path();
     socket_.fail_sends = true;
-    ASSERT_TRUE(sender_.push_frame(frame(0, 0)));
+    ASSERT_TRUE(sender_.push_frame(kMicrophoneLane, frame(0, 0)));
     sender_.pump();
 
     EXPECT_EQ(sender_.stats().send_failures, 1U);
@@ -140,7 +160,7 @@ TEST_F(PacketSenderTest, CountsSendFailures) {
 
 TEST_F(PacketSenderTest, PushingWakesTheSenderThread) {
     const auto before = wakeup_.generation();
-    ASSERT_TRUE(sender_.push_frame(frame(0, 0)));
+    ASSERT_TRUE(sender_.push_frame(kMicrophoneLane, frame(0, 0)));
     EXPECT_NE(wakeup_.generation(), before);
 }
 

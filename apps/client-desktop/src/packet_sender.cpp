@@ -22,8 +22,9 @@ PacketSender::~PacketSender() {
     }
 }
 
-bool PacketSender::push_frame(const EncodedFrame& frame) noexcept VOCROZ_NONBLOCKING {
-    if (!frames_.try_push(frame)) {
+bool PacketSender::push_frame(std::size_t lane,
+                              const EncodedFrame& frame) noexcept VOCROZ_NONBLOCKING {
+    if (lane >= frames_.size() || !frames_[lane].try_push(frame)) {
         return false;
     }
     wakeup_.notify();
@@ -83,23 +84,25 @@ void PacketSender::pump() noexcept {
         }
         send_sealed(sealed.value(), control_sent_);
     }
-    while (const auto frame = frames_.try_pop()) {
-        if (!path_) {
-            dropped_no_path_.fetch_add(1, std::memory_order_relaxed);
-            continue;
+    for (auto& lane : frames_) {
+        while (const auto frame = lane.try_pop()) {
+            if (!path_) {
+                dropped_no_path_.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            const transport::MediaPayload media{
+                .stream_id = frame->stream_id,
+                .timestamp = frame->timestamp,
+                .mute_epoch = frame->mute_epoch,
+                .opus_payload = frame->payload(),
+            };
+            const auto sealed = path_->sealer.seal_media(media, packet_);
+            if (!sealed) {
+                send_failures_.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            send_sealed(sealed.value(), media_sent_);
         }
-        const transport::MediaPayload media{
-            .stream_id = kMicStreamId,
-            .timestamp = frame->timestamp,
-            .mute_epoch = frame->mute_epoch,
-            .opus_payload = frame->payload(),
-        };
-        const auto sealed = path_->sealer.seal_media(media, packet_);
-        if (!sealed) {
-            send_failures_.fetch_add(1, std::memory_order_relaxed);
-            continue;
-        }
-        send_sealed(sealed.value(), media_sent_);
     }
 }
 

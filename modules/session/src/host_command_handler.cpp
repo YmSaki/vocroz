@@ -123,9 +123,10 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
             } else if constexpr (std::is_same_v<B, cp::SetReturnMute>) {
                 return set_return_mute(id, body.muted);
             } else {
-                static_assert(std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
-                              std::is_same_v<B, cp::SelectInput> ||
-                              std::is_same_v<B, cp::SetSendMute>);
+                static_assert(
+                    std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
+                    std::is_same_v<B, cp::SelectInput> || std::is_same_v<B, cp::SetSendMute> ||
+                    std::is_same_v<B, cp::SetInputChannels> || std::is_same_v<B, cp::SetAppAudio>);
                 return invalid_state();
             }
         },

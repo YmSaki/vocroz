@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 子機の送信側のオーディオスレッドの処理。キャプチャしたブロックに送信レベルと送信ミュートを
-// ゲインランプで掛け、1 フレーム分たまるごとに Opus でエンコードして送信スレッドへ渡す。
+// 子機の送信側のオーディオスレッドの処理。入力（マイクかアプリ音声）1 つにつき 1 つ作る。
+// キャプチャしたブロックに送信レベルと送信ミュートをゲインランプで掛け、1 フレーム分たまるごとに
+// Opus（モノラルかステレオ）でエンコードし、入力のストリーム ID を付けて送信スレッドへ渡す。
 // 送信レベル、送信ミュート、ミュートの世代番号はコントロールスレッドから SPSC キューで受け取り
 // （AGENTS.md 6.1）、入力のピークはアトミック変数でコントロールスレッドへ返す。
 #pragma once
@@ -35,10 +36,25 @@ struct SendParams {
 /// 送信側のオーディオスレッドの処理。
 class CaptureProcessor final : public audio_core::AudioCaptureCallback {
 public:
-    /// @param encoder エンコーダー。frame_samples() は kMaxFrameSamples 以下
-    /// @param sender  エンコード済みのフレームの渡し先。このオブジェクトより長く生存させる
+    /// @param encoder   エンコーダー。frame_samples() は kMaxFrameSamples 以下、channels() は
+    ///                  transport::kMaxStreamChannels 以下
+    /// @param sender    エンコード済みのフレームの渡し先。このオブジェクトより長く生存させる
+    /// @param lane      送信スレッドへの経路（kCaptureLaneCount 未満）。同時に動く CaptureProcessor
+    ///                  どうしで重ならないようにする
+    /// @param stream_id フレームに付けるストリーム ID
     /// スレッド安全性: コントロールスレッドで生成する（作業領域をここで確保する）。
-    CaptureProcessor(transport::OpusFrameEncoder encoder, PacketSender& sender) noexcept;
+    CaptureProcessor(transport::OpusFrameEncoder encoder, PacketSender& sender, std::size_t lane,
+                     std::uint16_t stream_id) noexcept;
+
+    /// エンコードするチャンネル数（1 か 2）を返す。
+    [[nodiscard]] std::size_t channels() const noexcept {
+        return encoder_.channels();
+    }
+
+    /// フレームに付けるストリーム ID を返す。
+    [[nodiscard]] std::uint16_t stream_id() const noexcept {
+        return stream_id_;
+    }
 
     /// 送信の設定を変える。次のブロックから、ゲインランプで反映する。
     /// @param params 新しい設定
@@ -60,8 +76,9 @@ public:
     /// スレッド安全性: コントロールスレッドから呼ぶ。
     [[nodiscard]] float take_input_peak() noexcept;
 
-    /// キャプチャしたブロックを処理する。複数チャンネルの入力は 1 チャンネル目だけを使う
-    /// （子機が送るのはモノラル 1 本で、入力チャンネルの選択は Beta で加える）。
+    /// キャプチャしたブロックを処理する。モノラルでエンコードするときは入力の 1 チャンネル目を、
+    /// ステレオのときは 1、2 チャンネル目を使う。ステレオでエンコードするのにモノラルの入力しか
+    /// なければ、左右に同じ信号を入れる（チャンネル数を選び間違えても無音にしない）。
     /// エラー時の振る舞い: エンコードに失敗したフレームと、送信待ちが満杯で入らなかったフレームは
     /// 捨てる。タイムスタンプは進めるので、受信側からは欠損と同じに見える。
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
@@ -82,6 +99,8 @@ private:
 
     transport::OpusFrameEncoder encoder_;
     PacketSender& sender_;
+    const std::size_t lane_;
+    const std::uint16_t stream_id_;
     common::SpscQueue<SendParams, kParamQueueCapacity> params_;
     std::atomic<float> input_peak_{0.0F};
     std::atomic<std::uint64_t> dropped_frames_{0};
@@ -89,7 +108,8 @@ private:
     // 以下はオーディオスレッドだけが読み書きする。
     audio_core::GainRamp ramp_{kSendGainRampSamples};
     SendParams current_;
-    std::array<float, kMaxFrameSamples> frame_{};
+    // インターリーブの PCM。filled_ はチャンネルあたりのサンプル数。
+    std::array<float, kMaxFrameSamples * transport::kMaxStreamChannels> frame_{};
     std::size_t filled_ = 0;
     std::uint64_t next_timestamp_ = 0;
     EncodedFrame encoded_;

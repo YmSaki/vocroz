@@ -205,6 +205,20 @@
     "muted": false
   },
   {
+    "type": "set_input_channels",
+    "request_id": "r-27",
+    "entity_id": "client",
+    "expected_revision": 3,
+    "channels": 2
+  },
+  {
+    "type": "set_app_audio",
+    "request_id": "r-28",
+    "entity_id": "client",
+    "expected_revision": 4,
+    "enabled": true
+  },
+  {
     "type": "set_gain",
     "entity_id": "send-1",
     "seq": 7,

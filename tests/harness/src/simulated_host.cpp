@@ -58,6 +58,14 @@ cp::SignalState to_protocol(transport::SignalState state) {
 }  // namespace
 
 // 1 つの接続（子機 1 台との暗号化セッション）。
+// 1 本のストリームの流し込み先。
+struct SimulatedHost::Route {
+    std::uint16_t stream_id = 0;
+    std::uint8_t channels = 1;
+    std::string strip_id;
+    std::unique_ptr<MediaReceiver> receiver;
+};
+
 struct SimulatedHost::Peer final : transport::ControlMessageListener, transport::LivenessListener {
     Peer(SimulatedHost& owner, session::PeerHandle handle, const netsim::NodeAddress& address,
          transport::SecureChannel secure, std::span<const std::uint8_t> initiation,
@@ -72,13 +80,13 @@ struct SimulatedHost::Peer final : transport::ControlMessageListener, transport:
           liveness(owner.clock_, *this),
           initiation(initiation.begin(), initiation.end()),
           response(response.begin(), response.end()),
-          plaintext(transport::kMaxPacketBytes) {
-        auto created = MediaReceiver::create(channel.opener, owner.playout_, owner.clock_.now());
-        if (!created) {
-            std::abort();
-        }
-        receiver = std::move(created).value();
-        last_signal = receiver->signal_state();
+          plaintext(transport::kMaxPacketBytes) {}
+
+    // ストリーム ID の流し込み先。なければ nullptr。
+    Route* route(std::uint16_t stream_id) {
+        const auto it =
+            std::ranges::find_if(routes, [&](const Route& r) { return r.stream_id == stream_id; });
+        return it == routes.end() ? nullptr : &*it;
     }
 
     void on_control_message(transport::ControlLane lane,
@@ -106,14 +114,16 @@ struct SimulatedHost::Peer final : transport::ControlMessageListener, transport:
     transport::SecureControlPacketSink sink;
     transport::ReliableControlChannel control;
     transport::LivenessMonitor liveness;
-    std::unique_ptr<MediaReceiver> receiver;
+    // admit() で決まる、ストリームごとの流し込み先と再生側。決まるまではメディアをミキサーへ
+    // 流さない。信号状態は接続ごとの判定なので、先頭のストリームの再生側で判定する。
+    std::vector<Route> routes;
+    // 最後に受け取った送信ミュートの通知。あとから足したストリームの再生側にも渡す。
+    std::optional<std::pair<bool, std::uint32_t>> send_mute;
     // 再送された同じ 1 つ目のハンドシェイクには、同じ応答を返し直す（接続を作り直さない）。
     std::vector<std::uint8_t> initiation;
     std::vector<std::uint8_t> response;
     std::vector<std::uint8_t> plaintext;
-    // admit() で決まるストリップ。決まるまではメディアをミキサーへ流さない。
-    std::optional<std::string> strip;
-    transport::SignalState last_signal;
+    std::optional<transport::SignalState> last_signal;
     HostPeerStats stats;
     // 同じ送信元から新しいハンドシェイクが来た。受信はもう振り分けない。
     bool superseded = false;
@@ -162,9 +172,14 @@ void SimulatedHost::step() {
         }
         peer->control.tick();
         peer->liveness.poll();
-        peer->receiver->poll(now);
-        const auto signal = peer->receiver->signal_state();
-        if (signal != peer->last_signal && peer->strip) {
+        for (Route& route : peer->routes) {
+            route.receiver->poll(now);
+        }
+        if (peer->routes.empty()) {
+            continue;
+        }
+        const auto signal = peer->routes.front().receiver->signal_state();
+        if (signal != peer->last_signal) {
             peer->last_signal = signal;
             const auto id = handle;
             defer([this, id, signal] { session_->on_signal_state(id, to_protocol(signal)); });
@@ -192,11 +207,23 @@ void SimulatedHost::render(std::span<float> out) {
         if (peer->closed) {
             continue;
         }
-        // 承認前の接続も再生側は動かし続ける（溜まったフレームを古いまま残さないため）が、
-        // ストリップがないのでミキサーには足さない。
-        peer->receiver->render(scratch_);
-        if (peer->strip) {
-            mixer_.accumulate(*peer->strip, scratch_, out);
+        // 承認前の接続には再生側がなく、メディアも受け付けていないので、足すものがない。
+        for (Route& route : peer->routes) {
+            StripOutput& strip = strip_outputs_[route.strip_id];
+            strip.left.resize(out.size());
+            strip.right.resize(out.size());
+            if (route.receiver->channels() == 1) {
+                route.receiver->render(strip.left);
+                std::copy(strip.left.begin(), strip.left.end(), strip.right.begin());
+                std::copy(strip.left.begin(), strip.left.end(), scratch_.begin());
+            } else {
+                // 試験基盤のミキサーはモノラルなので、左右の平均を足す。
+                route.receiver->render(strip.left, strip.right);
+                for (std::size_t i = 0; i < out.size(); ++i) {
+                    scratch_[i] = 0.5F * (strip.left[i] + strip.right[i]);
+                }
+            }
+            mixer_.accumulate(route.strip_id, scratch_, out);
         }
     }
     mixer_.apply_master(out);
@@ -212,6 +239,7 @@ HostPeerStats SimulatedHost::total_stats() const noexcept {
     for (const auto& [handle, peer] : peers_) {
         total.media_before_admission += peer->stats.media_before_admission;
         total.media_admitted += peer->stats.media_admitted;
+        total.media_unrouted += peer->stats.media_unrouted;
     }
     return total;
 }
@@ -229,10 +257,30 @@ void SimulatedHost::admit(session::PeerHandle peer,
     if (found == nullptr || routes.empty()) {
         return;
     }
-    // この試験基盤の子機はモノラルのマイク 1 本（ストリーム 0）だけを送るので、1
-    // 本目の対応だけを使う。
-    const bool first_admission = !found->strip;
-    found->strip = routes.front().strip_id;
+    const bool first_admission = found->routes.empty();
+    std::vector<Route> next;
+    for (const auto& wanted : routes) {
+        Route* existing = found->route(wanted.stream_id);
+        if (existing != nullptr && existing->channels == wanted.channels) {
+            // 同じストリームは再生側（ジッターバッファ）を作り直さない。
+            existing->strip_id = wanted.strip_id;
+            next.push_back(std::move(*existing));
+            continue;
+        }
+        transport::PlayoutConfig config = playout_;
+        config.channels = wanted.channels;
+        auto created = MediaReceiver::create(found->channel.opener, config, clock_.now());
+        if (!created) {
+            std::abort();
+        }
+        Route route{wanted.stream_id, wanted.channels, wanted.strip_id, std::move(created).value()};
+        if (found->send_mute) {
+            route.receiver->on_send_mute(found->send_mute->first, found->send_mute->second,
+                                         clock_.now());
+        }
+        next.push_back(std::move(route));
+    }
+    found->routes = std::move(next);
     if (first_admission) {
         // 製品では再生側の準備（ミキサーへの組み込み）が済んでから知らせる。ここでは次の step()
         // で知らせる。
@@ -243,7 +291,10 @@ void SimulatedHost::admit(session::PeerHandle peer,
 void SimulatedHost::apply_send_mute(session::PeerHandle peer, bool send_muted,
                                     std::uint32_t epoch) {
     if (Peer* const found = find(peer)) {
-        found->receiver->on_send_mute(send_muted, epoch, clock_.now());
+        found->send_mute = std::pair{send_muted, epoch};
+        for (Route& route : found->routes) {
+            route.receiver->on_send_mute(send_muted, epoch, clock_.now());
+        }
     }
 }
 
@@ -291,13 +342,19 @@ void SimulatedHost::on_datagram(const netsim::NodeAddress& from,
     if (!media) {
         return;
     }
-    if (!peer->strip) {
+    if (peer->routes.empty()) {
         // 承認前の接続のメディアは受け付けない（承認前に音が届かない）。
         ++peer->stats.media_before_admission;
         return;
     }
+    Route* const route = peer->route(media.value().stream_id);
+    if (route == nullptr) {
+        // 申告のないストリームは、流し込むストリップがないので捨てる。
+        ++peer->stats.media_unrouted;
+        return;
+    }
     ++peer->stats.media_admitted;
-    peer->receiver->on_media(media.value(), clock_.now());
+    route->receiver->on_media(media.value(), clock_.now());
 }
 
 void SimulatedHost::accept_handshake(const netsim::NodeAddress& from,
@@ -331,7 +388,7 @@ void SimulatedHost::accept_handshake(const netsim::NodeAddress& from,
     if (existing != nullptr) {
         // 同じ送信元からの新しいハンドシェイクは、子機が接続を張り直したもの。以後の受信は新しい接続へ回す。
         existing->superseded = true;
-        if (!existing->strip) {
+        if (existing->routes.empty()) {
             // 承認前の接続は戻る先がないので、申請ごと閉じる。
             existing->closed = true;
             const auto old = existing->handle;
@@ -369,6 +426,7 @@ void SimulatedHost::remove_closed() {
         if (it->second->closed) {
             closed_stats_.media_before_admission += it->second->stats.media_before_admission;
             closed_stats_.media_admitted += it->second->stats.media_admitted;
+            closed_stats_.media_unrouted += it->second->stats.media_unrouted;
             it = peers_.erase(it);
         } else {
             ++it;

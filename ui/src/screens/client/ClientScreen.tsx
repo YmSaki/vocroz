@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // 子機の画面（Container）。
 // 上半分は接続（招待の入力、承認待ち、接続中）、下半分は送信の設定
-// （入力デバイス、送信ミュート、送信レベル、入力レベルメーター）。
+// （入力デバイス、モノラルかステレオか、送信ミュート、送信レベル、入力レベルメーター）。
+// キーボードやオーディオインターフェースのライン入力はステレオで送れる。切り替えると親機では
+// ミュートの新しいストリップになる（docs/adr/0035-client-input-expansion.md）。
 // 送信の設定は接続前から操作でき、参加する前にマイクを確かめられるようにする。
 // マイクを選んだだけでは送信を始めず、送信ミュートの解除は利用者の明示的な操作だけで行う。
 
@@ -41,7 +43,10 @@ export interface ClientScreenProps {
 }
 
 /** 今後のバージョンで実装する子機の機能。 */
-export const kClientPlannedFeatures: readonly MessageKey[] = ["feature.return_monitor"];
+export const kClientPlannedFeatures: readonly MessageKey[] = [
+  "feature.app_audio",
+  "feature.return_monitor",
+];
 
 /** select の「入力なし」を表す値。デバイスの永続 ID と重ならない値にする。 */
 const kNoInputValue = "";
@@ -189,6 +194,22 @@ export function ClientScreen({
                     {device.name}
                   </option>
                 ))}
+              </select>
+            </label>
+            <label class="client-field">
+              <span>{t("client.input_channels")}</span>
+              <select
+                value={String(state.input_channels)}
+                disabled={busy}
+                onChange={(event) =>
+                  command.send(state.entity_id, state.revision, {
+                    type: "set_input_channels",
+                    channels: event.currentTarget.value === "2" ? 2 : 1,
+                  })
+                }
+              >
+                <option value="1">{t("client.mono")}</option>
+                <option value="2">{t("client.stereo")}</option>
               </select>
             </label>
             {state.input_missing ? (

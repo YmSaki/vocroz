@@ -67,6 +67,7 @@ public:
         network::NetworkEnvironment& environment;
         audio_core::AudioDeviceCatalog& devices;
         InputDeviceOpener& inputs;
+        InputDeviceOpener& app_audio;  ///< アプリ音声（既定の再生デバイスのループバック）を開く
         session::RendezvousClient& rendezvous;  ///< 招待の解決（結果は invites に入る）
         InviteInbox& invites;
         session::SettingsStore& settings;
@@ -132,7 +133,6 @@ private:
     transport::StaticKeyPair keys_;
     transport::SendWakeup wakeup_;
     PacketSender sender_;
-    CaptureProcessor processor_;
     ClientCapture capture_;
     UiBridge ui_;
     HostConnection connection_;
