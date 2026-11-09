@@ -22,21 +22,11 @@ if(VOCROZ_WITH_JUCE)
     src/juce/juce_plugin_processor.cpp
     src/juce/juce_vst3_plugin_loader.cpp
     src/juce/juce_vst3_scanner.cpp)
-  # JUCE のモジュールのソースはこのライブラリの中で 1 回だけコンパイルする（PRIVATE）。
-  # 利用側（pa-engine、pa-plugin-scanner、テスト）でもう一度コンパイルすると、シンボルが重複するため。
-  # GUI を使わない headless のモジュールにし、エディターのウィンドウを加えるときに切り替える。
-  target_link_libraries(vocroz_plugin_host PRIVATE juce::juce_audio_processors_headless)
-  target_compile_definitions(vocroz_plugin_host PRIVATE
-    JUCE_PLUGINHOST_VST3=1
-    JUCE_USE_CURL=0
-    JUCE_WEB_BROWSER=0
-    JUCE_STANDALONE_APPLICATION=1)
-  # テストは src/juce/ の内部クラスを JUCE の型で検証するので、JUCE のヘッダーを読むための
-  # インクルードパスと定義だけを利用側に渡す（ソースは渡さない）。
-  target_include_directories(vocroz_plugin_host SYSTEM INTERFACE
-    $<TARGET_PROPERTY:vocroz_plugin_host,INCLUDE_DIRECTORIES>)
-  target_compile_definitions(vocroz_plugin_host INTERFACE
-    $<TARGET_PROPERTY:vocroz_plugin_host,COMPILE_DEFINITIONS>)
+  # JUCE のモジュールは vocroz::juce に 1 回だけコンパイルしたものを使う。plugin-host が自前で
+  # コンパイルすると、MIDI 入力（device）やエディターのウィンドウと同じバイナリに入ったときに
+  # シンボルが重複するため（docs/adr/0034-single-juce-target.md）。テストは src/juce/ の内部クラスを
+  # JUCE の型で検証するので、ヘッダーと定義も利用側に見せる（PUBLIC）。
+  target_link_libraries(vocroz_plugin_host PUBLIC vocroz::juce)
 endif()
 
 if(VOCROZ_BUILD_TESTS)
