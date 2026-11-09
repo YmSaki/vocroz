@@ -145,7 +145,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | --- | --- | --- | --- |
 | `common` | 共通基盤 | CLI 引数、文字列、時刻などのステートレスなユーティリティ。`Clock` と `Logger` のポート。Result 型 | 特定モジュールのドメイン知識 |
 | `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート。ルーティンググラフ、フィードバックループの検出、PDC、Minus-Me のミックス、録音タップと再生ノード、プラグインノード、MIDI の処理と Panic と、`PluginProcessor`、`AudioFileWriter`、`AudioFileReader`、`MidiInput` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧の `AudioDeviceCatalog` のポート（`docs/adr/0023-wasapi-device-io.md`）。MIDI ソースの `MidiSource` のポートと、MIDI の入力 1 系統のキュー `MidiInputQueue`（`docs/adr/0029-midi-and-vsti.md`）。MIDI 入力ポートの一覧の `MidiDeviceCatalog` と、受信した MIDI を受け取る `MidiInputCallback` のポート（同） | デバイス制御（`device`）、ネットワーク（`transport`） |
-| `transport` | ドメイン | ワイヤーフォーマット、Noise による鍵交換と AEAD（libsodium）、信頼制御層、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正。ソケットのポート。親機から子機への下りストリーム、ステレオと複数ストリーム、MIDI 専用チャンネル（Beta、`docs/adr/0009-beta-module-layout.md`） | 参加者と承認の判断（`session`）、ソケットの実装（`network`） |
+| `transport` | ドメイン | ワイヤーフォーマット、Noise による鍵交換と AEAD（libsodium）、信頼制御層、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正。ソケットのポート。親機から子機への下りストリーム、ステレオと複数ストリーム、MIDI 専用チャンネル（Beta、`docs/adr/0009-beta-module-layout.md`）。外部の受信機へ送る SRTP 外部出力の RTP の組み立てと SRTP の暗号化（libsrtp。子機と親機の間の形式とは部品を共有しない。`docs/adr/0040-srtp-external-output.md`） | 参加者と承認の判断（`session`）、ソケットの実装（`network`） |
 | `control-protocol` | ドメイン | UI とエンジン間のコマンドとイベントの DTO、JSON のシリアライズとデシリアライズ。メッセージを送受信する `MessageChannel` ポートと、2 つのチャンネルをつなぐ `ChannelRelay` | ビジネスロジック、状態（`session`） |
 | `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。子機の MIDI のデコード、時刻の写し方、承認済みの接続だけを受け付ける `PeerMidiInbox`（`docs/adr/0029-midi-and-vsti.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
 | `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知。JUCE の `MidiInput` による MIDI デバイスの列挙（永続 ID）、入力、抜去の検知（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧（`AudioDeviceCatalog` の実装）と、子機のマイク入力にも使う `AudioInput` の実装（`docs/adr/0023-wasapi-device-io.md`） | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
@@ -203,6 +203,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | --- | --- |
 | libopus、Noise の実装 | `transport` |
 | libsodium | `transport`、`update`（`update` は Ed25519 の署名検証と SHA-256 だけ。`docs/adr/0013-installer-and-updater.md`） |
+| libsrtp | `transport`（SRTP 外部出力だけ。`docs/adr/0040-srtp-external-output.md`）。テストでは受信機の代わりに `transport` の `tests/` でも使う |
 | JUCE | アダプターレイヤーと `apps/`（ドメインの公開ヘッダーに JUCE の型を出さない） |
 | WebView2（`WebBrowserComponent` 経由） | `modules/webui` |
 | GoogleTest | 各モジュールと各アプリの `tests/`、トップレベルの `tests/` |
@@ -249,6 +250,7 @@ class CompositionRoot {
 | `pa-engine` と `pa-plugin-scanner`（標準出力の JSON） | `plugin-host` | なし（両側で同じコードを使う） |
 | エンジンとランデブーサーバー（UDP のランデブーメッセージ） | `infra/rendezvous/internal/udpapi/wire.go` | `session` と `network` のクライアント実装 |
 | 子機と親機の制御メッセージの本文（信頼制御層の上） | `session/src/wire/`（`docs/adr/0022-session-domain.md`） | なし（両側で同じコードを使う） |
+| エンジンと外部の SRTP 受信機（RTP / SRTP） | `transport/src/wire/rtp_header_codec`（RFC 3550、RFC 7587。`docs/adr/0040-srtp-external-output.md`） | 受信機側の実装（標準の RTP / SRTP） |
 
 ### 4.5 モジュール内、アプリ内、UI 内の依存
 
