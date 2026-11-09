@@ -9,6 +9,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "vocroz/control_protocol/entities.h"
 #include "vocroz/control_protocol/events.h"
@@ -17,6 +18,7 @@
 
 #include "invite_book.h"
 #include "participant_registry.h"
+#include "routing_book.h"
 #include "session_constants.h"
 #include "state/connection_state_machine.h"
 #include "state/output_device_state_machine.h"
@@ -89,6 +91,14 @@ struct HostContext {
     /// 参加者と接続の結び付きを解き、接続を閉じる。ストリップと再接続トークンは残す。
     void release_peer(Participant& participant);
 
+    /// ストリップを削除したあと、そのストリップを参照するルーティングを片付ける。
+    /// 適用中の構成が変わったらミキサーへ適用し直し、UI にルーティングを知らせる。
+    /// @param strip_id 削除したストリップ。registry からは取り除き済みであること
+    void forget_strip_in_routing(const std::string& strip_id);
+
+    /// 今あるチャンネルストリップの entity_id。ルーティングの検証に使う。
+    [[nodiscard]] std::vector<std::string> strip_ids() const;
+
     /// 子機へ制御メッセージを送る。
     void send(PeerHandle peer, const wire::HostToClientMessage& message);
 
@@ -98,6 +108,8 @@ struct HostContext {
     void publish_master();
     void publish_channel(const Participant& participant);
     void publish_pending();
+    void publish_routing();
+    void publish_route_level(const control_protocol::RouteLevel& level);
     void notice(control_protocol::NoticeSeverity severity, const char* code,
                 const std::string& name);
     void log(common::LogLevel level, const char* message);
@@ -115,6 +127,7 @@ struct HostContext {
     std::optional<common::Clock::TimePoint> next_issue_at;
     InviteBook invites;
     ParticipantRegistry registry;
+    RoutingBook routing;
 };
 
 }  // namespace vocroz::session

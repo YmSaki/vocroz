@@ -65,6 +65,18 @@ struct ClientUpdated {
     friend bool operator==(const ClientUpdated&, const ClientUpdated&) = default;
 };
 
+/// ルーティングの構成かステージングが変わった（routing_updated）。ルーティング全体を送る。
+struct RoutingUpdated {
+    RoutingInfo routing;
+    friend bool operator==(const RoutingUpdated&, const RoutingUpdated&) = default;
+};
+
+/// バスかセンドのフェーダーかミュートが変わった（route_level_updated）。
+struct RouteLevelUpdated {
+    RouteLevel level;
+    friend bool operator==(const RouteLevelUpdated&, const RouteLevelUpdated&) = default;
+};
+
 /// 離散コマンドを適用した（ack）。
 struct Ack {
     std::string request_id;
@@ -117,7 +129,7 @@ struct Notice {
 /// エンジンから UI へのメッセージ。
 using EngineToUiMessage =
     std::variant<MixerSnapshotEvent, ClientSnapshotEvent, SessionUpdated, ChannelUpdated,
-                 ChannelRemoved, MasterUpdated, PendingUpdated, ClientUpdated, Ack, Reject, GainAck,
-                 Meters, Notice>;
+                 ChannelRemoved, MasterUpdated, PendingUpdated, ClientUpdated, RoutingUpdated,
+                 RouteLevelUpdated, Ack, Reject, GainAck, Meters, Notice>;
 
 }  // namespace vocroz::control_protocol

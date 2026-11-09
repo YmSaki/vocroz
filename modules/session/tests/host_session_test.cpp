@@ -88,6 +88,14 @@ protected:
                 return p.revision;
             }
         }
+        if (entity_id == "routing") {
+            return s.routing.revision;
+        }
+        for (const auto& level : s.routing.levels) {
+            if (level.entity_id == entity_id) {
+                return level.revision;
+            }
+        }
         return 0;
     }
 
@@ -662,6 +670,174 @@ TEST_F(HostSessionTest, RevokesAnInviteThatFinishesRegisteringAfterTheSessionEnd
     register_latest_invite("FGHJK67890");
     EXPECT_EQ(rendezvous_.revocations().size(), revocations + 1);
     EXPECT_NE(rendezvous_.registrations().back().invite_token, token);
+}
+
+// --- ルーティング ---
+
+/// ch に返しのキューバスをプリフェーダーで送り、追加の出力から出す構成。
+cp::RoutingConfig cue_routing(const std::string& strip_id) {
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-cue", "返し", cp::BusKind::kCue});
+    config.outputs.push_back(cp::RoutingOutput{"out-mon", "モニター", 2});
+    config.sends.push_back(cp::RoutingSend{"send-1", strip_id, "bus-cue", cp::SendTap::kPreFader});
+    config.sends.push_back(
+        cp::RoutingSend{"send-2", "bus-cue", "out-mon", cp::SendTap::kPostFader});
+    config.input_delays.push_back(cp::InputDelay{strip_id, 5.0});
+    return config;
+}
+
+/// Master から遅延ノードを経て Master へ戻るループの構成。
+cp::RoutingConfig echo_routing() {
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-fx", "FX", cp::BusKind::kUser});
+    config.delays.push_back(cp::RoutingDelay{"delay-echo", 250.0});
+    config.sends.push_back(
+        cp::RoutingSend{"send-1", "master", "delay-echo", cp::SendTap::kPostFader});
+    config.sends.push_back(
+        cp::RoutingSend{"send-2", "delay-echo", "bus-fx", cp::SendTap::kPostFader});
+    config.sends.push_back(cp::RoutingSend{"send-3", "bus-fx", "master", cp::SendTap::kPostFader});
+    return config;
+}
+
+TEST_F(HostSessionTest, StagingDoesNotTouchTheMixerUntilCommitted) {
+    create();
+    const auto a = connect(1, "Vo");
+    const auto staged = command("routing", cp::StageRouting{cue_routing(a)});
+    ASSERT_TRUE(staged);
+    EXPECT_EQ(*staged, revision_of("routing"));
+    EXPECT_EQ(mixer_.apply_routing_count(), 0);
+    const auto routing = session().snapshot().routing;
+    ASSERT_TRUE(routing.staged);
+    EXPECT_FALSE(routing.staged->check.issue);
+    EXPECT_EQ(routing.applied, cp::RoutingConfig{});
+
+    const auto committed = command("routing", cp::CommitRouting{false});
+    ASSERT_TRUE(committed);
+    EXPECT_GT(*committed, *staged);
+    EXPECT_EQ(mixer_.routing(), cue_routing(a));
+    EXPECT_FALSE(mixer_.feedback_approved());
+    EXPECT_EQ(session().snapshot().routing.applied, cue_routing(a));
+    EXPECT_FALSE(session().snapshot().routing.staged);
+}
+
+TEST_F(HostSessionTest, NewBusesAndSendsStartMuted) {
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{cue_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    for (const auto& level : session().snapshot().routing.levels) {
+        EXPECT_TRUE(level.muted) << level.entity_id;
+    }
+    EXPECT_TRUE(mixer_.routes().at("send-1").muted);
+    EXPECT_TRUE(mixer_.routes().at("bus-cue").muted);
+}
+
+TEST_F(HostSessionTest, LoopsThroughADelayNodeNeedTheOperatorsApproval) {
+    ASSERT_TRUE(command("routing", cp::StageRouting{echo_routing()}));
+    const auto staged = session().snapshot().routing.staged;
+    ASSERT_TRUE(staged);
+    EXPECT_TRUE(staged->check.needs_approval);
+    EXPECT_FALSE(command("routing", cp::CommitRouting{false}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    EXPECT_EQ(mixer_.apply_routing_count(), 0);
+
+    ASSERT_TRUE(command("routing", cp::CommitRouting{true}));
+    EXPECT_TRUE(mixer_.feedback_approved());
+    EXPECT_TRUE(session().snapshot().routing.feedback_approved);
+}
+
+TEST_F(HostSessionTest, RejectsCommittingAnUndelayedLoopEvenWithApproval) {
+    // 遅延ノードを通らずに Master へ戻る。
+    auto config = echo_routing();
+    config.sends[0].to = "bus-fx";
+    config.sends.erase(config.sends.begin() + 1);
+    ASSERT_TRUE(command("routing", cp::StageRouting{config}));
+    EXPECT_EQ(session().snapshot().routing.staged->check.issue, cp::RoutingIssue::kUndelayedLoop);
+    EXPECT_FALSE(command("routing", cp::CommitRouting{true}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    EXPECT_EQ(mixer_.apply_routing_count(), 0);
+}
+
+TEST_F(HostSessionTest, KeepsTheCurrentRoutingWhenTheMixerRefusesIt) {
+    mixer_.reject_routing();
+    ASSERT_TRUE(command("routing", cp::StageRouting{echo_routing()}));
+    EXPECT_FALSE(command("routing", cp::CommitRouting{true}));
+    EXPECT_EQ(last_reject_, ErrorCode::kEngineError);
+    EXPECT_EQ(session().snapshot().routing.applied, cp::RoutingConfig{});
+    EXPECT_TRUE(session().snapshot().routing.staged);
+}
+
+TEST_F(HostSessionTest, DiscardingTheStagedRoutingKeepsTheAppliedOne) {
+    EXPECT_FALSE(command("routing", cp::DiscardRouting{}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    ASSERT_TRUE(command("routing", cp::StageRouting{echo_routing()}));
+    ASSERT_TRUE(command("routing", cp::DiscardRouting{}));
+    EXPECT_FALSE(session().snapshot().routing.staged);
+    EXPECT_EQ(mixer_.apply_routing_count(), 0);
+}
+
+TEST_F(HostSessionTest, RoutingCommandsCheckTheRevisionAndTheEntity) {
+    const auto before = revision_of("routing");
+    EXPECT_FALSE(command("routing", cp::StageRouting{echo_routing()}, before + 1));
+    EXPECT_EQ(last_reject_, ErrorCode::kRevisionConflict);
+    EXPECT_FALSE(command("master", cp::StageRouting{echo_routing()}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    EXPECT_FALSE(command("routing", cp::SetRouteMute{false}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    EXPECT_FALSE(command("bus-fx", cp::SetRouteMute{false}));
+    EXPECT_EQ(last_reject_, ErrorCode::kNotFound);
+}
+
+TEST_F(HostSessionTest, RouteMuteAdvancesItsRevisionAndFadersDoNot) {
+    ASSERT_TRUE(command("routing", cp::StageRouting{echo_routing()}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{true}));
+    const auto routing_revision = revision_of("routing");
+    const auto before = revision_of("send-1");
+    const auto unmuted = command("send-1", cp::SetRouteMute{false});
+    ASSERT_TRUE(unmuted);
+    EXPECT_EQ(*unmuted, before + 1);
+    EXPECT_FALSE(mixer_.routes().at("send-1").muted);
+    // バスとセンドの操作では、ルーティング全体の revision は進まない。
+    EXPECT_EQ(revision_of("routing"), routing_revision);
+
+    session().handle_ui_message(cp::SetGain{"send-1", 5, 15.0});
+    EXPECT_EQ(mixer_.routes().at("send-1").gain_db, 10.0);
+    session().handle_ui_message(cp::SetGain{"send-1", 4, -20.0});
+    EXPECT_EQ(mixer_.routes().at("send-1").gain_db, 10.0);
+    const auto* ack = std::get_if<cp::GainAck>(&ui_.messages().back());
+    ASSERT_NE(ack, nullptr);
+    EXPECT_EQ(ack->seq, 5U);
+    EXPECT_EQ(ack->applied_revision, *unmuted);
+}
+
+TEST_F(HostSessionTest, RemovingAStripDropsItsSendsFromTheRouting) {
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{cue_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    const auto before = revision_of("routing");
+
+    session().on_peer_closed(1);
+    ASSERT_TRUE(command(a, cp::RemoveStrip{}));
+    const auto routing = session().snapshot().routing;
+    EXPECT_GT(routing.revision, before);
+    ASSERT_EQ(routing.applied.sends.size(), 1U);
+    EXPECT_EQ(routing.applied.sends[0].entity_id, "send-2");
+    EXPECT_TRUE(routing.applied.input_delays.empty());
+    EXPECT_EQ(mixer_.routing(), routing.applied);
+}
+
+TEST_F(HostSessionTest, BusesAndOutputsOutliveTheSession) {
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{cue_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    ASSERT_TRUE(command("session", cp::EndSession{}));
+    const auto routing = session().snapshot().routing;
+    EXPECT_EQ(routing.applied.buses.size(), 1U);
+    EXPECT_EQ(routing.applied.outputs.size(), 1U);
+    ASSERT_EQ(routing.applied.sends.size(), 1U);
+    EXPECT_EQ(routing.applied.sends[0].entity_id, "send-2");
 }
 
 }  // namespace

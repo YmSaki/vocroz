@@ -34,4 +34,21 @@ describe("MixerStore", () => {
     store.apply({ type: "channel_removed", entity_id: "ch1" });
     expect(store.get()?.channels.some((c) => c.entity_id === "ch1")).toBe(false);
   });
+
+  it("ルーティングの更新とバスやセンドのレベルの更新を取り込む", () => {
+    const store = new MixerStore();
+    const initial = snapshot();
+    store.apply({ type: "mixer_snapshot", snapshot: initial });
+    const level = { entity_id: "send-1", revision: 1, gain_db: 0, muted: true };
+    store.apply({
+      type: "routing_updated",
+      routing: { ...initial.routing, revision: 3, levels: [level] },
+    });
+    store.apply({
+      type: "route_level_updated",
+      level: { ...level, revision: 2, muted: false },
+    });
+    expect(store.get()?.routing.revision).toBe(3);
+    expect(store.get()?.routing.levels).toEqual([{ ...level, revision: 2, muted: false }]);
+  });
 });

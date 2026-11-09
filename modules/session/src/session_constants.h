@@ -43,9 +43,33 @@ inline constexpr std::size_t kMaxDisplayNameBytes = 64;
 /// セッション名の上限のバイト数（UTF-8）。ステータス帯に出す長さとして十分な値にする。
 inline constexpr std::size_t kMaxSessionNameBytes = 128;
 
+/// ルーティングのバス（ユーザーバスとキューバス）の上限。返しを出演者の人数分と、サブグループや
+/// エフェクトの送りを数本作れる数。
+inline constexpr std::size_t kMaxRoutingBuses = 32;
+
+/// 追加の物理出力の上限。1 台の出力デバイスのチャンネル（audio-core の kMaxOutputChannels = 64）の
+/// うちメインの出力の 2 チャンネルを除いた残りを、ステレオの組で使い切れる数。
+inline constexpr std::size_t kMaxRoutingOutputs = 31;
+
+/// センドの上限。スナップショットは適用中とステージング中の構成を両方含むので、センド 1 本を
+/// 120 バイトとして 2 つの構成で約 30 KiB に抑え、ストリップ 64 本と合わせても
+/// kMaxMessageBytes（64 KiB）に収まる数にする。
+inline constexpr std::size_t kMaxRoutingSends = 128;
+
+/// フィードバック経路の遅延ノードの上限。ループは意図して作る特殊な経路なので数本で足りる。
+inline constexpr std::size_t kMaxRoutingDelays = 8;
+
+/// ルーティングの entity_id の接頭辞。UI が振る ID を、エンジンが振る ID（ch1、pending1、master
+/// など）と衝突させないため、種類ごとに決めた接頭辞で始めさせる。
+inline constexpr const char* kBusIdPrefix = "bus-";
+inline constexpr const char* kOutputIdPrefix = "out-";
+inline constexpr const char* kSendIdPrefix = "send-";
+inline constexpr const char* kDelayIdPrefix = "delay-";
+
 /// UI とスナップショットで使う固定の entity_id。UI のフェイクエンジンと同じ値にする。
 inline constexpr const char* kSessionEntityId = "session";
 inline constexpr const char* kMasterEntityId = "master";
 inline constexpr const char* kClientEntityId = "client";
+inline constexpr const char* kRoutingEntityId = "routing";
 
 }  // namespace vocroz::session

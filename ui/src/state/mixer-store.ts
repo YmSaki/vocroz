@@ -53,6 +53,16 @@ export class MixerStore extends Store<MixerState> {
       case "pending_updated":
         this.set({ ...current, pending: message.pending });
         return;
+      case "routing_updated":
+        this.set({ ...current, routing: message.routing });
+        return;
+      case "route_level_updated": {
+        const levels = current.routing.levels.map((l) =>
+          l.entity_id === message.level.entity_id ? message.level : l,
+        );
+        this.set({ ...current, routing: { ...current.routing, levels } });
+        return;
+      }
       case "client_snapshot":
       case "client_updated":
       case "ack":

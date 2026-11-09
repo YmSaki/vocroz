@@ -98,6 +98,10 @@ export class FakeClientEngine extends FakeEngineBase {
       case "end_session":
       case "set_channel_mute":
       case "set_master_mute":
+      case "stage_routing":
+      case "commit_routing":
+      case "discard_routing":
+      case "set_route_mute":
       case "approve_participant":
       case "reject_participant":
       case "remove_strip":
@@ -146,6 +150,10 @@ export class FakeClientEngine extends FakeEngineBase {
       case "end_session":
       case "set_channel_mute":
       case "set_master_mute":
+      case "stage_routing":
+      case "commit_routing":
+      case "discard_routing":
+      case "set_route_mute":
       case "approve_participant":
       case "reject_participant":
       case "remove_strip":
