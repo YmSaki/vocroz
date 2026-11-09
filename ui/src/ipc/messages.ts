@@ -113,6 +113,8 @@ export interface SessionInfo {
   output_devices: OutputDevice[];
   /** 利用可能な更新のバージョン。なければ null。 */
   update_available: string | null;
+  /** 全チャンネル共通の目標レイテンシー（ジッターバッファの上限、ms）。 */
+  latency_target_ms: number;
 }
 
 /** 入力チャンネルストリップ 1 本の状態。並び順はエンジンが決め、UI は並べ替えない。 */
@@ -139,6 +141,8 @@ export interface ChannelStrip {
   channel_count: number;
   /** 同じ子機の同じ種類の入力の中での番号（1 から）。 */
   source_number: number;
+  /** 親機から子機への返送モニター（Minus-Me）のミュート。ミュート中は返送を送らない。初期値は true。 */
+  return_muted: boolean;
 }
 
 /** Master ストリップの状態。 */
@@ -277,6 +281,12 @@ export interface ClientSnapshot {
   send_muted: boolean;
   /** 送信レベル（-60〜+12 dB）。 */
   send_level_db: number;
+  /** 親機が返送モニターをミュート（OFF）にしている。子機からは解除できない。 */
+  return_muted: boolean;
+  /** マイクのチャンネル数（1: モノラル、2: ステレオ）。 */
+  input_channels: 1 | 2;
+  /** アプリ音声（再生デバイスのループバック）を送るか。 */
+  app_audio: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -304,11 +314,15 @@ export type DiscreteCommandBody =
   | { type: "leave" }
   | { type: "select_input"; device_id: string | null }
   | { type: "set_send_mute"; muted: boolean }
+  | { type: "set_input_channels"; channels: 1 | 2 }
+  | { type: "set_app_audio"; enabled: boolean }
   | { type: "stage_routing"; config: RoutingConfig }
   | { type: "commit_routing"; approve_feedback: boolean }
   | { type: "discard_routing" }
   | { type: "set_route_mute"; muted: boolean }
-  | { type: "select_output"; device_id: string | null };
+  | { type: "select_output"; device_id: string | null }
+  | { type: "set_return_mute"; muted: boolean }
+  | { type: "set_latency_target"; target_ms: number };
 
 /** 離散コマンド。 */
 export type DiscreteCommand = DiscreteCommandBase & DiscreteCommandBody;
@@ -362,6 +376,23 @@ export interface MetersMessage {
   levels: Record<string, number | null>;
 }
 
+/** 1 本の受信の統計値。null はまだ値がない（受信していない）ことを表す。 */
+export interface LinkStat {
+  /** 到着間隔の揺らぎから推定したジッター（ms）。 */
+  jitter_ms: number | null;
+  /** ジッターバッファにたまっている長さ（ms）。 */
+  buffer_ms: number | null;
+}
+
+/**
+ * 受信の統計値。エンジンが 1 Hz ほどで送る。stats は entity_id ごとの値で、
+ * 受信していないチャンネルは含まないことがある。
+ */
+export interface LinkStatsMessage {
+  type: "link_stats";
+  stats: Record<string, LinkStat>;
+}
+
 /** エンジンからの通知。UI はトーストで表示する。 */
 export interface NoticeMessage {
   type: "notice";
@@ -388,4 +419,5 @@ export type EngineToUiMessage =
   | RejectMessage
   | GainAckMessage
   | MetersMessage
+  | LinkStatsMessage
   | NoticeMessage;

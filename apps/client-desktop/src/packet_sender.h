@@ -53,8 +53,8 @@ struct ControlPlaintext {
 };
 
 /// メディアと制御のパケットを暗号化して送る。
-/// 生産者は 3 つ（オーディオスレッドの push_frame()、コントロールスレッドの push_control() と
-/// set_path()）、消費者は送信スレッドの pump() だけ。
+/// 生産者は、経路ごとのオーディオスレッドの push_frame()（マイクとアプリ音声）と、コントロール
+/// スレッドの push_control() と set_path()。消費者は送信スレッドの pump() だけ。
 class PacketSender {
 public:
     /// @param wakeup 送るものを入れたときに鳴らす合図。このオブジェクトより長く生存させる
@@ -64,10 +64,12 @@ public:
     PacketSender& operator=(const PacketSender&) = delete;
 
     /// エンコード済みのフレームを送信待ちに入れる。満杯なら捨てる（受信側からは欠損に見える）。
-    /// @param frame フレーム
+    /// @param lane  経路（kCaptureLaneCount 未満）。範囲外なら捨てる
+    /// @param frame フレーム。stream_id のストリームとして送る
     /// @return 入れられたら true
-    /// スレッド安全性: オーディオスレッド（生産者は 1 つ）から呼び出し可能。
-    [[nodiscard]] bool push_frame(const EncodedFrame& frame) noexcept VOCROZ_NONBLOCKING;
+    /// スレッド安全性: オーディオスレッドから呼び出し可能。生産者は経路ごとに 1 つ。
+    [[nodiscard]] bool push_frame(std::size_t lane,
+                                  const EncodedFrame& frame) noexcept VOCROZ_NONBLOCKING;
 
     /// 制御パケットの平文を送信待ちに入れる。満杯なら捨てる（信頼制御層が再送する）。
     /// @param plaintext 平文。transport::kMaxPlaintextBytes 以下
@@ -96,7 +98,8 @@ private:
     void send_sealed(std::size_t bytes, std::atomic<std::uint64_t>& sent_counter) noexcept;
 
     SendWakeup& wakeup_;
-    common::SpscQueue<EncodedFrame, kEncodedFrameQueueCapacity> frames_;
+    std::array<common::SpscQueue<EncodedFrame, kEncodedFrameQueueCapacity>, kCaptureLaneCount>
+        frames_;
     common::SpscQueue<ControlPlaintext, kControlPlaintextQueueCapacity> control_;
     // 所有権はキューの中では生のポインターで持ち、取り出した側が unique_ptr に戻す。
     common::SpscQueue<SendPath*, kPathQueueCapacity> paths_;

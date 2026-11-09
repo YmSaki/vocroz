@@ -14,6 +14,7 @@
 #include "vocroz/audio_core/mixer.h"
 #include "vocroz/session/routing_delay.h"
 
+#include "fakes/fake_audio_sink.h"
 #include "fakes/fake_audio_source.h"
 
 namespace vocroz::engine {
@@ -173,6 +174,110 @@ TEST(MixerGraphBuilderTest, SkipsBusWithoutFaderAndCarriesFeedbackApproval) {
     // Master だけがバス。
     EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kBus), 1U);
     EXPECT_TRUE(built.graph.feedback_approved);
+}
+
+// 返送タップのうち、sink に渡すもの。
+const ac::NodeSpec* return_tap_to(const ac::GraphDescription& g,
+                                  const std::shared_ptr<ac::AudioSink>& sink) {
+    const auto it = std::find_if(g.nodes.begin(), g.nodes.end(), [&](const ac::NodeSpec& n) {
+        return n.kind == ac::NodeKind::kReturnTap && n.sink == sink;
+    });
+    return it == g.nodes.end() ? nullptr : &*it;
+}
+
+// 返送タップの手前のリミッターへ入る送り元。
+std::vector<ac::NodeId> return_inputs(const ac::GraphDescription& g, ac::NodeId tap) {
+    ac::NodeId limiter{};
+    for (const auto& c : g.connections) {
+        if (c.to == tap) {
+            limiter = c.from;
+        }
+    }
+    std::vector<ac::NodeId> inputs;
+    for (const auto& c : g.connections) {
+        if (c.to == limiter) {
+            inputs.push_back(c.from);
+        }
+    }
+    return inputs;
+}
+
+TEST(MixerGraphBuilderTest, BuildsNoReturnWithoutReturnSinks) {
+    const auto built = build_mixer_graph(two_strips(), kMaster, cp::RoutingConfig{}, false);
+    EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kReturnTap), 0U);
+}
+
+TEST(MixerGraphBuilderTest, ReturnCarriesTheMainMixWithoutTheOwnStrip) {
+    auto a = two_strips();
+    auto sink1 = std::make_shared<ac::FakeAudioSink>();
+    auto sink2 = std::make_shared<ac::FakeAudioSink>();
+    a.returns.push_back({1, {"ch-1"}, sink1});
+    a.returns.push_back({2, {"ch-2"}, sink2});
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto& g = built.graph;
+    const auto* ch1 = node_with_fader(g, ac::FaderId{1});
+    const auto* ch2 = node_with_fader(g, ac::FaderId{2});
+    const auto* tap1 = return_tap_to(g, sink1);
+    const auto* tap2 = return_tap_to(g, sink2);
+    ASSERT_NE(tap1, nullptr);
+    ASSERT_NE(tap2, nullptr);
+    EXPECT_EQ(return_inputs(g, tap1->id), (std::vector<ac::NodeId>{ch2->id}));
+    EXPECT_EQ(return_inputs(g, tap2->id), (std::vector<ac::NodeId>{ch1->id}));
+    // 返送の経路にも安全リミッターを通す。
+    EXPECT_EQ(count_kind(g, ac::NodeKind::kLimiter), 3U);
+    EXPECT_TRUE(is_valid(g));
+}
+
+TEST(MixerGraphBuilderTest, ReturnExcludesBusesThatCarryTheOwnVoice) {
+    auto a = two_strips();
+    a.route_faders.emplace("bus-1", ac::FaderId{3});
+    a.route_faders.emplace("send-1", ac::FaderId{4});
+    a.route_faders.emplace("send-2", ac::FaderId{5});
+    auto sink1 = std::make_shared<ac::FakeAudioSink>();
+    auto sink2 = std::make_shared<ac::FakeAudioSink>();
+    a.returns.push_back({1, {"ch-1"}, sink1});
+    a.returns.push_back({2, {"ch-2"}, sink2});
+    // ch-1 → bus-1 → Master（リバーブなどのバス）。
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-1", "Rev"});
+    config.sends.push_back(cp::RoutingSend{"send-1", "ch-1", "bus-1", cp::SendTap::kPostFader});
+    config.sends.push_back(cp::RoutingSend{"send-2", "bus-1", "master", cp::SendTap::kPostFader});
+    const auto built = build_mixer_graph(a, kMaster, config, false);
+    const auto& g = built.graph;
+    const auto* ch1 = node_with_fader(g, ac::FaderId{1});
+    const auto* ch2 = node_with_fader(g, ac::FaderId{2});
+    const auto* bus = node_with_fader(g, ac::FaderId{3});
+    // ch-1 の返送には、ch-1 の声を含むバスも入らない。
+    EXPECT_EQ(return_inputs(g, return_tap_to(g, sink1)->id), (std::vector<ac::NodeId>{ch2->id}));
+    // ch-2 の返送には、ch-1 とバスの両方が入る。
+    auto inputs2 = return_inputs(g, return_tap_to(g, sink2)->id);
+    std::sort(inputs2.begin(), inputs2.end());
+    auto expected2 = std::vector<ac::NodeId>{ch1->id, bus->id};
+    std::sort(expected2.begin(), expected2.end());
+    EXPECT_EQ(inputs2, expected2);
+    EXPECT_TRUE(is_valid(g));
+}
+
+TEST(MixerGraphBuilderTest, ReturnOfAClientWithSeveralInputsExcludesAllOfItsStrips) {
+    // ch-1 と ch-2 は同じ子機のマイクとアプリ音声。ch-1
+    // しか送っていない別の子機の返送には両方が入る。
+    auto a = two_strips();
+    auto own = std::make_shared<ac::FakeAudioSink>();
+    a.returns.push_back({1, {"ch-1", "ch-2"}, own});
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto& g = built.graph;
+    EXPECT_TRUE(return_inputs(g, return_tap_to(g, own)->id).empty());
+    EXPECT_TRUE(is_valid(g));
+}
+
+TEST(MixerGraphBuilderTest, ReturnIgnoresOwnStripsThatNoLongerExist) {
+    auto a = two_strips();
+    auto sink = std::make_shared<ac::FakeAudioSink>();
+    a.returns.push_back({1, {"ch-1", "ch-gone"}, sink});
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto& g = built.graph;
+    const auto* ch2 = node_with_fader(g, ac::FaderId{2});
+    EXPECT_EQ(return_inputs(g, return_tap_to(g, sink)->id), (std::vector<ac::NodeId>{ch2->id}));
 }
 
 }  // namespace

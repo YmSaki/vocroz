@@ -64,6 +64,7 @@ protected:
                                                        .environment = environment_,
                                                        .devices = devices_,
                                                        .inputs = inputs_,
+                                                       .app_audio = app_audio_,
                                                        .rendezvous = rendezvous_,
                                                        .invites = invites_,
                                                        .settings = settings_,
@@ -110,6 +111,7 @@ protected:
     FakeNetworkEnvironment environment_;
     audio_core::FakeAudioDeviceCatalog devices_;
     FakeInputs inputs_;
+    FakeInputs app_audio_;
     session::FakeRendezvousClient rendezvous_;
     InviteInbox invites_;
     session::FakeSettingsStore settings_;

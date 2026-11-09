@@ -10,9 +10,9 @@
 
 namespace vocroz::client {
 
-CaptureProcessor::CaptureProcessor(transport::OpusFrameEncoder encoder,
-                                   PacketSender& sender) noexcept
-    : encoder_(std::move(encoder)), sender_(sender) {}
+CaptureProcessor::CaptureProcessor(transport::OpusFrameEncoder encoder, PacketSender& sender,
+                                   std::size_t lane, std::uint16_t stream_id) noexcept
+    : encoder_(std::move(encoder)), sender_(sender), lane_(lane), stream_id_(stream_id) {}
 
 bool CaptureProcessor::set_params(const SendParams& params) noexcept {
     return params_.try_push(params);
@@ -46,11 +46,22 @@ void CaptureProcessor::on_captured(audio_core::ConstInterleavedBuffer in) noexce
     VOCROZ_NONBLOCKING {
     apply_pending_params();
     const std::size_t frames = in.frames();
+    const std::size_t channels = encoder_.channels();
+    // 入力が 1 チャンネルなら、右にも左と同じサンプルを使う。
+    const std::size_t right_offset = in.channels >= 2 ? 1 : 0;
     float peak = 0.0F;
     for (std::size_t i = 0; i < frames; ++i) {
-        const float sample = in.samples[i * in.channels];
-        peak = std::max(peak, std::fabs(sample));
-        frame_[filled_] = sample * ramp_.next();
+        const float left = in.samples[i * in.channels];
+        const float gain = ramp_.next();
+        peak = std::max(peak, std::fabs(left));
+        if (channels == 1) {
+            frame_[filled_] = left * gain;
+        } else {
+            const float right = in.samples[(i * in.channels) + right_offset];
+            peak = std::max(peak, std::fabs(right));
+            frame_[filled_ * 2] = left * gain;
+            frame_[(filled_ * 2) + 1] = right * gain;
+        }
         ++filled_;
         if (filled_ == encoder_.frame_samples()) {
             finish_frame();
@@ -73,16 +84,18 @@ void CaptureProcessor::finish_frame() noexcept VOCROZ_NONBLOCKING {
         // ミュートのランプが終わったら送らない（出演者の音声を PC の外へ出さない）。
         return;
     }
-    const auto pcm = std::span<const float>(frame_).first(encoder_.frame_samples());
+    const auto pcm =
+        std::span<const float>(frame_).first(encoder_.frame_samples() * encoder_.channels());
     const auto encoded = encoder_.encode(pcm, encoded_.bytes);
     if (!encoded) {
         dropped_frames_.fetch_add(1, std::memory_order_relaxed);
         return;
     }
+    encoded_.stream_id = stream_id_;
     encoded_.timestamp = timestamp;
     encoded_.mute_epoch = current_.mute_epoch;
     encoded_.size = encoded.value();
-    if (!sender_.push_frame(encoded_)) {
+    if (!sender_.push_frame(lane_, encoded_)) {
         dropped_frames_.fetch_add(1, std::memory_order_relaxed);
     }
 }

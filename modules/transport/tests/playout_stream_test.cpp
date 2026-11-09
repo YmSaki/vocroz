@@ -416,3 +416,53 @@ TEST(PlayoutStreamTest, RejectsChannelCountOtherThanMonoOrStereo) {
 
 }  // namespace
 }  // namespace vocroz::transport
+
+namespace vocroz::transport {
+namespace {
+
+TEST(PlayoutStreamTest, RejectsMaxDelayOutsideTheAcceptedRange) {
+    auto stream = make_stream();
+    // 既定の下限（10ms）より短い上限と、250ms より長い上限は受け付けない。
+    EXPECT_FALSE(stream->set_max_delay(std::chrono::milliseconds{5}));
+    EXPECT_FALSE(stream->set_max_delay(std::chrono::milliseconds{300}));
+    EXPECT_TRUE(stream->set_max_delay(std::chrono::milliseconds{250}));
+}
+
+TEST(PlayoutStreamTest, WideningTheMaxDelayLetsTheTargetGrowPastTheOldLimit) {
+    // 送信が 2 フレームずつまとめて遅れて届く回線では、枯渇のたびに目標が深くなる。
+    // 上限が 10ms のままなら目標は 10ms に留まり、40ms に広げればそれより深くなれる。
+    const SineSender sender;
+    PlayoutConfig config;
+    config.max_delay = std::chrono::milliseconds{10};
+    auto stream = make_stream(config);
+    std::vector<float> out(kBlock);
+    std::uint64_t next = 0;
+    std::uint64_t now = 0;
+    auto run = [&](int blocks) {
+        for (int i = 0; i < blocks; ++i) {
+            // 30ms ごとに、その間の 6 フレームをまとめて届ける。
+            if (now % (kSampleRate * 30 / 1000) < kBlock) {
+                while (next * kFrame < now + kSampleRate * 30 / 1000) {
+                    ASSERT_TRUE(stream->enqueue(sender.frame(next++, 1)));
+                }
+            }
+            stream->render(out);
+            now += kBlock;
+        }
+    };
+    run(400);
+    EXPECT_LE(stream->stats().target_delay_samples, kSampleRate * 10 / 1000);
+
+    ASSERT_TRUE(stream->set_max_delay(std::chrono::milliseconds{40}));
+    run(400);
+    EXPECT_GT(stream->stats().target_delay_samples, kSampleRate * 10 / 1000);
+    EXPECT_LE(stream->stats().target_delay_samples, kSampleRate * 40 / 1000);
+
+    // 狭め直したら、目標も新しい上限まで浅くなる。
+    ASSERT_TRUE(stream->set_max_delay(std::chrono::milliseconds{15}));
+    stream->render(out);
+    EXPECT_LE(stream->stats().target_delay_samples, kSampleRate * 15 / 1000);
+}
+
+}  // namespace
+}  // namespace vocroz::transport

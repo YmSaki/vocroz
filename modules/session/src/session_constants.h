@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 
 #include "vocroz/session/entity_ids.h"
 
@@ -41,6 +42,16 @@ inline constexpr double kMaxSendLevelDb = 12.0;
 /// 表示名（参加者名）の上限のバイト数（UTF-8）。ストリップの幅（80〜112 px）に収まる文字数より
 /// 十分大きく、制御メッセージ 1 つ（最大 1166 バイト）に収まる値にする。
 inline constexpr std::size_t kMaxDisplayNameBytes = 64;
+
+/// 子機のマイクのストリーム ID。入力の申告を送らない子機を、親機はストリーム 0 のモノラルの
+/// マイクとみなすので、マイクは同じ ID にする（docs/adr/0035-client-input-expansion.md）。
+inline constexpr std::uint16_t kMicrophoneStreamId = 0;
+
+/// 子機のアプリ音声のストリーム ID。
+inline constexpr std::uint16_t kAppAudioStreamId = 1;
+
+/// アプリ音声のチャンネル数。再生デバイスのミックスはステレオなので、そのまま送る。
+inline constexpr std::uint8_t kAppAudioChannels = 2;
 
 /// セッション名の上限のバイト数（UTF-8）。ステータス帯に出す長さとして十分な値にする。
 inline constexpr std::size_t kMaxSessionNameBytes = 128;

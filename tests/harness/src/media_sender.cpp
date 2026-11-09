@@ -31,20 +31,21 @@ MediaSender::MediaSender(transport::PacketSealer& sealer, transport::DatagramSoc
       mute_epoch_(mute_epoch),
       payload_(transport::kMaxOpusPayloadBytes),
       packet_(transport::kMaxPacketBytes) {
-    pending_.reserve(encoder_.frame_samples() * 2);
+    pending_.reserve(encoder_.frame_samples() * encoder_.channels() * 2);
 }
 
 void MediaSender::capture(std::span<const float> block) {
     pending_.insert(pending_.end(), block.begin(), block.end());
-    while (pending_.size() >= encoder_.frame_samples()) {
+    const std::size_t frame = encoder_.frame_samples() * encoder_.channels();
+    while (pending_.size() >= frame) {
         send_frame();
-        pending_.erase(pending_.begin(),
-                       pending_.begin() + static_cast<std::ptrdiff_t>(encoder_.frame_samples()));
+        pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(frame));
     }
 }
 
 void MediaSender::send_frame() {
-    const std::span<const float> pcm = std::span(pending_).first(encoder_.frame_samples());
+    const std::span<const float> pcm =
+        std::span(pending_).first(encoder_.frame_samples() * encoder_.channels());
     const std::uint64_t timestamp = next_timestamp_;
     // エンコードや送信に失敗してもタイムスタンプは進める。送信側の時刻は実時間に従うので、
     // 失敗したフレームは受信側から見て欠損と同じに扱われる。

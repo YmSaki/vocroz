@@ -34,8 +34,17 @@ inline constexpr std::size_t kPeerInboxCapacity = 64;
 /// ミュートの効きを速くする。48kHz で 5ms。
 inline constexpr std::size_t kSendGainRampSamples = 240;
 
-/// 子機の送信のストリーム ID。子機が送るのはマイク入力の 1 本だけ。
-inline constexpr std::uint16_t kMicStreamId = 0;
+/// オーディオスレッドから送信スレッドへの、エンコード済みフレームの経路の数。
+/// マイクとアプリ音声は別のデバイスの別のオーディオスレッドで動くので、SPSC キューを入力ごとに
+/// 分ける（生産者を 1 つに保つ）。子機の画面で選べる入力はマイクとアプリ音声の 2 つ
+/// （docs/adr/0035-client-input-expansion.md）。
+inline constexpr std::size_t kCaptureLaneCount = 2;
+
+/// マイクの経路。
+inline constexpr std::size_t kMicrophoneLane = 0;
+
+/// アプリ音声の経路。
+inline constexpr std::size_t kAppAudioLane = 1;
 
 /// session の tick() の間隔。session の推奨（100 ms〜1 s）の短い側にして、
 /// 再接続の猶予の判定の遅れを小さくする。

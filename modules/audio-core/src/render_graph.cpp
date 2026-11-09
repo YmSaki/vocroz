@@ -81,6 +81,7 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
         node.plugin = spec.plugin;
         node.recording = spec.recording;
         node.playback = spec.playback;
+        node.sink = spec.sink;
         assign_buffers(node.channels, node.buffer_channel_count, next_buffer);
         if (plan.has_pre_fader_send[spec_index]) {
             assign_buffers(node.pre_fader, node.channel_count, next_buffer);
@@ -164,6 +165,17 @@ void RenderGraph::keep_pre_fader(Node& node, std::size_t frames) noexcept VOCROZ
     }
 }
 
+void RenderGraph::push_return(Node& node, std::size_t frames) noexcept VOCROZ_NONBLOCKING {
+    // 返送はモノラルで送るので、L と R の平均にする。ストリップ（モノラル）から来た信号は
+    // 両チャンネルに同じ値で入っているので、平均してもレベルは変わらない。
+    float* mono = node.channels[0];
+    const float* right = node.channels[1];
+    for (std::size_t i = 0; i < frames; ++i) {
+        mono[i] = 0.5F * (mono[i] + right[i]);
+    }
+    node.sink->push(std::span<const float>(mono, frames));
+}
+
 void RenderGraph::process_plugin(Node& node, std::size_t frames,
                                  std::span<const MidiEvent> midi) noexcept VOCROZ_NONBLOCKING {
     if (!node.plugin_failed) {
@@ -241,6 +253,10 @@ void RenderGraph::process_node(std::size_t position, std::size_t frames, FaderBa
             break;
         case NodeKind::kPlayer:
             node.playback->render(channels, frames);
+            break;
+        case NodeKind::kReturnTap:
+            mix_inputs(node, frames, faders);
+            push_return(node, frames);
             break;
     }
 }

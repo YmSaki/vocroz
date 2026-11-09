@@ -142,9 +142,20 @@ struct HostContext {
     /// オペレーターの承認を待ち、問題のある構成は戻さない（docs/adr/0033-routing-persistence.md）。
     void restore_routing();
 
+    /// 全体の目標レイテンシーを受信側へ反映し、セッションの状態と設定に記録する。
+    /// UI への通知と保存は呼び出し側が行う。
+    /// @param target_ms 目標（ms）。範囲は検証済みであること
+    void apply_latency_target(double target_ms);
+
     /// 今あるチャンネルストリップの entity_id。ルーティングの検証に使う。
     [[nodiscard]] std::vector<std::string> strip_ids() const;
 
+    /// 返送モニターの今の状態を、参加者の接続の送信側と子機へ知らせる。
+    /// 返送は子機 1 台に 1
+    /// 本で、同じ子機のストリップはすべて同じ状態を持つので、どれを渡してもよい。
+    /// 承認と再接続で接続を受け付けたとき（JoinApproved
+    /// より前）と、ミュートを切り替えたときに呼ぶ。 接続がなければ何もしない。
+    void sync_return(const Participant& participant);
     /// 子機へ制御メッセージを送る。
     void send(PeerHandle peer, const wire::HostToClientMessage& message);
 

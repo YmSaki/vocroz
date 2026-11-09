@@ -247,6 +247,7 @@ export class EngineClient {
       case "routing_updated":
       case "route_level_updated":
       case "meters":
+      case "link_stats":
       case "notice":
         return;
     }

@@ -40,13 +40,23 @@ public:
 
 class ClientCaptureTest : public ::testing::Test {
 protected:
+    float take_mic_peak() {
+        return capture_.take_input_peak();
+    }
+
     SendWakeup wakeup_;
     PacketSender sender_{wakeup_};
-    CaptureProcessor processor_{transport::OpusFrameEncoder::create({}).value(), sender_};
     RecordingOpener opener_;
+    RecordingOpener app_audio_;
     common::FakeLogger logger_;
-    ClientCapture capture_{processor_, opener_, logger_};
+    ClientCapture capture_{
+        ClientCapture::Ports{
+            .sender = sender_, .microphones = opener_, .app_audio = app_audio_, .logger = logger_},
+        {},
+        transport::OpusFrameEncoder::create({}).value()};
 };
+
+using control_protocol::InputSourceKind;
 
 TEST_F(ClientCaptureTest, OpensSelectedDeviceAndStartsCapture) {
     capture_.select_input("mic-1");
@@ -55,7 +65,7 @@ TEST_F(ClientCaptureTest, OpensSelectedDeviceAndStartsCapture) {
 
     std::vector<float> block(128, 0.3F);
     opener_.last->capture(block);
-    EXPECT_FLOAT_EQ(processor_.take_input_peak(), 0.3F);
+    EXPECT_FLOAT_EQ(take_mic_peak(), 0.3F);
 }
 
 TEST_F(ClientCaptureTest, NoInputStopsCapture) {
@@ -77,6 +87,67 @@ TEST_F(ClientCaptureTest, ReportsDeviceLossOnce) {
     opener_.last->simulate_device_lost();
     EXPECT_TRUE(capture_.take_device_lost());
     EXPECT_FALSE(capture_.take_device_lost());
+}
+
+// --- 入力の構成（docs/adr/0035-client-input-expansion.md） ---
+
+TEST_F(ClientCaptureTest, StartsWithAMonoMicrophoneOnStreamZero) {
+    const auto* mic = capture_.processor(kMicrophoneLane);
+    ASSERT_NE(mic, nullptr);
+    EXPECT_EQ(mic->channels(), 1U);
+    EXPECT_EQ(mic->stream_id(), 0);
+    EXPECT_EQ(capture_.processor(kAppAudioLane), nullptr);
+}
+
+TEST_F(ClientCaptureTest, SwitchingTheMicrophoneToStereoReopensTheDevice) {
+    capture_.select_input("mic-1");
+    capture_.set_streams({{0, InputSourceKind::kMicrophone, 2}});
+    EXPECT_EQ(capture_.processor(kMicrophoneLane)->channels(), 2U);
+    EXPECT_EQ(opener_.opened, (std::vector<std::string>{"mic-1", "mic-1"}));
+    EXPECT_TRUE(capture_.capturing());
+
+    // 構成が変わらなければ開き直さない。
+    capture_.set_streams({{0, InputSourceKind::kMicrophone, 2}});
+    EXPECT_EQ(opener_.opened.size(), 2U);
+}
+
+TEST_F(ClientCaptureTest, AppAudioOpensTheLoopbackAndStopsWhenRemoved) {
+    capture_.select_input("mic-1");
+    capture_.set_streams(
+        {{0, InputSourceKind::kMicrophone, 1}, {1, InputSourceKind::kApplicationAudio, 2}});
+    EXPECT_EQ(app_audio_.opened, std::vector<std::string>{""});
+    EXPECT_TRUE(capture_.capturing_app_audio());
+    EXPECT_EQ(capture_.processor(kAppAudioLane)->stream_id(), 1);
+    EXPECT_EQ(capture_.processor(kAppAudioLane)->channels(), 2U);
+    // マイクは開き直さない。
+    EXPECT_EQ(opener_.opened.size(), 1U);
+
+    capture_.set_streams({{0, InputSourceKind::kMicrophone, 1}});
+    EXPECT_FALSE(capture_.capturing_app_audio());
+    EXPECT_EQ(capture_.processor(kAppAudioLane), nullptr);
+    EXPECT_TRUE(capture_.capturing());
+}
+
+TEST_F(ClientCaptureTest, AppAudioThatCannotBeOpenedIsNotSentAndTheMicrophoneKeepsGoing) {
+    app_audio_.missing[""] = true;
+    capture_.select_input("mic-1");
+    capture_.set_streams(
+        {{0, InputSourceKind::kMicrophone, 1}, {1, InputSourceKind::kApplicationAudio, 2}});
+    EXPECT_FALSE(capture_.capturing_app_audio());
+    EXPECT_TRUE(capture_.capturing());
+}
+
+TEST_F(ClientCaptureTest, ReopensTheAppAudioOnceAfterItsDeviceIsLost) {
+    capture_.set_streams(
+        {{0, InputSourceKind::kMicrophone, 1}, {1, InputSourceKind::kApplicationAudio, 2}});
+    app_audio_.last->simulate_device_lost();
+    // アプリ音声の抜去は、マイクの抜去としては知らせない。
+    EXPECT_FALSE(capture_.take_device_lost());
+    capture_.flush_params();
+    EXPECT_EQ(app_audio_.opened.size(), 2U);
+    EXPECT_TRUE(capture_.capturing_app_audio());
+    capture_.flush_params();
+    EXPECT_EQ(app_audio_.opened.size(), 2U);
 }
 
 }  // namespace

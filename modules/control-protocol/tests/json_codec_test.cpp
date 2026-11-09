@@ -256,6 +256,17 @@ TEST(JsonCodecTest, RejectsInviteAndDeviceIdOutOfRange) {
     EXPECT_EQ(ui_error(select_output), (DecodeError{DecodeErrorCode::kOutOfRange, "device_id"}));
 }
 
+TEST(JsonCodecTest, RejectsInputChannelsOtherThanMonoOrStereo) {
+    nlohmann::json command = {{"type", "set_input_channels"},
+                              {"request_id", "r1"},
+                              {"entity_id", "client"},
+                              {"expected_revision", 1},
+                              {"channels", 0}};
+    EXPECT_EQ(ui_error(command), (DecodeError{DecodeErrorCode::kOutOfRange, "channels"}));
+    command["channels"] = 3;
+    EXPECT_EQ(ui_error(command), (DecodeError{DecodeErrorCode::kOutOfRange, "channels"}));
+}
+
 TEST(JsonCodecTest, DecodesSelectOutputWithNullAsNoOutput) {
     const auto decoded = decode_ui_to_engine(R"({"type":"select_output","request_id":"r1",
         "entity_id":"session","expected_revision":2,"device_id":null})");
@@ -272,7 +283,8 @@ TEST(JsonCodecTest, RejectsInvalidEngineMessages) {
                               {"signal_state", nullptr}, {"send_muted", true},
                               {"channel_muted", true},   {"gain_db", 0.0},
                               {"error_code", nullptr},   {"source_kind", "MICROPHONE"},
-                              {"channel_count", 1},      {"source_number", 1}};
+                              {"channel_count", 1},      {"source_number", 1},
+                              {"return_muted", true}};
     EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
               (DecodeError{DecodeErrorCode::kOutOfRange, "channel.connection_state"}));
 
@@ -444,6 +456,30 @@ TEST(JsonCodecTest, EncodesInvalidUtf8TextWithReplacementCharacter) {
     const auto decoded = decode_engine_to_ui(text);
     ASSERT_TRUE(decoded);
     EXPECT_EQ(std::get<PendingUpdated>(decoded.value()).pending.at(0).name, "Vo\xEF\xBF\xBD");
+}
+
+TEST(JsonCodecTest, RejectsLatencyTargetOutOfRange) {
+    for (const double ms : {kMinLatencyTargetMs - 1.0, kMaxLatencyTargetMs + 1.0}) {
+        const nlohmann::json message = {{"type", "set_latency_target"},
+                                        {"request_id", "r1"},
+                                        {"entity_id", "session"},
+                                        {"expected_revision", 1},
+                                        {"target_ms", ms}};
+        EXPECT_EQ(ui_error(message), (DecodeError{DecodeErrorCode::kOutOfRange, "target_ms"}))
+            << ms;
+    }
+}
+
+TEST(JsonCodecTest, RejectsMalformedLinkStats) {
+    EXPECT_EQ(engine_error({{"type", "link_stats"}, {"stats", {{"ch1", 2.5}}}}).code,
+              DecodeErrorCode::kWrongType);
+    EXPECT_EQ(
+        engine_error({{"type", "link_stats"}, {"stats", {{"ch1", {{"jitter_ms", "high"}}}}}}).code,
+        DecodeErrorCode::kWrongType);
+    EXPECT_EQ(engine_error({{"type", "link_stats"},
+                            {"stats", {{"bad id", {{"jitter_ms", 1}, {"buffer_ms", 1}}}}}})
+                  .code,
+              DecodeErrorCode::kOutOfRange);
 }
 
 TEST(JsonCodecTest, EncodesDiscreteCommandWithBodyType) {

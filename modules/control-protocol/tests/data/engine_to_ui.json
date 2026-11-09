@@ -16,7 +16,8 @@
           { "id": "{0.0.0.00000000}.{usb-audio}", "name": "スピーカー (USB Audio)" },
           { "id": "{0.0.0.00000000}.{onboard}", "name": "スピーカー (Realtek)" }
         ],
-        "update_available": null
+        "update_available": null,
+        "latency_target_ms": 20
       },
       "channels": [
         {
@@ -29,6 +30,7 @@
           "signal_state": "RECEIVING",
           "send_muted": false,
           "channel_muted": true,
+          "return_muted": false,
           "gain_db": 0.0,
           "error_code": null,
           "source_kind": "MICROPHONE",
@@ -45,6 +47,7 @@
           "signal_state": "PAUSED",
           "send_muted": true,
           "channel_muted": true,
+          "return_muted": true,
           "gain_db": 0.0,
           "error_code": null,
           "source_kind": "MICROPHONE",
@@ -61,6 +64,7 @@
           "signal_state": "RESUMING",
           "send_muted": false,
           "channel_muted": true,
+          "return_muted": true,
           "gain_db": 0.0,
           "error_code": null,
           "source_kind": "APP_AUDIO",
@@ -77,6 +81,7 @@
           "signal_state": "NO_SIGNAL",
           "send_muted": false,
           "channel_muted": true,
+          "return_muted": true,
           "gain_db": null,
           "error_code": null,
           "source_kind": "MICROPHONE",
@@ -93,6 +98,7 @@
           "signal_state": null,
           "send_muted": false,
           "channel_muted": true,
+          "return_muted": true,
           "gain_db": 0.0,
           "error_code": null,
           "source_kind": "MICROPHONE",
@@ -109,6 +115,7 @@
           "signal_state": null,
           "send_muted": false,
           "channel_muted": true,
+          "return_muted": true,
           "gain_db": 10.0,
           "error_code": null,
           "source_kind": "MICROPHONE",
@@ -125,6 +132,7 @@
           "signal_state": null,
           "send_muted": false,
           "channel_muted": true,
+          "return_muted": true,
           "gain_db": -60.0,
           "error_code": null,
           "source_kind": "MICROPHONE",
@@ -141,6 +149,7 @@
           "signal_state": null,
           "send_muted": false,
           "channel_muted": true,
+          "return_muted": true,
           "gain_db": 0.0,
           "error_code": "UNREACHABLE",
           "source_kind": "MICROPHONE",
@@ -294,7 +303,8 @@
         "output_device_name": null,
         "output_device_id": null,
         "output_devices": [],
-        "update_available": null
+        "update_available": null,
+        "latency_target_ms": 20
       },
       "channels": [],
       "master": {
@@ -334,7 +344,8 @@
       "output_device_name": "スピーカー (USB Audio)",
       "output_device_id": "{0.0.0.00000000}.{usb-audio}",
       "output_devices": [],
-      "update_available": null
+      "update_available": null,
+      "latency_target_ms": 20
     }
   },
   {
@@ -350,7 +361,8 @@
       "output_device_name": "スピーカー (USB Audio)",
       "output_device_id": "{0.0.0.00000000}.{usb-audio}",
       "output_devices": [],
-      "update_available": "1.0.1"
+      "update_available": "1.0.1",
+      "latency_target_ms": 20
     }
   },
   {
@@ -366,7 +378,8 @@
       "output_device_name": "スピーカー (USB Audio)",
       "output_device_id": "{0.0.0.00000000}.{usb-audio}",
       "output_devices": [],
-      "update_available": null
+      "update_available": null,
+      "latency_target_ms": 20
     }
   },
   {
@@ -382,7 +395,8 @@
       "output_device_name": null,
       "output_device_id": "{0.0.0.00000000}.{usb-audio}",
       "output_devices": [],
-      "update_available": null
+      "update_available": null,
+      "latency_target_ms": 20
     }
   },
   {
@@ -397,6 +411,7 @@
       "signal_state": "RECEIVING",
       "send_muted": false,
       "channel_muted": true,
+      "return_muted": true,
       "gain_db": -12.3,
       "error_code": null,
       "source_kind": "MICROPHONE",
@@ -466,7 +481,10 @@
       "selected_input_id": null,
       "input_missing": false,
       "send_muted": true,
-      "send_level_db": 0.0
+      "send_level_db": 0.0,
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -486,7 +504,10 @@
       "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
       "input_missing": false,
       "send_muted": true,
-      "send_level_db": 0.0
+      "send_level_db": 0.0,
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -506,7 +527,10 @@
       "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
       "input_missing": false,
       "send_muted": true,
-      "send_level_db": 0.0
+      "send_level_db": 0.0,
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -526,7 +550,10 @@
       "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
       "input_missing": false,
       "send_muted": true,
-      "send_level_db": 0.0
+      "send_level_db": 0.0,
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -546,7 +573,10 @@
       "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
       "input_missing": false,
       "send_muted": true,
-      "send_level_db": 0.0
+      "send_level_db": 0.0,
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -566,7 +596,10 @@
       "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
       "input_missing": false,
       "send_muted": true,
-      "send_level_db": 0.0
+      "send_level_db": 0.0,
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -586,7 +619,10 @@
       "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
       "input_missing": false,
       "send_muted": false,
-      "send_level_db": 12.0
+      "send_level_db": 12.0,
+      "return_muted": true,
+      "input_channels": 2,
+      "app_audio": true
     }
   },
   {
@@ -606,7 +642,10 @@
       "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
       "input_missing": true,
       "send_muted": true,
-      "send_level_db": -60.0
+      "send_level_db": -60.0,
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -621,7 +660,10 @@
       "selected_input_id": "{0.0.1.00000000}.{mic-usb}",
       "input_missing": false,
       "send_muted": true,
-      "send_level_db": 0.0
+      "send_level_db": 0.0,
+      "return_muted": true,
+      "input_channels": 1,
+      "app_audio": false
     }
   },
   {
@@ -1061,6 +1103,19 @@
   {
     "type": "meters",
     "levels": {}
+  },
+  {
+    "type": "link_stats",
+    "stats": {
+      "ch1": {
+        "jitter_ms": 2.5,
+        "buffer_ms": 15.0
+      },
+      "ch2": {
+        "jitter_ms": null,
+        "buffer_ms": null
+      }
+    }
   },
   {
     "type": "notice",

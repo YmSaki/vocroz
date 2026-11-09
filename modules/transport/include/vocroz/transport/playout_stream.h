@@ -88,6 +88,14 @@ public:
     PlayoutStream& operator=(PlayoutStream&&) = delete;
     ~PlayoutStream();
 
+    /// 目標の深さの上限を変える（オペレーターが全体の目標レイテンシーを選び直したとき）。
+    /// 次の render() で反映する。上限を狭めたら、溜まっていた分は古いほうから捨てて遅延を戻す。
+    /// @param max_delay 新しい上限
+    /// @return 受け付けたら true。下限より短いか、250ms より長ければ false（今の上限のまま）
+    /// スレッド安全性: どのスレッドからも呼び出し可能。
+    /// アトミック変数に書くだけで、ブロックしない。複数のスレッドから呼んだ場合は後勝ち。
+    bool set_max_delay(std::chrono::microseconds max_delay) noexcept;
+
     /// 受信したフレームをオーディオスレッドへ渡す。
     /// SignalMonitor::on_media_frame() が受け付けたフレームだけを渡す。
     /// @param frame 渡すフレーム。内容はコピーする

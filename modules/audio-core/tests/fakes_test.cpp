@@ -11,6 +11,8 @@
 #include "fakes/fake_audio_input.h"
 #include "fakes/fake_audio_output.h"
 #include "fakes/fake_audio_source.h"
+#include "fakes/fake_midi_device_catalog.h"
+#include "fakes/fake_midi_input.h"
 
 namespace vocroz::audio_core {
 namespace {
@@ -40,6 +42,14 @@ public:
         ++lost;
     }
     int lost = 0;
+};
+
+class RecordingMidi final : public MidiInputCallback {
+public:
+    void on_midi_message(const TimestampedMidiMessage& message) noexcept override {
+        messages.push_back(message);
+    }
+    std::vector<TimestampedMidiMessage> messages;
 };
 
 TEST(FakesTest, OutputCallsRenderWithRequestedFrames) {
@@ -114,6 +124,33 @@ TEST(FakesTest, DeviceCatalogReturnsDevicesPerDirection) {
     EXPECT_TRUE(catalog.list(AudioDeviceDirection::kInput).value().empty());
     catalog.set_error(AudioDeviceError::kInternal);
     EXPECT_EQ(catalog.list(AudioDeviceDirection::kOutput).error(), AudioDeviceError::kInternal);
+}
+
+TEST(FakesTest, MidiDeviceCatalogReturnsDevices) {
+    FakeMidiDeviceCatalog catalog;
+    catalog.set_devices({MidiDeviceInfo{"midi-1", "Keyboard"}});
+    const auto devices = catalog.list();
+    ASSERT_TRUE(devices.has_value());
+    ASSERT_EQ(devices.value().size(), 1U);
+    EXPECT_EQ(devices.value()[0].id, "midi-1");
+    catalog.set_error(AudioDeviceError::kInternal);
+    EXPECT_EQ(catalog.list().error(), AudioDeviceError::kInternal);
+}
+
+TEST(FakesTest, MidiInputDeliversMessagesUntilLost) {
+    FakeMidiInput input;
+    RecordingMidi midi;
+    RecordingListener listener;
+    ASSERT_TRUE(input.start(midi, listener).has_value());
+    TimestampedMidiMessage message;
+    message.data = {0x90, 60, 100};
+    message.size = 3;
+    input.receive(message);
+    input.simulate_device_lost();
+    input.receive(message);
+    EXPECT_EQ(midi.messages.size(), 1U);
+    EXPECT_EQ(listener.lost, 1);
+    EXPECT_EQ(input.start(midi, listener).error(), AudioDeviceError::kDeviceNotFound);
 }
 
 }  // namespace

@@ -7,6 +7,9 @@
 #include "host_context.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
 #include <tuple>
 #include <utility>
 
@@ -93,6 +96,13 @@ common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_
     return {};
 }
 
+void HostContext::apply_latency_target(double target_ms) {
+    session.latency_target_ms = target_ms;
+    settings.latency_target_ms = target_ms;
+    ports.playout.set_latency_target(
+        std::chrono::microseconds{static_cast<std::int64_t>(std::llround(target_ms * 1000.0))});
+}
+
 void HostContext::restore_routing() {
     auto restored = without_strip_references(settings.routing);
     if (restored == cp::RoutingConfig{}) {
@@ -168,6 +178,14 @@ void HostContext::remove_participant_strips(const std::string& participant_id) {
     for (const auto& id : ids) {
         remove_strip(id);
     }
+}
+
+void HostContext::sync_return(const Participant& p) {
+    if (!p.peer) {
+        return;
+    }
+    ports.peers.set_return_mute(*p.peer, p.strip.return_muted, p.return_epoch);
+    send(*p.peer, wire::ReturnMuteNotice{p.strip.return_muted, p.return_epoch});
 }
 
 void HostContext::send(PeerHandle peer, const wire::HostToClientMessage& message) {

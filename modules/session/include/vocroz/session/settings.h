@@ -5,6 +5,7 @@
 // 保存した値で音が出る状態に戻ることがないようにするため。
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -12,6 +13,10 @@
 #include "vocroz/control_protocol/entities.h"
 
 namespace vocroz::session {
+
+/// 全体の目標レイテンシーの既定値（ms）。合奏向けの低遅延プロファイルの上限
+/// （docs/adr/0002-opus-low-delay.md）。
+inline constexpr double kDefaultLatencyTargetMs = 20.0;
 
 /// 保存するバスかセンドのフェーダーの値。ミュートは保存しない（復元したバスとセンドはミュートで
 /// 始まる）。
@@ -39,6 +44,8 @@ struct HostSettings {
     control_protocol::RoutingConfig routing;
     /// routing のバスとセンドのフェーダーの値。
     std::vector<SavedRouteGain> route_gains;
+    /// 全体の目標レイテンシー（ms）。回線の状態に合わせてオペレーターが選んだ値を次の起動でも使う。
+    double latency_target_ms = kDefaultLatencyTargetMs;
 
     friend bool operator==(const HostSettings&, const HostSettings&) = default;
 };
@@ -51,6 +58,10 @@ struct ClientSettings {
     std::optional<std::string> selected_input_id;
     /// 送信レベル（-60〜+12 dB）。
     double send_level_db = 0.0;
+    /// マイク入力のチャンネル数（1 か 2）。
+    /// アプリ音声を送るかは保存しない。起動するたびに送らない状態から始め、出演者が選び直す
+    /// （PC の通知音などを意図せず送らないため）。
+    std::uint8_t input_channels = 1;
 
     friend bool operator==(const ClientSettings&, const ClientSettings&) = default;
 };

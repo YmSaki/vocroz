@@ -4,7 +4,8 @@
 // session の HostSession を、transport の部品（Noise_IK
 // の応答側、暗号化、信頼制御層、死活監視、再生）と
 // シミュレーションのネットワークにつなぐ。接続ごとに PeerHandle を振り、PeerLink ポートで
-// 承認（admit）されるまで、その接続のメディアをミキサーへ流さない。
+// 承認（admit）されるまで、その接続のメディアをミキサーへ流さない。承認後は、子機の入力の申告に
+// 従ってストリーム ID ごとに再生側を作り、それぞれのストリップへ流す。
 // UI、ランデブーサーバー、設定、乱数は session のフェイクを使い、テストから直接操作する。
 #pragma once
 
@@ -28,6 +29,7 @@
 
 #include "fakes/fake_logger.h"
 #include "fakes/fake_output_device_control.h"
+#include "fakes/fake_playout_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
@@ -41,6 +43,15 @@ struct HostPeerStats {
     std::uint64_t media_before_admission = 0;
     /// 承認後に再生側へ渡したメディアフレーム。
     std::uint64_t media_admitted = 0;
+    /// 承認後に届いたが、申告のないストリームなので捨てたメディアフレーム。
+    std::uint64_t media_unrouted = 0;
+};
+
+/// 1 本のストリップに流し込んだ、直前の render() のブロック（フェーダーとミュートを掛ける前）。
+/// モノラルのストリップは左右に同じ値を入れる。
+struct StripOutput {
+    std::vector<float> left;
+    std::vector<float> right;
 };
 
 /// 結合テストの親機。
@@ -91,6 +102,13 @@ public:
     /// @param out 書き込み先
     void render(std::span<float> out);
 
+    /// ストリップに流し込んだ直前の render() のブロック。流し込んでいないストリップなら nullptr。
+    /// @param strip_id ストリップの entity_id
+    [[nodiscard]] const StripOutput* strip_output(const std::string& strip_id) const {
+        const auto it = strip_outputs_.find(strip_id);
+        return it == strip_outputs_.end() ? nullptr : &it->second;
+    }
+
     /// 接続の数（閉じたものを除く）。
     [[nodiscard]] std::size_t peer_count() const noexcept;
 
@@ -98,12 +116,14 @@ public:
     [[nodiscard]] HostPeerStats total_stats() const noexcept;
 
 private:
+    struct Route;
     struct Peer;
 
     // session::PeerLink
     void send(session::PeerHandle peer, std::span<const std::uint8_t> message) override;
     void admit(session::PeerHandle peer, const std::vector<session::StreamRoute>& routes) override;
     void apply_send_mute(session::PeerHandle peer, bool send_muted, std::uint32_t epoch) override;
+    void set_return_mute(session::PeerHandle peer, bool muted, std::uint32_t epoch) override;
     void close(session::PeerHandle peer) override;
 
     void on_datagram(const netsim::NodeAddress& from, std::span<const std::uint8_t> datagram);
@@ -121,6 +141,9 @@ private:
     session::FakeUiEventSink ui_;
     HarnessMixer mixer_;
     session::FakeOutputDeviceControl outputs_;
+    // 再生ストリームは playout_
+    // の固定の設定で作るので、目標レイテンシーの変更は記録するだけにする。
+    session::FakePlayoutControl playout_control_;
     session::FakeRendezvousClient rendezvous_;
     session::FakeSettingsStore settings_;
     session::FakeSecureRandom random_;
@@ -132,6 +155,7 @@ private:
     std::vector<std::function<void()>> deferred_;
     common::Clock::TimePoint next_tick_{};
     std::vector<float> scratch_;
+    std::map<std::string, StripOutput> strip_outputs_;
     HostPeerStats closed_stats_;
 };
 

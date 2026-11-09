@@ -6,7 +6,10 @@
 
 #include "wire/command_codec.h"
 
+#include <cstdint>
 #include <type_traits>
+
+#include "vocroz/control_protocol/constants.h"
 
 #include "wire/entity_codec.h"
 #include "wire/field_rules.h"
@@ -52,6 +55,25 @@ void read_fields(ObjectReader& r, SelectOutput& command) {
     command.device_id = r.nullable_text("device_id", kDeviceIdRule);
 }
 
+void write_fields(nlohmann::json& out, const SetInputChannels& command) {
+    out["channels"] = command.channels;
+}
+void read_fields(ObjectReader& r, SetInputChannels& command) {
+    const std::uint64_t channels = r.counter("channels");
+    if (channels < 1 || channels > kMaxInputChannels) {
+        r.fail(DecodeErrorCode::kOutOfRange, "channels");
+        return;
+    }
+    command.channels = static_cast<std::uint8_t>(channels);
+}
+
+void write_fields(nlohmann::json& out, const SetAppAudio& command) {
+    out["enabled"] = command.enabled;
+}
+void read_fields(ObjectReader& r, SetAppAudio& command) {
+    command.enabled = r.boolean("enabled");
+}
+
 void write_fields(nlohmann::json& out, const SetSendMute& command) {
     out["muted"] = command.muted;
 }
@@ -78,6 +100,20 @@ void write_fields(nlohmann::json& out, const SetRouteMute& command) {
 }
 void read_fields(ObjectReader& r, SetRouteMute& command) {
     command.muted = r.boolean("muted");
+}
+
+void write_fields(nlohmann::json& out, const SetReturnMute& command) {
+    out["muted"] = command.muted;
+}
+void read_fields(ObjectReader& r, SetReturnMute& command) {
+    command.muted = r.boolean("muted");
+}
+
+void write_fields(nlohmann::json& out, const SetLatencyTarget& command) {
+    out["target_ms"] = command.target_ms;
+}
+void read_fields(ObjectReader& r, SetLatencyTarget& command) {
+    command.target_ms = r.number("target_ms", kMinLatencyTargetMs, kMaxLatencyTargetMs);
 }
 
 void write_fields(nlohmann::json& out, const SetGain& command) {

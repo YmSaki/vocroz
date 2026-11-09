@@ -12,6 +12,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "vocroz/control_protocol/constants.h"
+
 #include "persistence_constants.h"
 
 namespace vocroz::persistence {
@@ -293,6 +295,7 @@ std::string encode_host_settings(const session::HostSettings& settings) {
         gains.push_back({{"entity_id", gain.entity_id}, {"gain_db", gain_to_json(gain.gain_db)}});
     }
     root["route_gains"] = std::move(gains);
+    root["latency_target_ms"] = settings.latency_target_ms;
     return dump(root);
 }
 
@@ -326,6 +329,15 @@ std::optional<session::HostSettings> decode_host_settings(std::string_view text)
         settings.routing = std::move(*config);
         settings.route_gains = std::move(*gains);
     }
+    // 目標レイテンシーを保存する前のバージョンのファイルにはこの値がないので、既定値のまま読む。
+    // 範囲の外の値はここでは拒まず、起動時にセッションが既定値に戻す。
+    if (root->contains("latency_target_ms")) {
+        const auto latency = read_number(*root, "latency_target_ms");
+        if (!latency) {
+            return std::nullopt;
+        }
+        settings.latency_target_ms = *latency;
+    }
     return settings;
 }
 
@@ -335,6 +347,7 @@ std::string encode_client_settings(const session::ClientSettings& settings) {
     root["display_name"] = settings.display_name;
     root["selected_input_id"] = optional_to_json(settings.selected_input_id);
     root["send_level_db"] = settings.send_level_db;
+    root["input_channels"] = settings.input_channels;
     return dump(root);
 }
 
@@ -353,6 +366,12 @@ std::optional<session::ClientSettings> decode_client_settings(std::string_view t
     settings.display_name = std::move(*display_name);
     settings.selected_input_id = std::move(*selected_input_id);
     settings.send_level_db = *send_level_db;
+    // 子機の入力拡張の前のバージョンのファイルには input_channels がない。読めない値も含め、
+    // これまでと同じモノラルとして読み、ほかの設定は引き継ぐ。
+    if (const auto channels = read_unsigned(*root, "input_channels");
+        channels && *channels >= 1 && *channels <= control_protocol::kMaxInputChannels) {
+        settings.input_channels = static_cast<std::uint8_t>(*channels);
+    }
     return settings;
 }
 

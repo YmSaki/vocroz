@@ -27,6 +27,12 @@ inline constexpr double kMaxGainDb = 12.0;
 /// 秒）に合わせる。 entity ごとの範囲は session が判断する。
 inline constexpr double kMaxRoutingDelayMs = 2000.0;
 
+/// 全体の目標レイテンシー（ジッターバッファの深さの上限、ms）の範囲。
+/// 下限は低遅延プロファイルの既定の下限（10ms、docs/adr/0002-opus-low-delay.md）、
+/// 上限はジッターバッファが受け付ける最大値（250ms）に合わせる。
+inline constexpr double kMinLatencyTargetMs = 10.0;
+inline constexpr double kMaxLatencyTargetMs = 250.0;
+
 /// 1 台の子機が送れる入力（ストリーム）の数の上限。親機では 1 本ずつ別のストリップになる。
 /// マイク 2 本とアプリ音声のような使い方に足り、子機の CPU（ストリームごとの Opus のエンコード）と
 /// 回線（1 本あたり

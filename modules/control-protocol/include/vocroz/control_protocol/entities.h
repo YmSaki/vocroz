@@ -57,6 +57,9 @@ struct SessionInfo {
     std::vector<OutputDevice> output_devices;
     /// 利用可能な更新のバージョン。なければ std::nullopt。
     std::optional<std::string> update_available;
+    /// 全体の目標レイテンシー（ms）。受信するすべてのストリームのジッターバッファの深さの上限で、
+    /// オペレーターが回線の状態に応じて選ぶ。
+    double latency_target_ms = 20.0;
 
     friend bool operator==(const SessionInfo&, const SessionInfo&) = default;
 };
@@ -87,6 +90,10 @@ struct ChannelStrip {
     std::uint8_t channel_count = 1;
     /// 同じ子機の同じ種類の入力の中での番号（1 から）。「マイク 2」のような表示に使う。
     std::uint8_t source_number = 1;
+    /// 親機から子機への返送モニター（Minus-Me）のミュート。ミュート中は返送の送信を止める。
+    /// 設定と解除は親機だけができる。返送は初期値で OFF なので既定値は true
+    /// （docs/adr/0036-return-monitor.md）。
+    bool return_muted = true;
 
     friend bool operator==(const ChannelStrip&, const ChannelStrip&) = default;
 };
@@ -266,6 +273,12 @@ struct ClientSnapshot {
     bool send_muted = true;
     /// 送信レベル（-60〜+12 dB）。
     double send_level_db = 0.0;
+    /// 親機が返送モニターをミュート（OFF）にしている。子機からは解除できない。
+    bool return_muted = true;
+    /// マイク入力のチャンネル数（1 か 2）。ステレオはオーディオインターフェースのライン入力など。
+    std::uint8_t input_channels = 1;
+    /// アプリ音声（PC で再生している音）も送る。出演者が選んだときだけ送るので、既定値は false。
+    bool app_audio = false;
 
     friend bool operator==(const ClientSnapshot&, const ClientSnapshot&) = default;
 };

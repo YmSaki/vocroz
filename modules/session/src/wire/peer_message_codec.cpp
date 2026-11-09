@@ -38,6 +38,7 @@ enum class Type : std::uint8_t {
     kJoinApproved = 0x82,
     kJoinDenied = 0x83,
     kSessionEnded = 0x84,
+    kReturnMuteNotice = 0x85,
 };
 
 // JoinDenied の理由の値。ErrorCode の宣言順に依存させず、ワイヤー上の値を固定する。
@@ -213,6 +214,7 @@ DenyReason to_wire(ErrorCode reason) noexcept {
         case ErrorCode::kNotFound:
         case ErrorCode::kInvalidState:
         case ErrorCode::kEngineError:
+        case ErrorCode::kDeviceUnavailable:
             return DenyReason::kRejected;
     }
     return DenyReason::kRejected;
@@ -354,9 +356,14 @@ std::vector<std::uint8_t> encode(const HostToClientMessage& message) {
                 Writer w{Type::kJoinDenied};
                 w.u8(static_cast<std::uint8_t>(to_wire(m.reason)));
                 return std::move(w).finish();
-            } else {
-                static_assert(std::is_same_v<M, SessionEndedNotice>);
+            } else if constexpr (std::is_same_v<M, SessionEndedNotice>) {
                 return Writer{Type::kSessionEnded}.finish();
+            } else {
+                static_assert(std::is_same_v<M, ReturnMuteNotice>);
+                Writer w{Type::kReturnMuteNotice};
+                w.boolean(m.muted);
+                w.u32(m.epoch);
+                return std::move(w).finish();
             }
         },
         message);
@@ -399,6 +406,7 @@ common::Result<ClientToHostMessage, PeerMessageError> decode_client_to_host(
         case Type::kJoinApproved:
         case Type::kJoinDenied:
         case Type::kSessionEnded:
+        case Type::kReturnMuteNotice:
             break;
     }
     return common::make_unexpected(PeerMessageError::kUnknownType);
@@ -425,6 +433,12 @@ common::Result<HostToClientMessage, PeerMessageError> decode_host_to_client(
         }
         case Type::kSessionEnded:
             return finish<HostToClientMessage>(r, SessionEndedNotice{});
+        case Type::kReturnMuteNotice: {
+            ReturnMuteNotice m;
+            m.muted = r.boolean();
+            m.epoch = r.u32();
+            return finish<HostToClientMessage>(r, m);
+        }
         case Type::kJoinRequest:
         case Type::kReconnectRequest:
         case Type::kSendMuteReport:

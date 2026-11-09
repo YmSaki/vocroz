@@ -7,6 +7,9 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
+
+#include "vocroz/session/input_stream.h"
 
 namespace vocroz::session {
 
@@ -30,6 +33,14 @@ public:
     /// 送信レベルを反映する。5〜20 ms のゲインランプで適用する。
     /// @param level_db 送信レベル（-60〜+12 dB）
     virtual void set_send_level(double level_db) = 0;
+
+    /// 送る入力（ストリーム）の構成を反映する。マイク（kMicrophone）は select_input() で選んだ
+    /// デバイスを、アプリ音声（kApplicationAudio）は既定の再生デバイスのループバックを、
+    /// それぞれのストリーム ID とチャンネル数でエンコードして送る。一覧にない入力は止める。
+    /// 送信ミュートと送信レベルはすべての入力に共通に掛ける。
+    /// @param streams 送る入力。session が親機へ申告するものと同じ一覧
+    ///                （docs/adr/0035-client-input-expansion.md）
+    virtual void set_streams(const std::vector<InputStream>& streams) = 0;
 };
 
 }  // namespace vocroz::session

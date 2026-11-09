@@ -28,11 +28,23 @@ public:
         sent_.emplace_back(message.begin(), message.end());
     }
 
+    void apply_return_mute(bool muted, std::uint32_t epoch) override {
+        return_mute_ = ReturnMute{muted, epoch};
+    }
     void close() override {
         open_ = false;
         ++close_count_;
     }
 
+    /// apply_return_mute() で渡された値。
+    struct ReturnMute {
+        bool muted = true;
+        std::uint32_t epoch = 0;
+    };
+    /// 最後に apply_return_mute() で渡された値。
+    [[nodiscard]] const std::optional<ReturnMute>& return_mute() const noexcept {
+        return return_mute_;
+    }
     /// 最後に connect() した接続先。
     [[nodiscard]] const std::optional<HostEndpoint>& connected_to() const noexcept {
         return connected_to_;
@@ -66,6 +78,7 @@ private:
     int reconnect_count_ = 0;
     int close_count_ = 0;
     std::vector<std::vector<std::uint8_t>> sent_;
+    std::optional<ReturnMute> return_mute_;
 };
 
 }  // namespace vocroz::session

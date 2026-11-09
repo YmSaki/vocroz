@@ -91,6 +91,11 @@ void HostConnection::send(std::span<const std::uint8_t> message) {
     }
 }
 
+void HostConnection::apply_return_mute(bool /*muted*/, std::uint32_t /*epoch*/) {
+    // 子機はまだ返送（下りの音声）を受信しない。受信と再生を組み立てる続きの PR で、
+    // 返送の受信側（世代番号による判定）へ渡す（docs/adr/0036-return-monitor.md）。
+}
+
 void HostConnection::close() {
     target_.reset();
     phase_ = Phase::kIdle;

@@ -8,6 +8,8 @@
 // - 変更のたびに mixer_graph_builder でグラフを組み立て、Mixer::apply_graph() で差し替える
 // - フェーダーの操作がキューの満杯で失敗したときの再送（順序を保つ）
 // - 子機の受信ストリーム（AudioSource）のストリップへの接続（子機の受信の組み立てが使う）
+// -
+// 子機への返送（Minus-Me）の渡し先（AudioSink）のストリップへの接続（子機への送信の組み立てが使う）
 // - UI に送るメーターの値の読み取り
 // オーディオスレッドへの受け渡しは Mixer が SPSC キューとグラフのスワップで行う。
 #pragma once
@@ -21,6 +23,7 @@
 #include <vector>
 
 #include "vocroz/audio_core/mixer.h"
+#include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
 #include "vocroz/common/ports/logger.h"
 #include "vocroz/control_protocol/events.h"
@@ -62,6 +65,20 @@ public:
     /// ストリームの最後の参照は、古いグラフの破棄（collect()）でオーディオスレッド外で外れる。
     /// @param strip_id ストリップの entity_id
     void detach_source(const std::string& strip_id);
+    /// 子機への返送（Minus-Me）の渡し先をつなぐ。返送には、その子機のすべてのストリップの声を
+    /// 含まない Master へのミックスが流れる（docs/adr/0036-return-monitor.md）。送信を止めるか
+    /// どうかは渡し先（MediaStreamEncoder）が返送のミュートで決める。同じキーの返送があれば
+    /// 置き換える（子機の入力が増減したときに、自分のストリップの一覧を付け替える）。
+    /// @param key           返送を区別するキー（その子機との接続）
+    /// @param own_strip_ids その子機のストリップの entity_id（1 本以上）
+    /// @param sink          返送の渡し先（null にしない）
+    /// @return 引数が正しく、グラフを差し替えられたら true。失敗したら前の状態のまま
+    [[nodiscard]] bool attach_return(std::uint64_t key, std::vector<std::string> own_strip_ids,
+                                     std::shared_ptr<audio_core::AudioSink> sink);
+    /// 返送の渡し先を外す。渡し先の最後の参照は、古いグラフの破棄（collect()）で
+    /// オーディオスレッド外で外れる。
+    /// @param key attach_return() に渡したキー
+    void detach_return(std::uint64_t key);
 
     /// 周期処理。キューの満杯で失敗したフェーダーの操作を送り直し、古いグラフを破棄する。
     void collect();
