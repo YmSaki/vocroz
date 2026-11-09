@@ -14,6 +14,7 @@
 
 #include "vocroz/common/ports/clock.h"
 #include "vocroz/common/result.h"
+#include "vocroz/transport/media_payload.h"
 #include "vocroz/transport/playout_stream.h"
 #include "vocroz/transport/secure_channel.h"
 #include "vocroz/transport/signal_monitor.h"
@@ -48,6 +49,17 @@ public:
     /// @param mute_epoch 解除した世代番号
     /// @param now        今の時刻
     void unmute(std::uint32_t mute_epoch, common::Clock::TimePoint now);
+
+    /// 送信ミュートの通知を受け取る（親機の PeerLink::apply_send_mute() から）。
+    /// @param send_muted 送信ミュート中なら true
+    /// @param mute_epoch 通知の世代番号
+    /// @param now        今の時刻
+    void on_send_mute(bool send_muted, std::uint32_t mute_epoch, common::Clock::TimePoint now);
+
+    /// 復号済みのメディアの中身を処理する（復号と振り分けを呼び出し側が済ませた場合）。
+    /// @param media 復号したメディアの中身
+    /// @param now   今の時刻
+    void on_media(const transport::MediaPayload& media, common::Clock::TimePoint now);
 
     /// 受信したデータグラムを処理する。
     /// @param datagram 受信したデータグラム
