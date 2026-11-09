@@ -44,9 +44,12 @@ struct MeterId {
 
 /// ノードの種類。チャンネル数は種類で決まる。
 enum class NodeKind {
-    kSource,  ///< AudioSource からモノラルのサンプルを取り出す。入力を持たない
-    kStrip,  ///< モノラルのチャンネルストリップ。手動ディレイ → プリフェーダーのメーター →
-             ///< フェーダー
+    /// AudioSource からサンプルを取り出す。入力を持たない。チャンネル数は
+    /// AudioSource::channel_count()（1 か 2）
+    kSource,
+    /// チャンネルストリップ。手動ディレイ → プリフェーダーのメーター → フェーダー。
+    /// チャンネル数は NodeSpec::channels（1 か 2）
+    kStrip,
     kBus,  ///< ステレオのバス。入力の加算 → フェーダー → ポストフェーダーのメーター
     kDelay,  ///< ステレオの遅延ノード。フィードバック経路（ループ）を通してよい唯一のノード
     kLimiter,  ///< ステレオの安全リミッター
@@ -72,6 +75,9 @@ struct NodeSpec {
     /// kStrip: 手動同期オフセット（0〜kMaxInputDelaySamples）。
     /// kDelay: 遅延（kMinFeedbackDelaySamples〜kMaxFeedbackDelaySamples）。それ以外は使わない。
     std::size_t delay_samples = 0;
+    /// kStrip: チャンネル数（1 か 2。範囲外は近い方に丸める）。ステレオのソースはステレオの
+    /// ストリップにつなぐ。それ以外は使わない。
+    std::size_t channels = 1;
     /// kOutput: 書き込む出力デバイスのチャンネルの組の先頭（0 始まり）。L をこのチャンネル、
     /// R を次のチャンネルに書く。kMaxOutputChannels - 1 未満。それ以外は使わない。
     std::size_t device_channel = 0;
@@ -97,8 +103,10 @@ struct NodeSpec {
     /// @param fader フェーダー
     /// @param meter プリフェーダーのメーター（付けないなら std::nullopt）
     /// @param delay_samples 手動同期オフセット（サンプル）。0 なら遅らせない
+    /// @param channels チャンネル数（1 か 2。範囲外は近い方に丸める）
     [[nodiscard]] static NodeSpec make_strip(NodeId id, FaderId fader, std::optional<MeterId> meter,
-                                             std::size_t delay_samples = 0);
+                                             std::size_t delay_samples = 0,
+                                             std::size_t channels = 1);
 
     /// バスを作る。
     /// @param id ノードの識別子
@@ -212,7 +220,7 @@ enum class GraphError {
     kDuplicateNodeId,    ///< 同じ NodeId のノードが複数ある
     kUnknownNode,        ///< 結線が存在しないノードを指している
     kInvalidConnection,  ///< ソースノードへの入力か、出力ノードからの出力か、同じ結線の重複がある
-    kChannelMismatch,  ///< ステレオの出力をモノラルの入力（ストリップ）へつないでいる
+    kChannelMismatch,  ///< ステレオの出力をモノラルの入力（モノラルのストリップなど）へつないでいる
     kCycle,  ///< 遅延ノードを通らないループ（発振経路）がある。承認があっても適用できない
     kUnapprovedFeedback,  ///< 遅延ノードを通るループがあるが、オペレーターが承認していない
     kMissingSource,    ///< ソースノードに AudioSource がない

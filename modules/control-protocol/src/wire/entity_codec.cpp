@@ -16,6 +16,16 @@ namespace {
 // 無名名前空間の write_json() が公開の write_json() を隠さないようにする。
 using wire::write_json;
 
+// 1 以上 max 以下の小さな整数（チャンネル数、入力の番号）を読む。
+std::uint8_t small_count(ObjectReader& r, std::string_view key, std::size_t max) {
+    const std::uint64_t value = r.counter(key);
+    if (value < 1 || value > max) {
+        r.fail(DecodeErrorCode::kOutOfRange, key);
+        return 1;
+    }
+    return static_cast<std::uint8_t>(value);
+}
+
 // ルーティングの構成の要素は構成の中でだけ使うので、公開せずにここで変換する。
 
 nlohmann::json write_json(const RoutingBus& bus) {
@@ -231,6 +241,9 @@ nlohmann::json write_json(const ChannelStrip& channel) {
         {"channel_muted", channel.channel_muted},
         {"gain_db", nullable(channel.gain_db)},
         {"error_code", enum_json(channel.error_code)},
+        {"source_kind", enum_json(channel.source_kind)},
+        {"channel_count", channel.channel_count},
+        {"source_number", channel.source_number},
     };
 }
 
@@ -252,6 +265,9 @@ common::Result<ChannelStrip, DecodeError> read_channel_strip(const nlohmann::jso
         channel.channel_muted = r.boolean("channel_muted");
         channel.gain_db = r.gain("gain_db");
         channel.error_code = r.nullable_enumeration<ErrorCode>("error_code");
+        channel.source_kind = r.enumeration<InputSourceKind>("source_kind");
+        channel.channel_count = small_count(r, "channel_count", kMaxInputChannels);
+        channel.source_number = small_count(r, "source_number", kMaxInputStreams);
         return channel;
     });
 }

@@ -67,6 +67,9 @@ export type BusKind = "USER" | "CUE";
 /** センドを取り出す位置。PRE_FADER は送り元のフェーダーとミュートの前で、センドのミュートでだけ止まる。 */
 export type SendTap = "POST_FADER" | "PRE_FADER";
 
+/** 子機の入力の種類。MICROPHONE は入力デバイス、APP_AUDIO は PC 内のアプリ音声。 */
+export type InputSourceKind = "MICROPHONE" | "APP_AUDIO";
+
 /** ステージングしたルーティングを適用できない理由。 */
 export type RoutingIssue =
   | "INVALID_ID"
@@ -130,6 +133,12 @@ export interface ChannelStrip {
   gain_db: GainDb;
   /** FAILED のときの原因コード。 */
   error_code: ErrorCode | null;
+  /** 子機の入力の種類。1 台の子機の入力ごとに 1 本のストリップになる。 */
+  source_kind: InputSourceKind;
+  /** 入力のチャンネル数（1 か 2）。 */
+  channel_count: number;
+  /** 同じ子機の同じ種類の入力の中での番号（1 から）。 */
+  source_number: number;
 }
 
 /** Master ストリップの状態。 */

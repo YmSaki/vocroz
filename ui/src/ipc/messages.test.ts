@@ -23,6 +23,7 @@ import type {
   MasterMuteReason,
   MasterStrip,
   BusKind,
+  InputSourceKind,
   MixerSnapshot,
   OutputDeviceState,
   PendingParticipant,
@@ -142,6 +143,9 @@ const kChannelKeys = keysOf<ChannelStrip>({
   channel_muted: true,
   gain_db: true,
   error_code: true,
+  source_kind: true,
+  channel_count: true,
+  source_number: true,
 });
 const kMasterKeys = keysOf<MasterStrip>({
   entity_id: true,
@@ -264,6 +268,7 @@ const kErrorCodes: Record<ErrorCode, true> = {
 };
 
 const kBusKinds: Record<BusKind, true> = { USER: true, CUE: true };
+const kInputSourceKinds: Record<InputSourceKind, true> = { MICROPHONE: true, APP_AUDIO: true };
 const kSendTaps: Record<SendTap, true> = { POST_FADER: true, PRE_FADER: true };
 const kRoutingIssues: Record<RoutingIssue, true> = {
   INVALID_ID: true,
@@ -312,6 +317,7 @@ function checkChannel(channel: ChannelStrip, seen: Seen): void {
   seen.add(kConnectionStates, channel.connection_state);
   seen.add(kSignalStates, channel.signal_state);
   seen.add(kErrorCodes, channel.error_code);
+  seen.add(kInputSourceKinds, channel.source_kind);
 }
 
 function checkMaster(master: MasterStrip, seen: Seen): void {
@@ -443,6 +449,7 @@ describe("messages", () => {
       kBusKinds,
       kSendTaps,
       kRoutingIssues,
+      kInputSourceKinds,
     ]) {
       expect(seen.coversAll(table)).toBe(true);
     }
