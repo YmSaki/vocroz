@@ -28,4 +28,12 @@ inline constexpr std::size_t kMaxReportedChannels = 128;
 /// それを超えて書き続ける不良ヘルパーを止める。
 inline constexpr std::size_t kMaxHelperOutputBytes = 64U * 1024U * 1024U;
 
+/// プラグインの 1 回の処理に渡す MIDI イベントの上限。この数までは、オーディオスレッドで
+/// 確保せずに JUCE の MidiBuffer に積めるよう、構築時に容量を確保する。
+/// Panic は 1 経路あたり、全チャンネルの全ノートの Note Off とチャンネルごとのサステインのオフで
+/// 16 × 128 + 16 = 2,064 件になる。経路の付け替えと Panic が同じブロックで重なっても、
+/// 数系統ぶんと通常のイベントが収まる大きさにする（1 件 9 バイトで約 74 KB）。
+/// 超えたブロックは、止める側のイベントを優先して上限までに絞る。
+inline constexpr std::size_t kMaxMidiEventsPerProcess = 8192;
+
 }  // namespace vocroz::plugin_host

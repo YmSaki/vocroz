@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <span>
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
@@ -40,10 +41,17 @@ public:
     }
 
 private:
+    // processBlock() に渡す MIDI を詰める。kMaxMidiEventsPerProcess を超えたら、止める側の
+    // イベントを優先して上限までに絞る。
+    void fill_midi(std::span<const audio_core::MidiEvent> events) noexcept VOCROZ_NONBLOCKING;
+    void add_midi(const audio_core::MidiEvent& event) noexcept VOCROZ_NONBLOCKING;
+
     std::unique_ptr<juce::AudioPluginInstance> instance_;
     audio_core::PluginBusLayout layout_;
     // processBlock() に渡す MIDI。構築時に容量を確保し、オーディオスレッドでは確保しない。
     juce::MidiBuffer midi_;
+    // midi_ に最後に書き足したイベントのサンプル位置。末尾への書き足しで順序を保つために見る。
+    juce::int32 last_midi_offset_ = 0;
     // プラグインが例外を送出したら立て、以降は呼ばない。オーディオスレッドだけが読み書きする。
     bool failed_ = false;
 };
