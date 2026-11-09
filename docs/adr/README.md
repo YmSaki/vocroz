@@ -20,6 +20,7 @@
 | [0018](0018-routing-graph.md) | ルーティンググラフのセンド、遅延ノード、複数の物理出力 | 採用 |
 | [0019](0019-reliable-control-layer.md) | 信頼制御層（制御メッセージの再送、キープアライブ、死活監視、再接続のバックオフ） | 採用 |
 | [0020](0020-ipc-pipe-and-webui-bridge.md) | 名前付きパイプのフレーミングとアクセス制御、WebView のブリッジ、WebView2 SDK の取得 | 採用 |
+| [0021](0021-udp-socket-and-nat-traversal.md) | UDP ソケット、NAT 越えの手順、自動ポート開放 | 採用 |
 | [0022](0022-session-domain.md) | セッション管理の分担、子機と親機の制御メッセージ、再接続トークンと招待の扱い | 採用 |
 | [0023](0023-wasapi-device-io.md) | オーディオデバイスの入出力は WASAPI を直接呼び、抜去は通知だけにする | 採用 |
 | [0024](0024-plugin-node-and-pdc.md) | プラグインノードの形と、プラグイン遅延補正（PDC）の規則 | 採用 |

@@ -7,7 +7,7 @@
 | ディレクトリ | 中身 |
 | --- | --- |
 | `netsim/` | 障害の設定（`FaultProfile`）と判定（`FaultInjector`）、プロセス内のネットワーク（`SimulatedNetwork`） |
-| `harness/` | transport の部品を製品と同じ順序で組み立てた送信側と受信側、仮想時刻の駆動、遅延計測 |
+| `harness/` | transport の部品を製品と同じ順序で組み立てた送信側と受信側、session をつないだ親機と子機（`SimulatedHost`、`SimulatedClient`）、仮想時刻の駆動、遅延計測 |
 | `integration/` | 結合テスト（GoogleTest。`ctest` で動く） |
 | `tools/` | `vocroz-latency`（遅延の見積もり）と `vocroz-udp-fault-proxy`（実ソケットの障害注入、Linux だけ） |
 | `nat/` | ネットワーク名前空間で NAT を模し、ホールパンチの成否を確かめるスクリプト |
@@ -17,7 +17,7 @@
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-ctest --test-dir build --output-on-failure -R 'MediaFaults|ControlFaults|Latency|SimulatedNetwork|FaultInjector|FaultProfile|UdpFaultProxy'
+ctest --test-dir build --output-on-failure -R 'Ensemble|MediaFaults|ControlFaults|Latency|SimulatedNetwork|FaultInjector|FaultProfile|UdpFaultProxy'
 ```
 
 結合テストは仮想時刻で動きます。実時間を待たず、OS もデバイスも要らないので、数秒分の通信も 1 秒以内に終わり、何度動かしても同じ結果になります。
@@ -30,8 +30,13 @@ ctest --test-dir build --output-on-failure -R 'MediaFaults|ControlFaults|Latency
 | `MediaFaultsTest.DropsTamperedPacketsAtDecryption` | 改ざんしたパケットをすべて復号の段階で捨て、音に影響しない | AT-A17 |
 | `ControlFaultsTest.DeliversEveryMessageOnceInOrderOverLossyLink` | 欠損 20% の回線でも、制御メッセージがすべて 1 回ずつ送った順に届く | AT-A02、A05 の前提 |
 | `LatencyTest.*` | 端から端までの遅延が、構成から計算した内訳の範囲に収まる | 合奏の低遅延 |
+| `EnsembleTest.BlocksAudioUntilApproved` | 承認前の子機の音は、子機が送信ミュートを無視して送ってきても出力に出ない。承認した子機の音だけがミックスに入る | AT-A02 |
+| `EnsembleTest.MixesThreeClientsAndAppliesChannelAndMasterMute` | 3 台の音（440、660、880Hz）がそれぞれのストリップを通って独立にミックスされ、チャンネルのミュートはその 1 台だけを、Master のミュートは全体を無音にする | AT-A03 |
+| `EnsembleTest.KeepsOthersPlayingThroughDisconnectAndRejoinsSameStrip` | 1 台の回線が 7 秒途絶えても残りの 2 台の音は途切れず、戻った子機は承認なしで同じストリップに戻る | AT-A05 |
 
-「エンジン + 子機 3 台」の結合テスト（承認前に音が届かない、3 台のミックス、1 台の切断で残りが途切れない、同じストリップへの復帰）は、session（S1）のマージ後に足します。
+`EnsembleTest` は、session の `HostSession` と `ClientSession` を、transport の部品（Noise_IK、暗号化、信頼制御層、死活監視、Opus、ジッターバッファ）とシミュレーションのネットワークでつなぎ、招待から参加、承認、ミュートの解除、切断と復帰までを UI のコマンドだけで進めます。
+ランデブーサーバーは、招待の登録と解決にその場で答える代わりの実装でつなぎます（実際のサーバーとの通しは `tests/nat`）。
+ミキサーとデバイスは試験用の簡単な実装（`HarnessMixer`）で、pa-engine のミキサーとリミッターは通しません。pa-engine と client-desktop のコンポジションルートができたら、`SimulatedHost` と `SimulatedClient` をそちらの組み立てに置き換えます。
 
 ## 障害の設定の書き方
 

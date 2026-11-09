@@ -42,6 +42,9 @@ include(cmake/nlohmann_json.cmake)
 if(VOCROZ_WITH_JUCE)
   include(cmake/juce.cmake)
 endif()
+if(WIN32)
+  include(cmake/miniupnpc.cmake)
+endif()
 
 # すべての実行ファイルが共有するバージョン情報（ビルド時に生成）。
 configure_file(cmake/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/vocroz/version.h @ONLY)
