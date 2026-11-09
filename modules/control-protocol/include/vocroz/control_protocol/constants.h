@@ -27,6 +27,12 @@ inline constexpr double kMaxGainDb = 12.0;
 /// 秒）に合わせる。 entity ごとの範囲は session が判断する。
 inline constexpr double kMaxRoutingDelayMs = 2000.0;
 
+/// 全体の目標レイテンシー（ジッターバッファの深さの上限、ms）の範囲。
+/// 下限は低遅延プロファイルの既定の下限（10ms、docs/adr/0002-opus-low-delay.md）、
+/// 上限はジッターバッファが受け付ける最大値（250ms）に合わせる。
+inline constexpr double kMinLatencyTargetMs = 10.0;
+inline constexpr double kMaxLatencyTargetMs = 250.0;
+
 /// revision とシーケンス番号の最大値。UI（JavaScript）の数値で正確に表せる最大の整数（2^53 - 1）。
 inline constexpr std::uint64_t kMaxCounter = (std::uint64_t{1} << 53) - 1;
 

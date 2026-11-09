@@ -116,6 +116,9 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
                 return id == kRoutingEntityId ? discard_routing() : invalid_state();
             } else if constexpr (std::is_same_v<B, cp::SetRouteMute>) {
                 return set_route_mute(id, body.muted);
+            } else if constexpr (std::is_same_v<B, cp::SetLatencyTarget>) {
+                return id == kSessionEntityId ? set_latency_target(body.target_ms)
+                                              : invalid_state();
             } else {
                 static_assert(std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
                               std::is_same_v<B, cp::SelectInput> ||
@@ -298,6 +301,19 @@ HostCommandHandler::CommandResult HostCommandHandler::set_route_mute(const std::
         ctx_.publish_route_level(*level);
     }
     return level->revision;
+}
+
+// --- 目標レイテンシー ---
+
+HostCommandHandler::CommandResult HostCommandHandler::set_latency_target(double target_ms) {
+    // 範囲は control-protocol の信頼境界で検証済み。同じ値なら何も変えない。
+    if (target_ms != ctx_.session.latency_target_ms) {
+        ctx_.apply_latency_target(target_ms);
+        detail::bump_revision(ctx_.session.revision);
+        ctx_.publish_session();
+        ctx_.save_settings();
+    }
+    return ctx_.session.revision;
 }
 
 // --- 連続値のコマンド ---

@@ -27,6 +27,7 @@
 #include "vocroz/transport/static_key_pair.h"
 
 #include "fakes/fake_logger.h"
+#include "fakes/fake_playout_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
@@ -119,6 +120,9 @@ private:
     transport::StaticKeyPair keys_;
     session::FakeUiEventSink ui_;
     HarnessMixer mixer_;
+    // 再生ストリームは playout_
+    // の固定の設定で作るので、目標レイテンシーの変更は記録するだけにする。
+    session::FakePlayoutControl playout_control_;
     session::FakeRendezvousClient rendezvous_;
     session::FakeSettingsStore settings_;
     session::FakeSecureRandom random_;

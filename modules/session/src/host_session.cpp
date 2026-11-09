@@ -8,8 +8,10 @@
 
 #include "vocroz/session/host_session.h"
 
+#include <cmath>
 #include <utility>
 
+#include "vocroz/control_protocol/constants.h"
 #include "vocroz/session/invite_code.h"
 
 #include "detail/text_utils.h"
@@ -53,6 +55,12 @@ public:
         // 保存した値がどうであれ、Master はミュートで始める（設定の破損時も同じ）。
         ctx.ports.mixer.set_master_muted(true);
         ctx.ports.mixer.set_master_gain(ctx.master.gain_db);
+        // 壊れた値や範囲外の値（制限を変えた古い設定など）は、既定の低遅延プロファイルに戻す。
+        const double latency = ctx.settings.latency_target_ms;
+        ctx.apply_latency_target(std::isfinite(latency) && latency >= cp::kMinLatencyTargetMs &&
+                                         latency <= cp::kMaxLatencyTargetMs
+                                     ? latency
+                                     : kDefaultLatencyTargetMs);
         ctx.restore_routing();
     }
 

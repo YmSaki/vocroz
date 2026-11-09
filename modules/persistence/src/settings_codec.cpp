@@ -293,6 +293,7 @@ std::string encode_host_settings(const session::HostSettings& settings) {
         gains.push_back({{"entity_id", gain.entity_id}, {"gain_db", gain_to_json(gain.gain_db)}});
     }
     root["route_gains"] = std::move(gains);
+    root["latency_target_ms"] = settings.latency_target_ms;
     return dump(root);
 }
 
@@ -325,6 +326,15 @@ std::optional<session::HostSettings> decode_host_settings(std::string_view text)
         }
         settings.routing = std::move(*config);
         settings.route_gains = std::move(*gains);
+    }
+    // 目標レイテンシーを保存する前のバージョンのファイルにはこの値がないので、既定値のまま読む。
+    // 範囲の外の値はここでは拒まず、起動時にセッションが既定値に戻す。
+    if (root->contains("latency_target_ms")) {
+        const auto latency = read_number(*root, "latency_target_ms");
+        if (!latency) {
+            return std::nullopt;
+        }
+        settings.latency_target_ms = *latency;
     }
     return settings;
 }

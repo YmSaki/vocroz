@@ -11,7 +11,8 @@
         "invite_url": "https://vocroz.example/join#ABCD-EFGH",
         "output_device_state": "OPEN",
         "output_device_name": "スピーカー (USB Audio)",
-        "update_available": null
+        "update_available": null,
+        "latency_target_ms": 20
       },
       "channels": [
         {
@@ -263,7 +264,8 @@
         "invite_url": null,
         "output_device_state": "NONE",
         "output_device_name": null,
-        "update_available": null
+        "update_available": null,
+        "latency_target_ms": 20
       },
       "channels": [],
       "master": {
@@ -301,7 +303,8 @@
       "invite_url": null,
       "output_device_state": "OPEN",
       "output_device_name": "スピーカー (USB Audio)",
-      "update_available": null
+      "update_available": null,
+      "latency_target_ms": 20
     }
   },
   {
@@ -315,7 +318,8 @@
       "invite_url": "https://vocroz.example/join#ABCD-EFGH",
       "output_device_state": "OPEN",
       "output_device_name": "スピーカー (USB Audio)",
-      "update_available": "1.0.1"
+      "update_available": "1.0.1",
+      "latency_target_ms": 20
     }
   },
   {
@@ -329,7 +333,8 @@
       "invite_url": null,
       "output_device_state": "OPEN",
       "output_device_name": "スピーカー (USB Audio)",
-      "update_available": null
+      "update_available": null,
+      "latency_target_ms": 20
     }
   },
   {
@@ -343,7 +348,8 @@
       "invite_url": null,
       "output_device_state": "LOST",
       "output_device_name": null,
-      "update_available": null
+      "update_available": null,
+      "latency_target_ms": 20
     }
   },
   {
@@ -1012,6 +1018,19 @@
   {
     "type": "meters",
     "levels": {}
+  },
+  {
+    "type": "link_stats",
+    "stats": {
+      "ch1": {
+        "jitter_ms": 2.5,
+        "buffer_ms": 15.0
+      },
+      "ch2": {
+        "jitter_ms": null,
+        "buffer_ms": null
+      }
+    }
   },
   {
     "type": "notice",

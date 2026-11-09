@@ -179,6 +179,7 @@ nlohmann::json write_json(const SessionInfo& session) {
         {"output_device_state", enum_json(session.output_device_state)},
         {"output_device_name", nullable(session.output_device_name)},
         {"update_available", nullable(session.update_available)},
+        {"latency_target_ms", session.latency_target_ms},
     };
 }
 
@@ -194,6 +195,8 @@ common::Result<SessionInfo, DecodeError> read_session_info(const nlohmann::json&
         session.output_device_state = r.enumeration<OutputDeviceState>("output_device_state");
         session.output_device_name = r.nullable_text("output_device_name", kTextRule);
         session.update_available = r.nullable_text("update_available", kTextRule);
+        session.latency_target_ms =
+            r.number("latency_target_ms", kMinLatencyTargetMs, kMaxLatencyTargetMs);
         return session;
     });
 }

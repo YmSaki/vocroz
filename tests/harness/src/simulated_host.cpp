@@ -133,7 +133,7 @@ SimulatedHost::SimulatedHost(const common::Clock& clock, netsim::SimulatedNetwor
     config.invite_base_url = "https://vocroz.test";
     session_ = std::make_unique<session::HostSession>(
         std::move(config), session::HostSession::Ports{ui_, mixer_, *this, rendezvous_, settings_,
-                                                       random_, clock_, logger_});
+                                                       random_, clock_, logger_, playout_control_});
     session_->start();
     // 出力デバイスは常に開いているものとする（デバイスの抜去は session の単体テストで確かめる）。
     session_->on_output_device_opened("harness-output", "Harness output");

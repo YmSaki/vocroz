@@ -421,6 +421,30 @@ TEST(JsonCodecTest, EncodesInvalidUtf8TextWithReplacementCharacter) {
     EXPECT_EQ(std::get<PendingUpdated>(decoded.value()).pending.at(0).name, "Vo\xEF\xBF\xBD");
 }
 
+TEST(JsonCodecTest, RejectsLatencyTargetOutOfRange) {
+    for (const double ms : {kMinLatencyTargetMs - 1.0, kMaxLatencyTargetMs + 1.0}) {
+        const nlohmann::json message = {{"type", "set_latency_target"},
+                                        {"request_id", "r1"},
+                                        {"entity_id", "session"},
+                                        {"expected_revision", 1},
+                                        {"target_ms", ms}};
+        EXPECT_EQ(ui_error(message), (DecodeError{DecodeErrorCode::kOutOfRange, "target_ms"}))
+            << ms;
+    }
+}
+
+TEST(JsonCodecTest, RejectsMalformedLinkStats) {
+    EXPECT_EQ(engine_error({{"type", "link_stats"}, {"stats", {{"ch1", 2.5}}}}).code,
+              DecodeErrorCode::kWrongType);
+    EXPECT_EQ(
+        engine_error({{"type", "link_stats"}, {"stats", {{"ch1", {{"jitter_ms", "high"}}}}}}).code,
+        DecodeErrorCode::kWrongType);
+    EXPECT_EQ(engine_error({{"type", "link_stats"},
+                            {"stats", {{"bad id", {{"jitter_ms", 1}, {"buffer_ms", 1}}}}}})
+                  .code,
+              DecodeErrorCode::kOutOfRange);
+}
+
 TEST(JsonCodecTest, EncodesDiscreteCommandWithBodyType) {
     const auto encoded = nlohmann::json::parse(
         encode_ui_to_engine(DiscreteCommand{"r9", "client", 4, SelectInput{std::nullopt}}));

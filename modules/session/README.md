@@ -36,6 +36,7 @@
 | `vocroz/session/ports/settings_store.h` | `SettingsStore`（設定の読み込みと保存） |
 | `vocroz/session/ports/secure_random.h` | `SecureRandom`（トークンの生成） |
 | `vocroz/session/ports/ui_event_sink.h` | `UiEventSink`（UI へのメッセージ） |
+| `vocroz/session/ports/playout_control.h` | `PlayoutControl`（全チャンネルの目標遅延の反映。`pa-engine` が受信ストリームに配る） |
 | `vocroz/session/plugin_catalog.h` | `PluginCatalog`、`PluginScanProgress`（プラグインの一覧とスキャンの進行） |
 | `vocroz/session/plugin_description.h` | `PluginDescription`（スキャンで見つけたプラグインの記述） |
 | `vocroz/session/plugin_scan_record.h` | `PluginFile`、`PluginScanRecord`、`PluginScanStatus`、`PluginScanFailure` |

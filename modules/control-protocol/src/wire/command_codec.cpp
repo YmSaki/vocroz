@@ -8,6 +8,8 @@
 
 #include <type_traits>
 
+#include "vocroz/control_protocol/constants.h"
+
 #include "wire/entity_codec.h"
 #include "wire/field_rules.h"
 #include "wire/json_values.h"
@@ -71,6 +73,13 @@ void write_fields(nlohmann::json& out, const SetRouteMute& command) {
 }
 void read_fields(ObjectReader& r, SetRouteMute& command) {
     command.muted = r.boolean("muted");
+}
+
+void write_fields(nlohmann::json& out, const SetLatencyTarget& command) {
+    out["target_ms"] = command.target_ms;
+}
+void read_fields(ObjectReader& r, SetLatencyTarget& command) {
+    command.target_ms = r.number("target_ms", kMinLatencyTargetMs, kMaxLatencyTargetMs);
 }
 
 void write_fields(nlohmann::json& out, const SetGain& command) {

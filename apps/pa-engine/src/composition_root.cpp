@@ -163,7 +163,7 @@ std::optional<int> CompositionRoot::start() {
     session_ = std::make_unique<session::HostSession>(
         std::move(config),
         session::HostSession::Ports{*ui_publisher_, engine_mixer_, peers_, *rendezvous_, *settings_,
-                                    random_, clock_, *logger_});
+                                    random_, clock_, *logger_, playout_});
     const auto on_registered =
         [this](
             const session::InviteToken& token,

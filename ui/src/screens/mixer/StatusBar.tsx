@@ -2,10 +2,24 @@
 // 画面上部のステータス帯。
 // セッション名、状態、接続人数、出力デバイス、警告件数、更新の通知を常に表示する。
 // 出力デバイスの消失は解決するまでここに警告として残す。
+// 全チャンネル共通の目標遅延（ジッターバッファの上限）もここで選ぶ。
 
 import { t } from "../../i18n/i18n";
 import type { SessionInfo } from "../../ipc/messages";
 import { errorText } from "../shared/feedback";
+
+/**
+ * 目標遅延の選択肢（ms）。エンジンが受け付ける 10〜250 ms のうち、合奏で使う短い側を細かく刻む。
+ * 既定の 20 ms は低遅延の運用での上限（docs/adr/0002-opus-low-delay.md の低遅延プロファイル）。
+ */
+export const kLatencyTargetOptionsMs: readonly number[] = [10, 15, 20, 30, 40, 60, 80, 120, 250];
+
+/** 選択肢に現在の値を加える。保存されていた値が選択肢にないときも、今の値をそのまま示すため。 */
+function latencyOptions(current: number): number[] {
+  return kLatencyTargetOptionsMs.includes(current)
+    ? [...kLatencyTargetOptionsMs]
+    : [...kLatencyTargetOptionsMs, current].sort((a, b) => a - b);
+}
 
 /** ステータス帯の props。 */
 export interface StatusBarProps {
@@ -20,6 +34,8 @@ export interface StatusBarProps {
   sessionPending: boolean;
   approvalOpen: boolean;
   historyOpen: boolean;
+  /** 目標遅延を選ぶ。 */
+  onSetLatencyTarget: (targetMs: number) => void;
   onCreateSession: () => void;
   onEndSession: () => void;
   onCopyInvite: () => void;
@@ -37,6 +53,7 @@ export function StatusBar({
   sessionPending,
   approvalOpen,
   historyOpen,
+  onSetLatencyTarget,
   onCreateSession,
   onEndSession,
   onCopyInvite,
@@ -81,6 +98,22 @@ export function StatusBar({
         <span class="status-bar__label">{t("status.warnings")}</span>
         <span class="status-bar__value">{warningCount}</span>
       </div>
+      <label class="status-bar__item" title={t("status.latency_hint")}>
+        <span class="status-bar__label">{t("status.latency")}</span>
+        <select
+          class="status-bar__select"
+          aria-label={t("status.latency_label")}
+          value={String(session.latency_target_ms)}
+          disabled={sessionPending}
+          onChange={(e) => onSetLatencyTarget(Number(e.currentTarget.value))}
+        >
+          {latencyOptions(session.latency_target_ms).map((ms) => (
+            <option key={ms} value={String(ms)}>
+              {t("status.latency_option", { ms })}
+            </option>
+          ))}
+        </select>
+      </label>
       <div class="status-bar__spacer" />
       {session.update_available !== null ? (
         <button

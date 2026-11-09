@@ -19,6 +19,7 @@
 #include "fakes/fake_logger.h"
 #include "fakes/fake_mixer_control.h"
 #include "fakes/fake_peer_link.h"
+#include "fakes/fake_playout_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_ui_event_sink.h"
@@ -160,7 +161,9 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedFromBackup) {
     session::FakePeerLink peers;
     session::FakeRendezvousClient rendezvous;
     session::FakeSecureRandom random;
-    session::HostSession host{{}, {ui_, mixer, peers, rendezvous, store_, random, clock_, logger_}};
+    session::FakePlayoutControl playout;
+    session::HostSession host{
+        {}, {ui_, mixer, peers, rendezvous, store_, random, clock_, logger_, playout}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());
@@ -175,7 +178,9 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedAndDefaultsWhenNo
     session::FakePeerLink peers;
     session::FakeRendezvousClient rendezvous;
     session::FakeSecureRandom random;
-    session::HostSession host{{}, {ui_, mixer, peers, rendezvous, store_, random, clock_, logger_}};
+    session::FakePlayoutControl playout;
+    session::HostSession host{
+        {}, {ui_, mixer, peers, rendezvous, store_, random, clock_, logger_, playout}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());

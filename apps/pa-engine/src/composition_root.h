@@ -40,6 +40,7 @@
 #include "ui_event_publisher.h"
 #include "ui_message_receiver.h"
 #include "unconnected_peer_link.h"
+#include "unconnected_playout_control.h"
 #include "win/execution_state_sleep_inhibitor.h"
 #include "win/win32_named_mutex.h"
 
@@ -100,6 +101,7 @@ private:
     session::RendezvousClient* rendezvous_ = &offline_rendezvous_;
     CryptoSecureRandom random_;
     UnconnectedPeerLink peers_;
+    UnconnectedPlayoutControl playout_;
     std::optional<transport::StaticKeyPair> host_keys_;
     audio_core::Mixer mixer_;
     EngineMixer engine_mixer_;

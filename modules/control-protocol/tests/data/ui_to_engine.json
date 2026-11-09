@@ -184,6 +184,13 @@
     "muted": false
   },
   {
+    "type": "set_latency_target",
+    "request_id": "r-24",
+    "entity_id": "session",
+    "expected_revision": 3,
+    "target_ms": 40
+  },
+  {
     "type": "set_gain",
     "entity_id": "send-1",
     "seq": 7,

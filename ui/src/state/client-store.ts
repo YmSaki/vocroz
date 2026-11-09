@@ -37,6 +37,7 @@ export class ClientStore extends Store<ClientViewState> {
       case "reject":
       case "gain_ack":
       case "meters":
+      case "link_stats":
       case "notice":
         return;
     }

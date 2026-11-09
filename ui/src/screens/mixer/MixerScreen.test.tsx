@@ -7,6 +7,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/preact"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EngineClient } from "../../ipc/engine-client";
 import { FakeMixerEngine } from "../../ipc/fake-engine/fake-mixer-engine";
+import { LinkStatsStore } from "../../state/link-stats-store";
 import { MeterStore } from "../../state/meter-store";
 import { MixerStore } from "../../state/mixer-store";
 import { OptimisticStore } from "../../state/optimistic-store";
@@ -35,7 +36,11 @@ beforeEach(async () => {
   const store = new MixerStore();
   const optimistic = new OptimisticStore();
   toasts = new ToastStore(timers, () => 0);
-  client.subscribe((m) => store.apply(m));
+  const linkStats = new LinkStatsStore();
+  client.subscribe((m) => {
+    store.apply(m);
+    if (m.type === "link_stats") linkStats.apply(m);
+  });
   connectContinuousFeedback(client, optimistic, toasts);
   render(
     <MixerScreen
@@ -43,6 +48,7 @@ beforeEach(async () => {
       store={store}
       optimistic={optimistic}
       meters={new MeterStore(timers)}
+      linkStats={linkStats}
       toasts={toasts}
       onOpenRouting={() => {}}
       writeClipboard={() => Promise.resolve()}
@@ -198,5 +204,26 @@ describe("参加の承認", () => {
     expect(within(tp).getByText("子機MUTE").closest(".mute-badge")?.classList).toContain(
       "mute-badge--on",
     );
+  });
+});
+
+describe("目標遅延と受信の実測値", () => {
+  it("目標遅延の選択はエンジンに送り、ACK のあとの状態で表示する", async () => {
+    const select = screen.getByRole("combobox", { name: "全チャンネルの目標遅延" });
+    expect((select as HTMLSelectElement).value).toBe("20");
+    fireEvent.change(select, { target: { value: "40" } });
+    await advance(20);
+    expect(engine.snapshot().session.latency_target_ms).toBe(40);
+    expect((select as HTMLSelectElement).value).toBe("40");
+  });
+
+  it("受信しているチャンネルに揺らぎとバッファの長さを示し、値のないチャンネルは記号で示す", async () => {
+    await act(async () => engine.sendLinkStats());
+    const vo = strip("Vo 山田");
+    expect(within(vo).getByText("揺らぎ").nextElementSibling?.textContent).toMatch(
+      /^\d+(\.\d)? ms$/,
+    );
+    const gt = strip("Gt 佐藤");
+    expect(within(gt).getByText("揺らぎ").nextElementSibling?.textContent).toBe("—");
   });
 });

@@ -102,6 +102,7 @@ export class FakeClientEngine extends FakeEngineBase {
       case "commit_routing":
       case "discard_routing":
       case "set_route_mute":
+      case "set_latency_target":
       case "approve_participant":
       case "reject_participant":
       case "remove_strip":
@@ -154,6 +155,7 @@ export class FakeClientEngine extends FakeEngineBase {
       case "commit_routing":
       case "discard_routing":
       case "set_route_mute":
+      case "set_latency_target":
       case "approve_participant":
       case "reject_participant":
       case "remove_strip":
