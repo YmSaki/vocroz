@@ -85,6 +85,17 @@ TEST(MixerGraphBuilderTest, BuildsImplicitPathFromStripsThroughMasterAndLimiter)
     EXPECT_TRUE(is_valid(g));
 }
 
+TEST(MixerGraphBuilderTest, MakesStripStereoWhenItsSourceIsStereo) {
+    MixerAssignments a = two_strips();
+    a.strips[1].source =
+        std::make_shared<ac::FakeAudioSource>(ac::FakeAudioSource::stereo(0.1F, 0.2F));
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+
+    EXPECT_EQ(node_with_fader(built.graph, ac::FaderId{1})->channels, 1U);
+    EXPECT_EQ(node_with_fader(built.graph, ac::FaderId{2})->channels, 2U);
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
 TEST(MixerGraphBuilderTest, AppliesInputDelayOnlyToMatchingStrip) {
     cp::RoutingConfig config;
     config.input_delays.push_back(cp::InputDelay{"ch-2", 10.0});

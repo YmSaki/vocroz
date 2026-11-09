@@ -13,24 +13,23 @@
 #include "vocroz/transport/packet_header.h"
 
 namespace vocroz::engine {
-namespace {
-
-// 子機のマイクのストリーム。子機は今は 1 本だけを送る（入力ごとのストリームは
-// docs/adr/0035-client-input-expansion.md で増える）。
-constexpr std::uint16_t kMicStreamId = 0;
-
-}  // namespace
+transport::PlayoutStream* StreamTable::find(std::uint16_t stream_id) const noexcept {
+    for (std::size_t i = 0; i < count; ++i) {
+        if (slots[i].stream_id == stream_id) {
+            return slots[i].playout;
+        }
+    }
+    return nullptr;
+}
 
 ReceivePeer::ReceivePeer(session::PeerHandle handle_in, transport::PacketOpener opener_in,
                          const network::UdpAddress& remote_in,
                          transport::LivenessMonitor& liveness_in,
-                         transport::PlayoutStream& playout_in,
                          network::PeerDatagramSocket& socket_in, common::Clock::TimePoint now)
     : handle(handle_in),
       opener(std::move(opener_in)),
       remote(remote_in),
       liveness(liveness_in),
-      playout(playout_in),
       socket(socket_in),
       signal(now),
       plaintext(transport::kMaxPacketBytes) {}
@@ -72,7 +71,7 @@ void PeerReceivePath::apply_commands() noexcept {
                 break;
             }
             case ReceiveCommand::Kind::kAdmit:
-                peer->admitted = true;
+                peer->streams = command->streams;
                 report_signal(*peer);
                 break;
             case ReceiveCommand::Kind::kSendMute:
@@ -129,12 +128,17 @@ void PeerReceivePath::handle_packet(ReceivePeer& peer, const network::UdpAddress
 
 void PeerReceivePath::handle_media(ReceivePeer& peer, std::span<const std::uint8_t> plaintext,
                                    common::Clock::TimePoint now) noexcept {
-    if (!peer.admitted) {
+    if (peer.streams == nullptr) {
         // 承認前の接続のメディアは受け付けない（承認前に音が届かない）。
         return;
     }
     const auto media = transport::decode_media_payload(plaintext);
-    if (!media || media.value().stream_id != kMicStreamId) {
+    if (!media) {
+        return;
+    }
+    transport::PlayoutStream* const playout = peer.streams->find(media.value().stream_id);
+    if (playout == nullptr) {
+        // 申告にないか、ストリップに対応づけていないストリーム。
         return;
     }
     const bool accepted = peer.signal.on_media_frame(media.value().mute_epoch, now);
@@ -147,14 +151,14 @@ void PeerReceivePath::handle_media(ReceivePeer& peer, std::span<const std::uint8
         media.value().timestamp, media.value().mute_epoch, media.value().opus_payload);
     if (frame) {
         // 満杯や遅着で捨てたぶんは PlayoutStream の統計に残る。
-        static_cast<void>(peer.playout.enqueue(frame.value()));
+        static_cast<void>(playout->enqueue(frame.value()));
     }
 }
 
 void PeerReceivePath::report_signal(ReceivePeer& peer) noexcept {
     const auto state = peer.signal.state();
     // 承認前の状態は session が見ない（CONNECTED のときだけ反映する）ので、承認してから知らせる。
-    if (!peer.admitted || state == peer.reported) {
+    if (peer.streams == nullptr || state == peer.reported) {
         return;
     }
     peer.reported = state;

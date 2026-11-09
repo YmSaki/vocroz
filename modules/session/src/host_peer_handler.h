@@ -38,6 +38,7 @@ private:
     void rejoin(Participant& p, PeerHandle peer);
     void handle_send_mute(PeerHandle peer, const wire::SendMuteReport& report);
     void handle_input_report(PeerHandle peer, const wire::InputReport& report);
+    void handle_streams_report(PeerHandle peer, const wire::StreamsReport& report);
     void handle_peer_left(PeerHandle peer);
 
     HostContext& ctx_;

@@ -3,6 +3,10 @@
 // 親機の参加者（承認待ちとチャンネルストリップ）の一覧。
 // ストリップは承認時に作って participant_id に固定し、再接続しても作り直さない。
 // 並び順は承認した順で、本番中に並べ替えない（ストリップは末尾に足すだけ）。
+// 1 台の子機は複数の入力（ストリーム）を送れ、入力ごとに 1 本のストリップになる
+// （docs/adr/0035-client-input-expansion.md）。同じ子機のストリップは participant_id、接続、
+// 再接続トークン、接続状態を共有し、一覧には 1 本ずつのエントリとして並ぶ。後から足した入力の
+// ストリップも末尾に足すので、ストリップの並びは UI の表示と常に同じになる。
 #pragma once
 
 #include <cstdint>
@@ -14,6 +18,7 @@
 #include "vocroz/common/ports/clock.h"
 #include "vocroz/control_protocol/entities.h"
 #include "vocroz/session/identifiers.h"
+#include "vocroz/session/input_stream.h"
 
 namespace vocroz::session {
 
@@ -22,12 +27,16 @@ struct PendingJoin {
     control_protocol::PendingParticipant entry;
     /// 申請が届いた接続。
     PeerHandle peer = 0;
+    /// 子機が申告した入力。申告が届くまではストリーム 0 のモノラルのマイク 1 本とみなす。
+    std::vector<InputStream> streams{InputStream{}};
 };
 
-/// ストリップを持つ参加者。
+/// ストリップを持つ参加者の、ストリップ 1 本（子機の入力 1 つ）ぶんの状態。
 struct Participant {
     /// UI に送るストリップの状態。正となる値はここにだけ持つ。
     control_protocol::ChannelStrip strip;
+    /// このストリップに流すメディアのストリーム ID。
+    std::uint16_t stream_id = 0;
     /// 承認時に発行した再接続トークン。セッションの終了かストリップの削除まで有効。
     ReconnectToken reconnect_token{};
     /// 今つながっている接続。LOST と FAILED では持たない。
@@ -67,12 +76,30 @@ public:
         return pending_.size();
     }
 
-    /// 承認待ちの参加者にストリップを作り、末尾に足す。承認待ちの一覧からは取り除かない。
+    /// 承認待ちの参加者に、申告した入力ごとのストリップを作り、末尾に足す。
+    /// 承認待ちの一覧からは取り除かない。
     /// ストリップは CONNECTING、チャンネルミュート、送信ミュート、0 dB で始まる（初期ミュート）。
     /// @param pending 承認する参加者
     /// @param token   発行した再接続トークン
-    /// @return 足した参加者
+    /// @return 足した 1 本目のストリップ。以降の追加で無効になるので、続けて保持しない
     Participant& add_participant(const PendingJoin& pending, const ReconnectToken& token);
+
+    /// 承認済みの参加者に、入力 1 つぶんのストリップを足す（入力の申告が変わったとき）。
+    /// 名前、接続、再接続トークン、接続状態、送信ミュートは同じ参加者のストリップから写す。
+    /// 新しいストリップはチャンネルミュート、0 dB で始まる（初期ミュート）。
+    /// @param participant_id 参加者。ストリップが 1 本以上あること
+    /// @param stream         入力
+    /// @return 足したストリップ。以降の追加で無効になるので、続けて保持しない
+    Participant& add_stream(std::string_view participant_id, const InputStream& stream);
+
+    /// 参加者のストリップを、並び順で返す。
+    /// @return ストリップへのポインター。一覧への追加と削除で無効になる
+    [[nodiscard]] std::vector<Participant*> strips_of(std::string_view participant_id);
+
+    /// 参加者のストリップの入力の番号（同じ種類の中での 1 からの番号）を、ストリーム ID の順に
+    /// 振り直す。
+    /// @return 番号の変わったストリップ
+    std::vector<Participant*> renumber(std::string_view participant_id);
 
     /// entity_id のストリップの参加者を返す。なければ nullptr。
     [[nodiscard]] Participant* find(std::string_view entity_id) noexcept;
@@ -84,8 +111,11 @@ public:
     /// トークンは定数時間で比べる。
     [[nodiscard]] Participant* find_by_token(const ReconnectToken& token) noexcept;
 
-    /// ストリップを取り除く。再接続トークンも無効になる。
+    /// ストリップを 1 本取り除く。同じ参加者のほかのストリップは残る。
     void remove(std::string_view entity_id);
+
+    /// 参加者のストリップをすべて取り除く。再接続トークンも無効になる。
+    void remove_participant(std::string_view participant_id);
 
     /// ストリップの一覧（並び順）を返す。
     [[nodiscard]] std::vector<Participant>& participants() noexcept {

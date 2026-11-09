@@ -59,6 +59,9 @@ function channel(
     send_muted: true,
     channel_muted: true,
     gain_db: 0,
+    source_kind: "MICROPHONE",
+    channel_count: 1,
+    source_number: 1,
     error_code: null,
     ...overrides,
   };
@@ -111,6 +114,14 @@ function initialSnapshot(scenario: MixerScenario): Omit<MixerSnapshot, "routing"
       channel(5, "Key 高橋", "LOST", null),
       channel(6, "Cho 伊藤", "CONNECTED", "RECEIVING", { send_muted: false, gain_db: null }),
       channel(7, "Sax 中村", "FAILED", null, { error_code: "UNREACHABLE" }),
+      // 1 台の子機の 2 つ目の入力（PC のアプリ音声をステレオで送る）。
+      channel(8, "Vo 山田", "CONNECTED", "RECEIVING", {
+        participant_id: "p1",
+        short_id: "#01",
+        send_muted: false,
+        source_kind: "APP_AUDIO",
+        channel_count: 2,
+      }),
     ],
     master,
     pending: [{ entity_id: "pending1", revision: 1, name: "Tp 渡辺", short_id: "#08" }],

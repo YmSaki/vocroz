@@ -50,7 +50,7 @@ using namespace std::chrono_literals;
 const net::UdpAddress kClientAddress = net::UdpAddress::from_ipv4({203, 0, 113, 10}, 50000);
 const net::UdpAddress kOtherPath = net::UdpAddress::from_ipv4({192, 168, 1, 10}, 50000);
 const net::UdpAddress kRebound = net::UdpAddress::from_ipv4({203, 0, 113, 10}, 50123);
-constexpr std::uint16_t kStreamId = 0;
+constexpr std::uint16_t kMicStreamId = 0;
 
 tp::StaticKeyPair generate_keys() {
     auto keys = tp::StaticKeyPair::generate();
@@ -134,9 +134,12 @@ public:
         handshake_.emplace(std::move(handshake).value());
         initiation.resize(tp::kMaxPacketBytes);
         initiation.resize(handshake_->write_initiation({}, initiation).value());
-        auto encoder = tp::OpusFrameEncoder::create({});
-        EXPECT_TRUE(encoder);
-        encoder_.emplace(std::move(encoder).value());
+        for (std::size_t channels = 1; channels <= 2; ++channels) {
+            auto encoder =
+                tp::OpusFrameEncoder::create(tp::OpusEncoderConfig{.channels = channels});
+            EXPECT_TRUE(encoder);
+            encoders_[channels - 1].emplace(std::move(encoder).value());
+        }
     }
 
     // 親機の応答を読み、暗号化セッションを確立する。
@@ -162,21 +165,29 @@ public:
     }
 
     // 440 Hz の正弦波を 1 フレームぶんエンコードし、暗号化したメディアのパケットを返す。
-    [[nodiscard]] std::vector<std::uint8_t> media_packet(std::uint32_t mute_epoch) {
-        std::vector<float> pcm(encoder_->frame_samples());
-        for (float& sample : pcm) {
-            sample = 0.5F * static_cast<float>(std::sin(2.0 * std::numbers::pi * 440.0 *
-                                                        static_cast<double>(phase_++) /
-                                                        static_cast<double>(tp::kSampleRate)));
+    [[nodiscard]] std::vector<std::uint8_t> media_packet(std::uint32_t mute_epoch,
+                                                         std::uint16_t stream_id = kMicStreamId,
+                                                         std::size_t channels = 1) {
+        tp::OpusFrameEncoder& encoder = *encoders_[channels - 1];
+        std::vector<float> pcm(encoder.frame_samples() * channels);
+        for (std::size_t i = 0; i < encoder.frame_samples(); ++i) {
+            const auto sample =
+                0.5F * static_cast<float>(std::sin(2.0 * std::numbers::pi * 440.0 *
+                                                   static_cast<double>(phase_ + i) /
+                                                   static_cast<double>(tp::kSampleRate)));
+            for (std::size_t c = 0; c < channels; ++c) {
+                pcm[i * channels + c] = sample;
+            }
         }
+        phase_ += encoder.frame_samples();
         std::array<std::uint8_t, tp::kMaxOpusPayloadBytes> opus{};
-        const auto encoded = encoder_->encode(pcm, opus);
+        const auto encoded = encoder.encode(pcm, opus);
         EXPECT_TRUE(encoded);
-        const tp::MediaPayload media{.stream_id = kStreamId,
+        const tp::MediaPayload media{.stream_id = stream_id,
                                      .timestamp = timestamp_,
                                      .mute_epoch = mute_epoch,
                                      .opus_payload = std::span(opus).first(encoded.value())};
-        timestamp_ += encoder_->frame_samples();
+        timestamp_ += encoder.frame_samples();
         std::vector<std::uint8_t> packet(tp::kMaxPacketBytes);
         packet.resize(channel_->sealer.seal_media(media, packet).value());
         return packet;
@@ -211,7 +222,7 @@ private:
     tp::ReliableControlChannel control_;
     std::optional<tp::NoiseIkHandshake> handshake_;
     std::optional<tp::SecureChannel> channel_;
-    std::optional<tp::OpusFrameEncoder> encoder_;
+    std::array<std::optional<tp::OpusFrameEncoder>, 2> encoders_;
     std::uint64_t timestamp_ = 0;
     std::size_t phase_ = 0;
 };
@@ -255,13 +266,38 @@ protected:
         return next_handle_++;
     }
 
+    // マイク 1 本（ストリーム 0、モノラル）を strip へ流す対応。
+    static std::vector<session::StreamRoute> mic_to(const std::string& strip) {
+        return {session::StreamRoute{.stream_id = kMicStreamId, .channels = 1, .strip_id = strip}};
+    }
+
     // ストリップを作って承認し、ストリップと Master のミュートを解く。
     void admit_audible(session::PeerHandle peer, const std::string& strip) {
         engine_mixer_.add_channel(strip);
-        links_.admit(peer, strip);
+        links_.admit(peer, mic_to(strip));
         links_.poll();
         engine_mixer_.set_channel_muted(strip, false);
         engine_mixer_.set_master_muted(false);
+    }
+
+    // 子機が 5 ms ごとにフレームを送り、親機が同じ周期で描画するのを 200 ms 続け、
+    // L の最大の絶対値を返す。
+    float stream_for_a_while(TestClient& client, std::uint16_t stream_id, std::size_t channels) {
+        float peak = 0.0F;
+        for (int i = 0; i < 40; ++i) {
+            deliver(kClientAddress, client.media_packet(1, stream_id, channels));
+            peak = std::max(peak, render_peak(tp::kSampleRate / 200));
+        }
+        return peak;
+    }
+
+    // 20 回ぶん（100 ms）描画し、L の最大の絶対値を返す。
+    float render_peak_for_a_while() {
+        float peak = 0.0F;
+        for (int i = 0; i < 20; ++i) {
+            peak = std::max(peak, render_peak(tp::kSampleRate / 200));
+        }
+        return peak;
     }
 
     // ミキサーを frames サンプルぶん描画し、L の最大の絶対値を返す。
@@ -461,7 +497,7 @@ TEST_F(HostPeerLinksTest, NewHandshakeKeepsAdmittedConnectionUntilSessionCloses)
     EXPECT_EQ(links_.peer_count(), 2U);
 
     // 再接続: session は新しい接続を同じストリップで承認してから、古い接続を閉じる。
-    links_.admit(second_peer, "ch-1");
+    links_.admit(second_peer, mic_to("ch-1"));
     links_.close(first_peer);
     links_.apply_send_mute(second_peer, false, 1);
     for (int i = 0; i < 20; ++i) {
@@ -478,9 +514,49 @@ TEST_F(HostPeerLinksTest, NewHandshakeKeepsAdmittedConnectionUntilSessionCloses)
 TEST_F(HostPeerLinksTest, AdmissionToMissingStripFailsThePath) {
     auto client = make_client();
     const auto peer = connect(*client);
-    links_.admit(peer, "no-such-strip");
+    links_.admit(peer, mic_to("no-such-strip"));
     links_.poll();
     EXPECT_EQ(events_.log, (std::vector<std::string>{"path_failed:" + std::to_string(peer)}));
+}
+
+TEST_F(HostPeerLinksTest, RoutesEachStreamToItsStrip) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    engine_mixer_.add_channel("ch-1");
+    engine_mixer_.add_channel("ch-2");
+    // マイク（モノラル）は ch-1、ストリーム 1（ステレオ）は ch-2 へ。聞こえるのは ch-2 だけにする。
+    links_.admit(peer, {session::StreamRoute{.stream_id = 0, .channels = 1, .strip_id = "ch-1"},
+                        session::StreamRoute{.stream_id = 1, .channels = 2, .strip_id = "ch-2"}});
+    links_.poll();
+    EXPECT_EQ(events_.log, (std::vector<std::string>{"established:1"}));
+    engine_mixer_.set_channel_muted("ch-2", false);
+    engine_mixer_.set_master_muted(false);
+    links_.apply_send_mute(peer, false, 1);
+    // ch-1 のストリームと、対応のないストリーム 7 は ch-2 から聞こえない。
+    EXPECT_EQ(stream_for_a_while(*client, 0, 1), 0.0F);
+    EXPECT_EQ(stream_for_a_while(*client, 7, 1), 0.0F);
+    EXPECT_GT(stream_for_a_while(*client, 1, 2), 0.05F);
+}
+
+TEST_F(HostPeerLinksTest, ReplacingRoutesMovesStreamAndReportsEstablishedOnce) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    engine_mixer_.add_channel("ch-1");
+    engine_mixer_.add_channel("ch-2");
+    links_.admit(peer, mic_to("ch-1"));
+    links_.poll();
+    // 申告の変更で、マイクを ch-2 へ移した。
+    links_.admit(peer, mic_to("ch-2"));
+    links_.poll();
+    EXPECT_EQ(events_.log, (std::vector<std::string>{"established:1"}));
+    engine_mixer_.set_master_muted(false);
+    links_.apply_send_mute(peer, false, 1);
+    // ch-1 からは外れたので聞こえない。
+    engine_mixer_.set_channel_muted("ch-1", false);
+    EXPECT_EQ(stream_for_a_while(*client, 0, 1), 0.0F);
+    engine_mixer_.set_channel_muted("ch-1", true);
+    engine_mixer_.set_channel_muted("ch-2", false);
+    EXPECT_GT(stream_for_a_while(*client, 0, 1), 0.05F);
 }
 
 TEST_F(HostPeerLinksTest, DoesNotWakeReceiveThreadWithoutConnections) {

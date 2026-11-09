@@ -4,9 +4,10 @@
 // コントロールスレッドで持ち、受信の処理（PeerReceivePath）とミキサー（EngineMixer）をつなぐ
 // （docs/adr/0028-engine-assembly.md）。
 //
-// 手順: 子機の鍵交換の 1 つ目のメッセージに応答し、接続ごとに受信方向の復号器とジッターバッファを
-// 受信スレッドへ渡す。session が承認したら、ジッターバッファをストリップにつなぎ、受信スレッドに
-// メディアの受け付けを指示してから on_peer_established() を知らせる。
+// 手順: 子機の鍵交換の 1 つ目のメッセージに応答し、接続ごとに受信方向の復号器を受信スレッドへ渡す。
+// session が承認したら、ストリームごとにジッターバッファを作ってストリップにつなぎ、受信スレッドに
+// メディアの受け付けを指示してから on_peer_established() を知らせる。承認のあとも、再接続と
+// 入力の申告の変更のたびに admit() で対応が置き換わる（docs/adr/0035-client-input-expansion.md）。
 //
 // 子機は応答が届くまで同じ 1 つ目のメッセージを送り直し、複数の経路から同じものが届くこともある。
 // 接続 ID が同じものは重複として、保存した応答を送り直すだけにする（接続を作り直さない）。
@@ -74,7 +75,7 @@ public:
 
     // --- session::PeerLink ---
     void send(session::PeerHandle peer, std::span<const std::uint8_t> message) override;
-    void admit(session::PeerHandle peer, const std::string& strip_id) override;
+    void admit(session::PeerHandle peer, const std::vector<session::StreamRoute>& routes) override;
     void apply_send_mute(session::PeerHandle peer, bool send_muted, std::uint32_t epoch) override;
     void close(session::PeerHandle peer) override;
 
@@ -93,6 +94,9 @@ private:
     [[nodiscard]] Peer* find(session::PeerHandle handle);
     [[nodiscard]] Peer* find_by_connection(std::uint32_t connection_id);
     void accept(const network::UdpAddress& from, std::span<const std::uint8_t> datagram);
+    // 対応に合わせてストリームとストリップの接続を置き換える。すべてつなげたら true。
+    [[nodiscard]] bool apply_routes(Peer& peer, const std::vector<session::StreamRoute>& routes);
+    void detach_strip(Peer& peer, const std::string& strip_id);
     void begin_close(Peer& peer);
     void command(const ReceiveCommand& command);
     void flush_commands();

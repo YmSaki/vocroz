@@ -5,8 +5,9 @@
 //
 // - ヘッダーの接続 ID で接続を選び、復号する（送信元のアドレスではなく接続 ID で選ぶので、
 //   NAT のマッピングが変わっても同じ接続として扱え、送信先を新しい送信元へ移す）
-// - メディアは承認済みの接続のものだけを、信号状態の判定（古い世代の選別）を通して
-//   受信スレッドのままジッターバッファ（PlayoutStream）へ入れる。コントロールスレッドを
+// - メディアは承認済みの接続のものだけを、信号状態の判定（古い世代の選別）を通して、
+//   ストリーム ID
+//   ごとのジッターバッファ（PlayoutStream）へ受信スレッドのまま入れる。コントロールスレッドを
 //   経由させると、その周期のぶん音が遅れるため
 // - 鍵交換の 1 つ目のメッセージと制御パケットは PeerReceiveListener でコントロールスレッドへ渡す
 //
@@ -24,6 +25,7 @@
 
 #include "vocroz/common/ports/clock.h"
 #include "vocroz/common/spsc_queue.h"
+#include "vocroz/control_protocol/constants.h"
 #include "vocroz/network/peer_datagram_socket.h"
 #include "vocroz/network/ports/datagram_listener.h"
 #include "vocroz/network/udp_address.h"
@@ -38,48 +40,63 @@
 
 namespace vocroz::engine {
 
+/// 1 つの接続の、ストリーム ID ごとの流し込み先（ジッターバッファ）の表。
+/// コントロールスレッドが承認と申告の変更のたびに新しく作り、kAdmit の指示で受信スレッドに渡す。
+/// 渡したあとは変更しない（読むのは受信スレッドだけ）。接続を破棄するまで保つ。
+struct StreamTable {
+    struct Slot {
+        std::uint16_t stream_id = 0;
+        transport::PlayoutStream* playout = nullptr;
+    };
+    std::array<Slot, control_protocol::kMaxInputStreams> slots{};
+    std::size_t count = 0;
+
+    /// ストリーム ID の流し込み先を返す。なければ null。
+    [[nodiscard]] transport::PlayoutStream* find(std::uint16_t stream_id) const noexcept;
+};
+
 /// 1 つの接続の、受信側の状態。
 /// コントロールスレッドが作り、kAttach の指示で受信スレッドに渡す。渡したあとは
 /// 受信スレッドだけが読み書きする。コントロールスレッドは、on_receive_released() の
 /// 通知のあとに破棄する。
-/// 参照先（liveness、playout、socket）は、破棄されるまでコントロールスレッドが保つ。
+/// 参照先（liveness、socket、streams の表とジッターバッファ）は、破棄されるまでコントロール
+/// スレッドが保つ。
 struct ReceivePeer {
     /// @param handle_in   session に見せる接続の識別子
     /// @param opener_in   鍵交換で得た受信方向の復号器
     /// @param remote_in   鍵交換の 1 つ目のメッセージの送信元
     /// @param liveness_in 受信途絶の判定（記録は受信スレッド、判定はコントロールスレッド）
-    /// @param playout_in  ジッターバッファ（enqueue() は受信スレッドだけが呼ぶ）
     /// @param socket_in   この接続への送信に使うソケット（送信先の更新だけを受信スレッドが行う）
     /// @param now         現在時刻（信号状態の判定の起点）
     ReceivePeer(session::PeerHandle handle_in, transport::PacketOpener opener_in,
                 const network::UdpAddress& remote_in, transport::LivenessMonitor& liveness_in,
-                transport::PlayoutStream& playout_in, network::PeerDatagramSocket& socket_in,
-                common::Clock::TimePoint now);
+                network::PeerDatagramSocket& socket_in, common::Clock::TimePoint now);
 
     session::PeerHandle handle;
     transport::PacketOpener opener;
     network::UdpAddress remote;
     transport::LivenessMonitor& liveness;
-    transport::PlayoutStream& playout;
     network::PeerDatagramSocket& socket;
+    // 承認で渡されるストリームの表。承認までは null で、メディアをジッターバッファへ入れない
+    // （承認前遮断）。表にないストリームのメディアは捨てる。enqueue() は受信スレッドだけが呼ぶ。
+    const StreamTable* streams = nullptr;
     transport::SignalMonitor signal;
     // コントロールスレッドへ最後に知らせた信号状態。子機は送信ミュートで参加するので PAUSED から。
     transport::SignalState reported = transport::SignalState::kPaused;
-    // session が承認するまでは、メディアをジッターバッファへ入れない（承認前遮断）。
-    bool admitted = false;
     std::vector<std::uint8_t> plaintext;
 };
 
 /// コントロールスレッドから受信スレッドへの指示。
 struct ReceiveCommand {
     enum class Kind : std::uint8_t {
-        kAttach,    ///< 接続を受信の対象に加える
-        kAdmit,     ///< メディアをジッターバッファへ入れ始める
+        kAttach,  ///< 接続を受信の対象に加える
+        kAdmit,  ///< streams の表でメディアをジッターバッファへ入れ始める（表を置き換える）
         kSendMute,  ///< 子機の送信ミュートの通知を信号状態の判定へ渡す
         kDetach,    ///< 受信の対象から外し、on_receive_released() で知らせる
     };
     Kind kind = Kind::kAttach;
     ReceivePeer* peer = nullptr;
+    const StreamTable* streams = nullptr;
     bool send_muted = true;
     std::uint32_t mute_epoch = 0;
 };

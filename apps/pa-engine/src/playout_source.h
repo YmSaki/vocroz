@@ -3,10 +3,11 @@
 // 子機 1 台の受信ストリーム（transport の PlayoutStream）を、ミキサーのストリップにつなぐ
 // audio-core の AudioSource にする。ジッターバッファ、デコード、ドリフト補正は PlayoutStream が
 // 持ち、このクラスはオーディオスレッドの pull() を render() に渡すだけにする。
+// チャンネル数（モノラルかステレオ）は PlayoutStream の設定のとおり。
 #pragma once
 
+#include <cstddef>
 #include <memory>
-#include <span>
 
 #include "vocroz/audio_core/ports/audio_source.h"
 #include "vocroz/audio_core/realtime.h"
@@ -22,8 +23,11 @@ public:
     /// @param stream 受信ストリーム（null にしない）
     explicit PlayoutSource(std::unique_ptr<transport::PlayoutStream> stream) noexcept;
 
+    /// PlayoutStream のチャンネル数を返す。
+    [[nodiscard]] std::size_t channel_count() const noexcept override;
+
     /// オーディオスレッドから呼び出し可能。足りないぶんは PlayoutStream が補間か無音で埋める。
-    void pull(std::span<float> out) noexcept VOCROZ_NONBLOCKING override;
+    void pull(float* const* channels, std::size_t frames) noexcept VOCROZ_NONBLOCKING override;
 
     /// 受信ストリームを返す。
     [[nodiscard]] transport::PlayoutStream& stream() noexcept {

@@ -213,6 +213,14 @@
     font-family: ui-monospace, monospace;
 }
 
+.strip__input {
+    font-size: 10px;
+    color: var(--color-text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .strip__status {
     min-height: 18px;
     font-size: 10px;

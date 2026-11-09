@@ -27,8 +27,9 @@ public:
         sent_[peer].emplace_back(message.begin(), message.end());
     }
 
-    void admit(PeerHandle peer, const std::string& strip_id) override {
-        admitted_[peer] = strip_id;
+    void admit(PeerHandle peer, const std::vector<StreamRoute>& routes) override {
+        admitted_[peer] = routes.empty() ? std::string{} : routes.front().strip_id;
+        routes_[peer] = routes;
     }
 
     void apply_send_mute(PeerHandle peer, bool send_muted, std::uint32_t epoch) override {
@@ -38,6 +39,7 @@ public:
     void close(PeerHandle peer) override {
         closed_.insert(peer);
         admitted_.erase(peer);
+        routes_.erase(peer);
     }
 
     /// 接続 peer に送ったメッセージ（送った順）。
@@ -46,9 +48,14 @@ public:
         return it == sent_.end() ? std::vector<std::vector<std::uint8_t>>{} : it->second;
     }
 
-    /// 受け付けている接続と、流し込み先のストリップ。
+    /// 受け付けている接続と、1 本目のストリームの流し込み先のストリップ。
     [[nodiscard]] const std::map<PeerHandle, std::string>& admitted() const noexcept {
         return admitted_;
+    }
+
+    /// 受け付けている接続の、ストリームと流し込み先のストリップの対応（最後に渡されたもの）。
+    [[nodiscard]] const std::map<PeerHandle, std::vector<StreamRoute>>& routes() const noexcept {
+        return routes_;
     }
 
     [[nodiscard]] bool closed(PeerHandle peer) const {
@@ -62,6 +69,7 @@ public:
 private:
     std::map<PeerHandle, std::vector<std::vector<std::uint8_t>>> sent_;
     std::map<PeerHandle, std::string> admitted_;
+    std::map<PeerHandle, std::vector<StreamRoute>> routes_;
     std::map<PeerHandle, SendMute> send_mutes_;
     std::set<PeerHandle> closed_;
 };

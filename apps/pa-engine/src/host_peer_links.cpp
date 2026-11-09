@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <array>
-#include <optional>
 #include <utility>
 
 #include "vocroz/network/peer_datagram_socket.h"
@@ -50,9 +49,16 @@ cp::SignalState to_protocol(transport::SignalState state) {
 // 1 つの接続（子機 1 台との暗号化セッション）。送信方向と信頼制御層はコントロールスレッドが、
 // receive は受信スレッドが使う。
 struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport::LivenessListener {
+    // 1 本のストリーム（子機の入力 1 つ）。
+    struct Stream {
+        std::uint16_t stream_id = 0;
+        std::uint8_t channels = 1;
+        std::shared_ptr<PlayoutSource> source;
+    };
+
     Peer(HostPeerLinks& owner_in, session::PeerHandle handle_in, const network::UdpAddress& from,
-         transport::SecureChannel secure, std::shared_ptr<PlayoutSource> source_in,
-         std::span<const std::uint8_t> initiation_in, std::vector<std::uint8_t> response_in)
+         transport::SecureChannel secure, std::span<const std::uint8_t> initiation_in,
+         std::vector<std::uint8_t> response_in)
         : owner(owner_in),
           handle(handle_in),
           address(from),
@@ -61,8 +67,7 @@ struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport:
           sink(sealer, socket),
           control(owner_in.ports_.clock, sink, *this),
           liveness(owner_in.ports_.clock, *this),
-          source(std::move(source_in)),
-          receive(handle_in, std::move(secure.opener), from, liveness, source->stream(), socket,
+          receive(handle_in, std::move(secure.opener), from, liveness, socket,
                   owner_in.ports_.clock.now()),
           initiation(initiation_in.begin(), initiation_in.end()),
           response(std::move(response_in)) {}
@@ -99,14 +104,24 @@ struct HostPeerLinks::Peer final : transport::ControlMessageListener, transport:
     transport::SecureControlPacketSink sink;
     transport::ReliableControlChannel control;
     transport::LivenessMonitor liveness;
-    // ジッターバッファ。ストリップにつないでいる間はミキサーのグラフも参照する。
-    std::shared_ptr<PlayoutSource> source;
     ReceivePeer receive;
     // 送り直された同じ 1 つ目のメッセージには、同じ応答を返し直す。
     std::vector<std::uint8_t> initiation;
     std::vector<std::uint8_t> response;
-    // admit() で決まるストリップ。
-    std::optional<std::string> strip;
+    // 今の対応のストリーム。ジッターバッファはストリップにつないでいる間、ミキサーのグラフも
+    // 参照する。
+    std::vector<Stream> streams;
+    // 受信スレッドに渡した表と、対応から外したジッターバッファ。受信スレッドがまだ参照している
+    // かもしれないので、取り外しを反映したと知らされるまで保つ。対応の変更はまれなので、
+    // 増え方は小さい。
+    std::vector<std::unique_ptr<StreamTable>> tables;
+    std::vector<std::shared_ptr<PlayoutSource>> retired;
+    // この接続がつないでいるストリップと、つないだジッターバッファ。
+    std::map<std::string, PlayoutSource*, std::less<>> attached;
+    // session が承認した（admit() が呼ばれた）。
+    bool admitted = false;
+    // on_peer_established() か on_peer_path_failed() を知らせた。
+    bool reported_admission = false;
     // 受信スレッドに取り外しを指示した。on_receive_released() で破棄する。
     bool closing = false;
 };
@@ -155,30 +170,111 @@ void HostPeerLinks::send(session::PeerHandle peer, std::span<const std::uint8_t>
     }
 }
 
-void HostPeerLinks::admit(session::PeerHandle peer, const std::string& strip_id) {
+void HostPeerLinks::admit(session::PeerHandle peer,
+                          const std::vector<session::StreamRoute>& routes) {
     Peer* const found = find(peer);
-    if (found == nullptr) {
+    if (found == nullptr || routes.empty()) {
         return;
     }
-    if (!ports_.mixer.attach_source(strip_id, found->source)) {
-        ports_.logger.log(common::LogLevel::kError,
-                          "子機の受信ストリームをストリップにつなげませんでした");
+    found->admitted = true;
+    const bool connected = apply_routes(*found, routes);
+    if (found->reported_admission) {
+        // 再接続や申告の変更での置き換え。接続はもう確立しているので、失敗は記録だけにする。
+        return;
+    }
+    found->reported_admission = true;
+    if (!connected) {
         defer([&events = ports_.events, peer] { events.on_peer_path_failed(peer); });
         return;
     }
-    if (found->strip && *found->strip != strip_id) {
-        const auto owner = strip_owners_.find(*found->strip);
-        if (owner != strip_owners_.end() && owner->second == peer) {
-            ports_.mixer.detach_source(*found->strip);
-            strip_owners_.erase(owner);
-        }
-    }
-    found->strip = strip_id;
-    strip_owners_[strip_id] = peer;
-    command(ReceiveCommand{.kind = ReceiveCommand::Kind::kAdmit, .peer = &found->receive});
     // ジッターバッファをグラフに組み込み、受信スレッドへの指示を積んでから知らせる。
     // 指示は次のデータグラムの前に反映されるので、以後に届くメディアはストリップへ流れる。
     defer([&events = ports_.events, peer] { events.on_peer_established(peer); });
+}
+
+bool HostPeerLinks::apply_routes(Peer& peer, const std::vector<session::StreamRoute>& routes) {
+    bool connected = true;
+    std::vector<Peer::Stream> next;
+    auto table = std::make_unique<StreamTable>();
+    // ストリップごとに、つなぐジッターバッファ。
+    std::map<std::string, std::shared_ptr<PlayoutSource>, std::less<>> wanted;
+    for (const auto& route : routes) {
+        if (table->count >= table->slots.size()) {
+            // session は申告を kMaxInputStreams 本までに検証しているので、ここには来ない。
+            connected = false;
+            break;
+        }
+        // 同じストリームを同じチャンネル数のまま流し続けるなら、ジッターバッファを作り直さない
+        // （溜めた音を捨てて途切れさせないため）。
+        const auto same = std::find_if(
+            peer.streams.begin(), peer.streams.end(), [&route](const Peer::Stream& stream) {
+                return stream.stream_id == route.stream_id && stream.channels == route.channels;
+            });
+        std::shared_ptr<PlayoutSource> source;
+        if (same != peer.streams.end()) {
+            source = same->source;
+        } else {
+            auto config = playout_;
+            config.channels = route.channels;
+            auto stream = transport::PlayoutStream::create(config);
+            if (!stream) {
+                ports_.logger.log(common::LogLevel::kError,
+                                  "子機のジッターバッファを作れませんでした");
+                connected = false;
+                continue;
+            }
+            source = std::make_shared<PlayoutSource>(std::move(stream).value());
+        }
+        table->slots[table->count++] = StreamTable::Slot{route.stream_id, &source->stream()};
+        wanted[route.strip_id] = source;
+        next.push_back(Peer::Stream{route.stream_id, route.channels, std::move(source)});
+    }
+    // 対応から外れたストリップを先に外し、同じストリップへ別のストリームをつなぎ直せるようにする。
+    std::vector<std::string> stale;
+    for (const auto& [strip, source] : peer.attached) {
+        const auto want = wanted.find(strip);
+        if (want == wanted.end() || want->second.get() != source) {
+            stale.push_back(strip);
+        }
+    }
+    for (const auto& strip : stale) {
+        detach_strip(peer, strip);
+    }
+    for (const auto& [strip, source] : wanted) {
+        if (peer.attached.contains(strip)) {
+            continue;
+        }
+        if (!ports_.mixer.attach_source(strip, source)) {
+            ports_.logger.log(common::LogLevel::kError,
+                              "子機の受信ストリームをストリップにつなげませんでした");
+            connected = false;
+            continue;
+        }
+        peer.attached[strip] = source.get();
+        strip_owners_[strip] = peer.handle;
+    }
+    for (auto& old : peer.streams) {
+        if (std::none_of(next.begin(), next.end(), [&old](const Peer::Stream& stream) {
+                return stream.source == old.source;
+            })) {
+            peer.retired.push_back(std::move(old.source));
+        }
+    }
+    peer.streams = std::move(next);
+    command(ReceiveCommand{
+        .kind = ReceiveCommand::Kind::kAdmit, .peer = &peer.receive, .streams = table.get()});
+    peer.tables.push_back(std::move(table));
+    return connected;
+}
+
+void HostPeerLinks::detach_strip(Peer& peer, const std::string& strip_id) {
+    const auto owner = strip_owners_.find(strip_id);
+    if (owner != strip_owners_.end() && owner->second == peer.handle) {
+        // 再接続では新しい接続が先に同じストリップへつながるので、自分がつないでいるときだけ外す。
+        ports_.mixer.detach_source(strip_id);
+        strip_owners_.erase(owner);
+    }
+    peer.attached.erase(strip_id);
 }
 
 void HostPeerLinks::apply_send_mute(session::PeerHandle peer, bool send_muted,
@@ -214,7 +310,7 @@ void HostPeerLinks::on_control_packet(session::PeerHandle peer,
 }
 
 void HostPeerLinks::on_signal_state(session::PeerHandle peer, transport::SignalState state) {
-    if (Peer* const found = find(peer); found != nullptr && found->strip) {
+    if (Peer* const found = find(peer); found != nullptr && found->admitted) {
         defer([&events = ports_.events, peer, state] {
             events.on_signal_state(peer, to_protocol(state));
         });
@@ -282,13 +378,8 @@ void HostPeerLinks::accept(const network::UdpAddress& from,
     if (!secure) {
         return;
     }
-    auto stream = transport::PlayoutStream::create(playout_);
-    if (!stream) {
-        ports_.logger.log(common::LogLevel::kError, "子機のジッターバッファを作れませんでした");
-        return;
-    }
     for (auto& [handle, peer] : peers_) {
-        if (!peer->closing && !peer->strip && peer->address == from) {
+        if (!peer->closing && !peer->admitted && peer->address == from) {
             // 承認前の接続を同じ送信元が張り直した。戻る先がないので、申請ごと閉じる。
             // 承認済みの接続は、再接続の申請で session が close() するまで残す。ここで閉じたと
             // 知らせると、session は子機が退出したとみなしてストリップを片付けてしまうため。
@@ -297,10 +388,9 @@ void HostPeerLinks::accept(const network::UdpAddress& from,
         }
     }
     const auto handle = next_handle_++;
-    auto source = std::make_shared<PlayoutSource>(std::move(stream).value());
     auto [entry, inserted] = peers_.emplace(
-        handle, std::make_unique<Peer>(*this, handle, from, std::move(secure).value(),
-                                       std::move(source), datagram, std::move(response)));
+        handle, std::make_unique<Peer>(*this, handle, from, std::move(secure).value(), datagram,
+                                       std::move(response)));
     Peer& peer = *entry->second;
     command(ReceiveCommand{.kind = ReceiveCommand::Kind::kAttach, .peer = &peer.receive});
     static_cast<void>(ports_.endpoint.send_to(from, peer.response));
@@ -310,12 +400,12 @@ void HostPeerLinks::accept(const network::UdpAddress& from,
 
 void HostPeerLinks::begin_close(Peer& peer) {
     peer.closing = true;
-    if (peer.strip) {
-        const auto owner = strip_owners_.find(*peer.strip);
-        if (owner != strip_owners_.end() && owner->second == peer.handle) {
-            ports_.mixer.detach_source(*peer.strip);
-            strip_owners_.erase(owner);
-        }
+    std::vector<std::string> strips;
+    for (const auto& [strip, source] : peer.attached) {
+        strips.push_back(strip);
+    }
+    for (const auto& strip : strips) {
+        detach_strip(peer, strip);
     }
     command(ReceiveCommand{.kind = ReceiveCommand::Kind::kDetach, .peer = &peer.receive});
 }

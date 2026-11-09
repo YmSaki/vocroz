@@ -94,6 +94,66 @@ GraphDescription main_and_cue(std::shared_ptr<AudioSource> source) {
     return graph;
 }
 
+// ステレオのソース → ステレオのストリップ（手動ディレイ付き）→ バス → 出力。
+GraphDescription stereo_chain(std::size_t delay_samples) {
+    GraphDescription graph;
+    graph.nodes = {NodeSpec::make_source(NodeId{1}, std::make_shared<FakeAudioSource>(
+                                                        FakeAudioSource::stereo(0.25F, -0.5F))),
+                   NodeSpec::make_strip(NodeId{2}, FaderId{0}, MeterId{0}, delay_samples, 2),
+                   NodeSpec::make_bus(NodeId{3}, FaderId{1}, std::nullopt),
+                   NodeSpec::make_output(NodeId{4}, std::nullopt)};
+    graph.connections = {{NodeId{1}, NodeId{2}}, {NodeId{2}, NodeId{3}}, {NodeId{3}, NodeId{4}}};
+    return graph;
+}
+
+TEST(RenderGraphTest, StereoStripKeepsLeftAndRightSeparate) {
+    auto graph = RenderGraph::build(stereo_chain(0), kCapacity, kCapacity);
+    ASSERT_TRUE(graph.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1});
+    (void)graph.value()->process(kBlockSize, faders, meters);
+    const auto out = graph.value()->process(kBlockSize, faders, meters);
+    ASSERT_EQ(out.size(), 1U);
+    EXPECT_FLOAT_EQ(out[0].left[kBlockSize - 1], 0.25F);
+    EXPECT_FLOAT_EQ(out[0].right[kBlockSize - 1], -0.5F);
+}
+
+TEST(RenderGraphTest, StereoStripDelaysBothChannels) {
+    constexpr std::size_t kDelay = 10;
+    auto graph = RenderGraph::build(stereo_chain(kDelay), kCapacity, kCapacity);
+    ASSERT_TRUE(graph.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1});
+    const auto out = graph.value()->process(kBlockSize, faders, meters);
+    ASSERT_EQ(out.size(), 1U);
+    EXPECT_FLOAT_EQ(out[0].left[kDelay - 1], 0.0F);
+    EXPECT_FLOAT_EQ(out[0].right[kDelay - 1], 0.0F);
+    EXPECT_NE(out[0].left[kBlockSize - 1], 0.0F);
+    EXPECT_NE(out[0].right[kBlockSize - 1], 0.0F);
+}
+
+TEST(RenderGraphTest, RejectsStereoSourceIntoMonoStrip) {
+    GraphDescription graph = stereo_chain(0);
+    graph.nodes[1] = NodeSpec::make_strip(NodeId{2}, FaderId{0}, MeterId{0});
+    EXPECT_EQ(build_error(graph), GraphError::kChannelMismatch);
+}
+
+TEST(RenderGraphTest, MonoSourceFeedsBothChannelsOfStereoStrip) {
+    GraphDescription graph = simple_chain(0.25F);
+    graph.nodes[2] = NodeSpec::make_strip(NodeId{2}, FaderId{0}, MeterId{0}, 0, 2);
+    auto built = RenderGraph::build(graph, kCapacity, kCapacity);
+    ASSERT_TRUE(built.has_value());
+    FaderBank faders(kCapacity, 1);
+    MeterBank meters(kCapacity);
+    unmute_all(faders, {0, 1});
+    (void)built.value()->process(kBlockSize, faders, meters);
+    const auto out = built.value()->process(kBlockSize, faders, meters);
+    EXPECT_FLOAT_EQ(out[0].left[kBlockSize - 1], 0.25F);
+    EXPECT_FLOAT_EQ(out[0].right[kBlockSize - 1], 0.25F);
+}
+
 TEST(RenderGraphTest, BuildsEmptyGraphWithoutOutput) {
     auto graph = RenderGraph::build({}, 0, 0);
     ASSERT_TRUE(graph.has_value());

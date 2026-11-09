@@ -82,11 +82,25 @@ TEST(FakesTest, SineSourceIsContinuousAcrossPulls) {
     FakeAudioSource joined = FakeAudioSource::sine(1.0F, 1000.0F);
     FakeAudioSource split = FakeAudioSource::sine(1.0F, 1000.0F);
     std::vector<float> whole(100);
-    joined.pull(whole);
+    float* const whole_channels[] = {whole.data()};
+    joined.pull(whole_channels, whole.size());
     std::vector<float> parts(100);
-    split.pull(std::span<float>(parts).first(37));
-    split.pull(std::span<float>(parts).subspan(37));
+    float* const first[] = {parts.data()};
+    float* const rest[] = {parts.data() + 37};
+    split.pull(first, 37);
+    split.pull(rest, parts.size() - 37);
     EXPECT_EQ(whole, parts);
+}
+
+TEST(FakesTest, StereoSourceWritesLeftAndRight) {
+    FakeAudioSource source = FakeAudioSource::stereo(0.25F, -0.5F);
+    EXPECT_EQ(source.channel_count(), 2U);
+    std::vector<float> left(16);
+    std::vector<float> right(16);
+    float* const channels[] = {left.data(), right.data()};
+    source.pull(channels, left.size());
+    EXPECT_EQ(left, std::vector<float>(16, 0.25F));
+    EXPECT_EQ(right, std::vector<float>(16, -0.5F));
 }
 
 TEST(FakesTest, DeviceCatalogReturnsDevicesPerDirection) {
