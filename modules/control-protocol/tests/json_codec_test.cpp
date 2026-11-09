@@ -249,6 +249,19 @@ TEST(JsonCodecTest, RejectsInviteAndDeviceIdOutOfRange) {
                                    {"expected_revision", 1},
                                    {"device_id", ""}};
     EXPECT_EQ(ui_error(select), (DecodeError{DecodeErrorCode::kOutOfRange, "device_id"}));
+
+    auto select_output = select;
+    select_output["type"] = "select_output";
+    select_output["entity_id"] = "session";
+    EXPECT_EQ(ui_error(select_output), (DecodeError{DecodeErrorCode::kOutOfRange, "device_id"}));
+}
+
+TEST(JsonCodecTest, DecodesSelectOutputWithNullAsNoOutput) {
+    const auto decoded = decode_ui_to_engine(R"({"type":"select_output","request_id":"r1",
+        "entity_id":"session","expected_revision":2,"device_id":null})");
+    ASSERT_TRUE(decoded);
+    const auto& command = std::get<DiscreteCommand>(decoded.value());
+    EXPECT_EQ(std::get<SelectOutput>(command.body).device_id, std::nullopt);
 }
 
 TEST(JsonCodecTest, RejectsInvalidEngineMessages) {
@@ -258,9 +271,21 @@ TEST(JsonCodecTest, RejectsInvalidEngineMessages) {
                               {"short_id", "#01"},       {"connection_state", "PENDING"},
                               {"signal_state", nullptr}, {"send_muted", true},
                               {"channel_muted", true},   {"gain_db", 0.0},
-                              {"error_code", nullptr}};
+                              {"error_code", nullptr},   {"source_kind", "MICROPHONE"},
+                              {"channel_count", 1},      {"source_number", 1}};
     EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
               (DecodeError{DecodeErrorCode::kOutOfRange, "channel.connection_state"}));
+
+    // 入力のチャンネル数はモノラルかステレオだけ。
+    channel["connection_state"] = "CONNECTED";
+    channel["channel_count"] = 3;
+    EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "channel.channel_count"}));
+    channel["channel_count"] = 1;
+    channel["source_number"] = 0;
+    EXPECT_EQ(engine_error({{"type", "channel_updated"}, {"channel", channel}}),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "channel.source_number"}));
+    channel["source_number"] = 1;
 
     channel["connection_state"] = "CONNECTED";
     channel["signal_state"] = "LIVE";  // v1.1 以前の旧名称は受け付けない

@@ -27,6 +27,15 @@ using Sequence = std::uint64_t;
 /// -∞ dB は音量値であり、ミュートとは別に扱う。
 using GainDb = std::optional<double>;
 
+/// 親機で選べる出力デバイス。
+struct OutputDevice {
+    /// デバイス固有の永続 ID（エンドポイント ID）。
+    std::string id;
+    std::string name;
+
+    friend bool operator==(const OutputDevice&, const OutputDevice&) = default;
+};
+
 /// 親機のセッション全体の状態。ステータス帯に表示する。
 struct SessionInfo {
     std::string entity_id;
@@ -41,6 +50,11 @@ struct SessionInfo {
     OutputDeviceState output_device_state = OutputDeviceState::kNone;
     /// OPEN のときのデバイス名。
     std::optional<std::string> output_device_name;
+    /// 選択中の出力デバイスの ID。NONE では std::nullopt。LOST では抜けたデバイスの ID を残す
+    /// （挿し直したデバイスを選び直しやすくするため）。
+    std::optional<std::string> output_device_id;
+    /// 選べる出力デバイス。UI の接続時と、選択や抜去のときにエンジンが列挙し直す。
+    std::vector<OutputDevice> output_devices;
     /// 利用可能な更新のバージョン。なければ std::nullopt。
     std::optional<std::string> update_available;
 
@@ -67,6 +81,12 @@ struct ChannelStrip {
     GainDb gain_db = 0.0;
     /// FAILED のときの原因。
     std::optional<ErrorCode> error_code;
+    /// 子機の入力の種類。1 台の子機の入力ごとに 1 本のストリップになる。
+    InputSourceKind source_kind = InputSourceKind::kMicrophone;
+    /// 入力のチャンネル数（1 か 2）。2 はステレオのストリップ。
+    std::uint8_t channel_count = 1;
+    /// 同じ子機の同じ種類の入力の中での番号（1 から）。「マイク 2」のような表示に使う。
+    std::uint8_t source_number = 1;
 
     friend bool operator==(const ChannelStrip&, const ChannelStrip&) = default;
 };

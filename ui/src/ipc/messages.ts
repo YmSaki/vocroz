@@ -58,13 +58,17 @@ export type ErrorCode =
   | "REVISION_CONFLICT"
   | "NOT_FOUND"
   | "INVALID_STATE"
-  | "ENGINE_ERROR";
+  | "ENGINE_ERROR"
+  | "DEVICE_UNAVAILABLE";
 
 /** ルーティングのバスの種類。処理は同じで、表示と既定の送り方だけが違う。 */
 export type BusKind = "USER" | "CUE";
 
 /** センドを取り出す位置。PRE_FADER は送り元のフェーダーとミュートの前で、センドのミュートでだけ止まる。 */
 export type SendTap = "POST_FADER" | "PRE_FADER";
+
+/** 子機の入力の種類。MICROPHONE は入力デバイス、APP_AUDIO は PC 内のアプリ音声。 */
+export type InputSourceKind = "MICROPHONE" | "APP_AUDIO";
 
 /** ステージングしたルーティングを適用できない理由。 */
 export type RoutingIssue =
@@ -83,6 +87,13 @@ export type RoutingIssue =
 // 親機モードの状態
 // ---------------------------------------------------------------------------
 
+/** 親機で選べる出力デバイス。 */
+export interface OutputDevice {
+  /** デバイス固有の永続 ID（エンドポイント ID）。 */
+  id: string;
+  name: string;
+}
+
 /** 親機のセッション全体の状態。ステータス帯に表示する。 */
 export interface SessionInfo {
   entity_id: string;
@@ -96,6 +107,10 @@ export interface SessionInfo {
   output_device_state: OutputDeviceState;
   /** OPEN のときのデバイス名。 */
   output_device_name: string | null;
+  /** 選択中の出力デバイスの ID。NONE では null。LOST では抜けたデバイスの ID を残す。 */
+  output_device_id: string | null;
+  /** 選べる出力デバイス。UI の接続時と、選択や抜去のときにエンジンが列挙し直す。 */
+  output_devices: OutputDevice[];
   /** 利用可能な更新のバージョン。なければ null。 */
   update_available: string | null;
 }
@@ -118,6 +133,12 @@ export interface ChannelStrip {
   gain_db: GainDb;
   /** FAILED のときの原因コード。 */
   error_code: ErrorCode | null;
+  /** 子機の入力の種類。1 台の子機の入力ごとに 1 本のストリップになる。 */
+  source_kind: InputSourceKind;
+  /** 入力のチャンネル数（1 か 2）。 */
+  channel_count: number;
+  /** 同じ子機の同じ種類の入力の中での番号（1 から）。 */
+  source_number: number;
 }
 
 /** Master ストリップの状態。 */
@@ -286,7 +307,8 @@ export type DiscreteCommandBody =
   | { type: "stage_routing"; config: RoutingConfig }
   | { type: "commit_routing"; approve_feedback: boolean }
   | { type: "discard_routing" }
-  | { type: "set_route_mute"; muted: boolean };
+  | { type: "set_route_mute"; muted: boolean }
+  | { type: "select_output"; device_id: string | null };
 
 /** 離散コマンド。 */
 export type DiscreteCommand = DiscreteCommandBase & DiscreteCommandBody;

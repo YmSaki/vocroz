@@ -98,8 +98,14 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
 
     // ストリップと、ストリップから Master への暗黙の結線。
     for (const auto& strip : assignments.strips) {
-        const auto node = writer.add(ac::NodeSpec::make_strip(
-            ac::NodeId{}, strip.fader, strip.meter, input_delay_of(config, strip.strip_id)));
+        // ストリップのチャンネル数は受信ストリームに合わせる。子機のステレオの入力を 1 本の
+        // ストリップで左右を保ったまま Master
+        // へ送るため（docs/adr/0035-client-input-expansion.md）。
+        // ストリームがまだなければモノラルで置く（無音なので違いはない）。
+        const std::size_t channels = strip.source ? strip.source->channel_count() : 1;
+        const auto node =
+            writer.add(ac::NodeSpec::make_strip(ac::NodeId{}, strip.fader, strip.meter,
+                                                input_delay_of(config, strip.strip_id), channels));
         if (strip.source) {
             const auto source = writer.add(ac::NodeSpec::make_source(ac::NodeId{}, strip.source));
             writer.connect(source, node);

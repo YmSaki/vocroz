@@ -16,6 +16,16 @@ namespace {
 // 無名名前空間の write_json() が公開の write_json() を隠さないようにする。
 using wire::write_json;
 
+// 1 以上 max 以下の小さな整数（チャンネル数、入力の番号）を読む。
+std::uint8_t small_count(ObjectReader& r, std::string_view key, std::size_t max) {
+    const std::uint64_t value = r.counter(key);
+    if (value < 1 || value > max) {
+        r.fail(DecodeErrorCode::kOutOfRange, key);
+        return 1;
+    }
+    return static_cast<std::uint8_t>(value);
+}
+
 // ルーティングの構成の要素は構成の中でだけ使うので、公開せずにここで変換する。
 
 nlohmann::json write_json(const RoutingBus& bus) {
@@ -168,6 +178,22 @@ nlohmann::json write_array(const std::vector<T>& items) {
 
 }  // namespace
 
+nlohmann::json write_json(const OutputDevice& device) {
+    return {
+        {"id", device.id},
+        {"name", device.name},
+    };
+}
+
+common::Result<OutputDevice, DecodeError> read_output_device(const nlohmann::json& value) {
+    return read_object<OutputDevice>(value, [](ObjectReader& r) {
+        OutputDevice device;
+        device.id = r.text("id", kDeviceIdRule);
+        device.name = r.text("name", kTextRule);
+        return device;
+    });
+}
+
 nlohmann::json write_json(const SessionInfo& session) {
     return {
         {"entity_id", session.entity_id},
@@ -178,6 +204,8 @@ nlohmann::json write_json(const SessionInfo& session) {
         {"invite_url", nullable(session.invite_url)},
         {"output_device_state", enum_json(session.output_device_state)},
         {"output_device_name", nullable(session.output_device_name)},
+        {"output_device_id", nullable(session.output_device_id)},
+        {"output_devices", write_array(session.output_devices)},
         {"update_available", nullable(session.update_available)},
     };
 }
@@ -193,6 +221,8 @@ common::Result<SessionInfo, DecodeError> read_session_info(const nlohmann::json&
         session.invite_url = r.nullable_text("invite_url", kUrlRule);
         session.output_device_state = r.enumeration<OutputDeviceState>("output_device_state");
         session.output_device_name = r.nullable_text("output_device_name", kTextRule);
+        session.output_device_id = r.nullable_text("output_device_id", kDeviceIdRule);
+        session.output_devices = r.list<OutputDevice>("output_devices", read_output_device);
         session.update_available = r.nullable_text("update_available", kTextRule);
         return session;
     });
@@ -211,6 +241,9 @@ nlohmann::json write_json(const ChannelStrip& channel) {
         {"channel_muted", channel.channel_muted},
         {"gain_db", nullable(channel.gain_db)},
         {"error_code", enum_json(channel.error_code)},
+        {"source_kind", enum_json(channel.source_kind)},
+        {"channel_count", channel.channel_count},
+        {"source_number", channel.source_number},
     };
 }
 
@@ -232,6 +265,9 @@ common::Result<ChannelStrip, DecodeError> read_channel_strip(const nlohmann::jso
         channel.channel_muted = r.boolean("channel_muted");
         channel.gain_db = r.gain("gain_db");
         channel.error_code = r.nullable_enumeration<ErrorCode>("error_code");
+        channel.source_kind = r.enumeration<InputSourceKind>("source_kind");
+        channel.channel_count = small_count(r, "channel_count", kMaxInputChannels);
+        channel.source_number = small_count(r, "source_number", kMaxInputStreams);
         return channel;
     });
 }

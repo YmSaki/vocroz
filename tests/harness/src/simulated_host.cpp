@@ -131,12 +131,14 @@ SimulatedHost::SimulatedHost(const common::Clock& clock, netsim::SimulatedNetwor
     session::HostSession::Config config;
     std::copy(keys_.public_key().begin(), keys_.public_key().end(), config.host_public_key.begin());
     config.invite_base_url = "https://vocroz.test";
-    session_ = std::make_unique<session::HostSession>(
-        std::move(config), session::HostSession::Ports{ui_, mixer_, *this, rendezvous_, settings_,
-                                                       random_, clock_, logger_});
-    session_->start();
     // 出力デバイスは常に開いているものとする（デバイスの抜去は session の単体テストで確かめる）。
-    session_->on_output_device_opened("harness-output", "Harness output");
+    // 保存した出力デバイスとして渡し、start() で開かせる。
+    outputs_.add("harness-output", "Harness output");
+    settings_.host() = session::HostSettings{.output_device_id = "harness-output"};
+    session_ = std::make_unique<session::HostSession>(
+        std::move(config), session::HostSession::Ports{ui_, mixer_, outputs_, *this, rendezvous_,
+                                                       settings_, random_, clock_, logger_});
+    session_->start();
     network_.attach(
         address_, [this](const netsim::NodeAddress& from, std::span<const std::uint8_t> datagram) {
             on_datagram(from, datagram);
@@ -221,15 +223,21 @@ void SimulatedHost::send(session::PeerHandle peer, std::span<const std::uint8_t>
     }
 }
 
-void SimulatedHost::admit(session::PeerHandle peer, const std::string& strip_id) {
+void SimulatedHost::admit(session::PeerHandle peer,
+                          const std::vector<session::StreamRoute>& routes) {
     Peer* const found = find(peer);
-    if (found == nullptr) {
+    if (found == nullptr || routes.empty()) {
         return;
     }
-    found->strip = strip_id;
-    // 製品では再生側の準備（ミキサーへの組み込み）が済んでから知らせる。ここでは次の step()
-    // で知らせる。
-    defer([this, peer] { session_->on_peer_established(peer); });
+    // この試験基盤の子機はモノラルのマイク 1 本（ストリーム 0）だけを送るので、1
+    // 本目の対応だけを使う。
+    const bool first_admission = !found->strip;
+    found->strip = routes.front().strip_id;
+    if (first_admission) {
+        // 製品では再生側の準備（ミキサーへの組み込み）が済んでから知らせる。ここでは次の step()
+        // で知らせる。
+        defer([this, peer] { session_->on_peer_established(peer); });
+    }
 }
 
 void SimulatedHost::apply_send_mute(session::PeerHandle peer, bool send_muted,

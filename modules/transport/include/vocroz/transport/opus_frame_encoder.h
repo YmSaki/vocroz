@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // 子機の送信側で、1 フレームの PCM を Opus のペイロードにエンコードする。
-// 48kHz モノラル、OPUS_APPLICATION_RESTRICTED_LOWDELAY、
+// 48kHz、OPUS_APPLICATION_RESTRICTED_LOWDELAY、
 // DTX なしの設定を 1 か所で固定する（docs/adr/0002-opus-low-delay.md）。
+// チャンネル数はモノラルかステレオ（docs/adr/0035-client-input-expansion.md）。
 // libopus の型は公開ヘッダーに出さない。
 #pragma once
 
@@ -31,6 +32,8 @@ struct OpusEncoderConfig {
     /// 2.5〜5ms の短いフレームでは CELT のフレームあたりのオーバーヘッドが大きいので、
     /// 楽器の音質を保てるよう高めの値を既定にする。
     std::int32_t bitrate_bps = 128000;
+    /// チャンネル数（1 か 2）。ステレオは kStereoBitrateBps を目安にビットレートを上げる。
+    std::size_t channels = 1;
 };
 
 /// 1 フレームずつエンコードする Opus のエンコーダー。
@@ -41,7 +44,8 @@ class OpusFrameEncoder {
 public:
     /// エンコーダーを生成して設定する。
     /// @param config 設定
-    /// @return 生成したエンコーダー。libopus が生成か設定を拒否したら CodecError::kCreateFailed
+    /// @return 生成したエンコーダー。チャンネル数が 1 と 2 以外か、libopus が生成か設定を
+    /// 拒否したら CodecError::kCreateFailed
     [[nodiscard]] static common::Result<OpusFrameEncoder, CodecError> create(
         const OpusEncoderConfig& config) noexcept;
 
@@ -52,7 +56,8 @@ public:
     ~OpusFrameEncoder();
 
     /// 1 フレームの PCM をエンコードする。
-    /// @param pcm 1 フレーム分（frame_samples() 個）の Float32 PCM。範囲は -1.0〜1.0
+    /// @param pcm 1 フレーム分（frame_samples() × channels() 個）の Float32 PCM。範囲は -1.0〜1.0。
+    /// ステレオは L、R の順にインターリーブする
     /// @param out ペイロードの書き込み先。kMaxOpusPayloadBytes を超える部分は使わない
     /// @return 書き込んだバイト数。pcm の長さが違えば kInvalidFrameSize、
     /// エンコードに失敗したら kEncodeFailed
@@ -60,9 +65,14 @@ public:
     [[nodiscard]] common::Result<std::size_t, CodecError> encode(
         std::span<const float> pcm, std::span<std::uint8_t> out) noexcept VOCROZ_NONBLOCKING;
 
-    /// 1 フレームのサンプル数を返す。
+    /// 1 フレームの 1 チャンネルあたりのサンプル数を返す。
     [[nodiscard]] std::size_t frame_samples() const noexcept {
         return frame_samples_;
+    }
+
+    /// チャンネル数（1 か 2）を返す。
+    [[nodiscard]] std::size_t channels() const noexcept {
+        return channels_;
     }
 
     /// エンコーダーのアルゴリズム遅延（先読み）をサンプル数で返す。
@@ -79,11 +89,12 @@ private:
     };
     using Handle = std::unique_ptr<::OpusEncoder, Deleter>;
 
-    OpusFrameEncoder(Handle encoder, std::size_t frame_samples,
+    OpusFrameEncoder(Handle encoder, std::size_t frame_samples, std::size_t channels,
                      std::size_t lookahead_samples) noexcept;
 
     Handle encoder_;
     std::size_t frame_samples_;
+    std::size_t channels_;
     std::size_t lookahead_samples_;
 };
 

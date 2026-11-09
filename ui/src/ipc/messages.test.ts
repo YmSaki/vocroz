@@ -23,6 +23,7 @@ import type {
   MasterMuteReason,
   MasterStrip,
   BusKind,
+  InputSourceKind,
   MixerSnapshot,
   OutputDeviceState,
   PendingParticipant,
@@ -77,6 +78,7 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
   join: keysOf<UiMessageOf<"join">>({ ...kDiscreteKeys, invite: true }),
   leave: keysOf<UiMessageOf<"leave">>(kDiscreteKeys),
   select_input: keysOf<UiMessageOf<"select_input">>({ ...kDiscreteKeys, device_id: true }),
+  select_output: keysOf<UiMessageOf<"select_output">>({ ...kDiscreteKeys, device_id: true }),
   set_send_mute: keysOf<UiMessageOf<"set_send_mute">>({ ...kDiscreteKeys, muted: true }),
   stage_routing: keysOf<UiMessageOf<"stage_routing">>({ ...kDiscreteKeys, config: true }),
   commit_routing: keysOf<UiMessageOf<"commit_routing">>({
@@ -125,6 +127,8 @@ const kSessionKeys = keysOf<SessionInfo>({
   invite_url: true,
   output_device_state: true,
   output_device_name: true,
+  output_device_id: true,
+  output_devices: true,
   update_available: true,
 });
 const kChannelKeys = keysOf<ChannelStrip>({
@@ -139,6 +143,9 @@ const kChannelKeys = keysOf<ChannelStrip>({
   channel_muted: true,
   gain_db: true,
   error_code: true,
+  source_kind: true,
+  channel_count: true,
+  source_number: true,
 });
 const kMasterKeys = keysOf<MasterStrip>({
   entity_id: true,
@@ -257,9 +264,11 @@ const kErrorCodes: Record<ErrorCode, true> = {
   NOT_FOUND: true,
   INVALID_STATE: true,
   ENGINE_ERROR: true,
+  DEVICE_UNAVAILABLE: true,
 };
 
 const kBusKinds: Record<BusKind, true> = { USER: true, CUE: true };
+const kInputSourceKinds: Record<InputSourceKind, true> = { MICROPHONE: true, APP_AUDIO: true };
 const kSendTaps: Record<SendTap, true> = { POST_FADER: true, PRE_FADER: true };
 const kRoutingIssues: Record<RoutingIssue, true> = {
   INVALID_ID: true,
@@ -308,6 +317,7 @@ function checkChannel(channel: ChannelStrip, seen: Seen): void {
   seen.add(kConnectionStates, channel.connection_state);
   seen.add(kSignalStates, channel.signal_state);
   seen.add(kErrorCodes, channel.error_code);
+  seen.add(kInputSourceKinds, channel.source_kind);
 }
 
 function checkMaster(master: MasterStrip, seen: Seen): void {
@@ -439,6 +449,7 @@ describe("messages", () => {
       kBusKinds,
       kSendTaps,
       kRoutingIssues,
+      kInputSourceKinds,
     ]) {
       expect(seen.coversAll(table)).toBe(true);
     }

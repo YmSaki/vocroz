@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // 入力チャンネルストリップ 1 本。
-// 参加者名、短い識別 ID、状態欄、ミュートの表示（子機側と親機側を区別）、メーター、フェーダー、
+// 参加者名、短い識別 ID、入力の種類（2 本目以降の入力とステレオのとき）、状態欄、ミュートの表示（子機側と親機側を区別）、メーター、フェーダー、
 // MUTE と SEL を常に表示する（ホバーしないと見えない操作は置かない）。
 
 import { Fader } from "../../components/fader/Fader";
@@ -12,6 +12,7 @@ import { PlannedButton } from "../../components/planned-button/PlannedButton";
 import { t } from "../../i18n/i18n";
 import type { ChannelStrip, GainDb } from "../../ipc/messages";
 import { errorText } from "../shared/feedback";
+import { stripInputLabel } from "./strip-input";
 import { stripStatus } from "./strip-status";
 
 /** チャンネルストリップの props。 */
@@ -49,10 +50,14 @@ export function ChannelStripView({
   const status = stripStatus(channel);
   // 原因コードはストリップの幅に収まらないので、ツールチップで説明する。
   const statusText = status.key === null ? "" : t(status.key);
+  const inputLabel = stripInputLabel(channel);
   return (
     <section
       class={`strip${selected ? " strip--selected" : ""}`}
-      aria-label={t("mixer.strip_label", { name: channel.name })}
+      // 同じ子機の入力は名前が同じなので、読み上げでも入力の種類で見分けられるようにする。
+      aria-label={t("mixer.strip_label", {
+        name: inputLabel === "" ? channel.name : `${channel.name} ${inputLabel}`,
+      })}
       data-entity-id={channel.entity_id}
     >
       <header class="strip__header">
@@ -60,6 +65,11 @@ export function ChannelStripView({
           {channel.name}
         </div>
         <div class="strip__id">{channel.short_id}</div>
+        {inputLabel !== "" && (
+          <div class="strip__input" title={inputLabel}>
+            {inputLabel}
+          </div>
+        )}
       </header>
       <div
         class={`strip__status${status.warning ? " strip__status--warning" : ""}`}

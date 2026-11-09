@@ -5,10 +5,13 @@
 // 溜めている間は無音を出し、深さが目標に達したら最も古いフレームから再生を始めてフェードインする。
 // 再生中にフレームが途絶えたら PLC で補い、上限（40ms）を超えたらフェードアウトして無音にし、
 // 溜め直す。
+// ステレオのストリームは、インターリーブでデコードしてからチャンネルごとのリサンプラーに分ける。
+// 2 つのリサンプラーには同じ長さを積み、同じ変換比で取り出すので、左右の位置はずれない。
 
 #include "vocroz/transport/playout_stream.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <limits>
 #include <vector>
@@ -54,13 +57,23 @@ struct PlayoutStream::Impl {
     Impl(std::size_t frame_samples, std::size_t min_delay, std::size_t max_delay,
          OpusFrameDecoder decoder)
         : frame_samples(frame_samples),
+          channels(decoder.channels()),
           min_delay(min_delay),
           max_delay(max_delay),
           target(min_delay),
           jitter(frame_samples, max_delay / frame_samples * kCapacityPerMaxDelay + 1),
-          resampler(frame_samples),
           decoder(std::move(decoder)),
-          frame_buffer(frame_samples) {}
+          interleaved(frame_samples * channels) {
+        for (std::size_t ch = 0; ch < channels; ++ch) {
+            resamplers.emplace_back(frame_samples);
+            frame_buffers.emplace_back(frame_samples);
+        }
+    }
+
+    // チャンネルごとの書き込み先。使うのは先頭の channels 個。
+    using Outputs = std::array<std::span<float>, kMaxStreamChannels>;
+
+    void render(const Outputs& outs, std::size_t frames) noexcept VOCROZ_NONBLOCKING;
 
     void drain() noexcept VOCROZ_NONBLOCKING;
     void accept(const MediaFrame& frame) noexcept VOCROZ_NONBLOCKING;
@@ -71,22 +84,32 @@ struct PlayoutStream::Impl {
     // 無音に切り替えたら false。
     bool decode_next() noexcept VOCROZ_NONBLOCKING;
     bool conceal_next() noexcept VOCROZ_NONBLOCKING;
-    void apply_fade_in(std::span<float> block) noexcept VOCROZ_NONBLOCKING;
+    // インターリーブの PCM をチャンネルごとに分ける。
+    void deinterleave() noexcept VOCROZ_NONBLOCKING;
+    void push_frame() noexcept VOCROZ_NONBLOCKING;
+    void reset_resamplers() noexcept VOCROZ_NONBLOCKING;
+    void apply_fade_in(const Outputs& outs, std::size_t offset,
+                       std::size_t count) noexcept VOCROZ_NONBLOCKING;
     void raise_target() noexcept VOCROZ_NONBLOCKING;
     void update_after_render(std::size_t rendered) noexcept VOCROZ_NONBLOCKING;
     [[nodiscard]] double total_depth() const noexcept VOCROZ_NONBLOCKING;
 
     const std::size_t frame_samples;
+    const std::size_t channels;
     const std::size_t min_delay;
     const std::size_t max_delay;
     std::size_t target;
 
     JitterBuffer jitter;
-    DriftResampler resampler;
+    // チャンネルごとのリサンプラー。
+    std::vector<DriftResampler> resamplers;
     DriftController controller;
     OpusFrameDecoder decoder;
     common::SpscQueue<MediaFrame, kInboundQueueCapacity> queue;
-    std::vector<float> frame_buffer;
+    // デコードしたインターリーブの 1 フレーム。
+    std::vector<float> interleaved;
+    // チャンネルごとの 1 フレーム。
+    std::vector<std::vector<float>> frame_buffers;
 
     Mode mode = Mode::kBuffering;
     // 現在の区間のミュートの世代番号。
@@ -153,7 +176,7 @@ void PlayoutStream::Impl::begin_segment(std::uint32_t epoch) noexcept VOCROZ_NON
     segment_epoch = epoch;
     jitter.reset();
     decoder.reset();
-    resampler.reset();
+    reset_resamplers();
     controller.restart();
     mode = Mode::kBuffering;
     ++stats.segments;
@@ -162,7 +185,7 @@ void PlayoutStream::Impl::begin_segment(std::uint32_t epoch) noexcept VOCROZ_NON
 void PlayoutStream::Impl::start_playout() noexcept VOCROZ_NONBLOCKING {
     jitter.start();
     stats.frames_dropped_overflow += jitter.drop_until(target);
-    resampler.reset();
+    reset_resamplers();
     controller.restart();
     concealed = 0;
     fade_in_remaining = kFadeInSamples;
@@ -174,7 +197,7 @@ void PlayoutStream::Impl::start_playout() noexcept VOCROZ_NONBLOCKING {
 void PlayoutStream::Impl::enter_rebuffer() noexcept VOCROZ_NONBLOCKING {
     jitter.rebuffer();
     decoder.reset();
-    resampler.reset();
+    reset_resamplers();
     mode = Mode::kBuffering;
     ++stats.rebuffers;
 }
@@ -183,11 +206,12 @@ bool PlayoutStream::Impl::decode_next() noexcept VOCROZ_NONBLOCKING {
     const PopResult popped = jitter.pop();
     switch (popped.kind) {
         case PopKind::kFrame: {
-            const auto decoded = decoder.decode(popped.frame->payload_bytes(), frame_buffer);
+            const auto decoded = decoder.decode(popped.frame->payload_bytes(), interleaved);
             if (decoded && decoded.value() == frame_samples) {
                 concealed = 0;
                 ++stats.frames_decoded;
-                static_cast<void>(resampler.push(frame_buffer));
+                deinterleave();
+                push_frame();
                 return true;
             }
             // 壊れたパケットや、設定と違うフレーム長のパケットは欠損として扱う。
@@ -208,36 +232,97 @@ bool PlayoutStream::Impl::conceal_next() noexcept VOCROZ_NONBLOCKING {
         enter_rebuffer();
         return false;
     }
-    if (!decoder.conceal(frame_buffer)) {
-        std::ranges::fill(frame_buffer, 0.0F);
+    if (!decoder.conceal(interleaved)) {
+        std::ranges::fill(interleaved, 0.0F);
     }
+    deinterleave();
     // PLC の上限の手前で無音までフェードアウトする。
     // 単発の欠損（上限よりずっと短い）には影響しない。
     const std::size_t fade_start = kMaxConcealmentSamples - kConcealmentFadeSamples;
-    for (std::size_t i = 0; i < frame_buffer.size(); ++i) {
-        const std::size_t position = concealed + i;
-        if (position >= kMaxConcealmentSamples) {
-            frame_buffer[i] = 0.0F;
-        } else if (position >= fade_start) {
-            const auto remaining = static_cast<float>(kMaxConcealmentSamples - position);
-            frame_buffer[i] *= remaining / static_cast<float>(kConcealmentFadeSamples);
+    for (auto& buffer : frame_buffers) {
+        for (std::size_t i = 0; i < buffer.size(); ++i) {
+            const std::size_t position = concealed + i;
+            if (position >= kMaxConcealmentSamples) {
+                buffer[i] = 0.0F;
+            } else if (position >= fade_start) {
+                const auto remaining = static_cast<float>(kMaxConcealmentSamples - position);
+                buffer[i] *= remaining / static_cast<float>(kConcealmentFadeSamples);
+            }
         }
     }
     concealed += frame_samples;
     ++stats.frames_concealed;
-    static_cast<void>(resampler.push(frame_buffer));
+    push_frame();
     return true;
 }
 
-void PlayoutStream::Impl::apply_fade_in(std::span<float> block) noexcept VOCROZ_NONBLOCKING {
-    for (float& sample : block) {
+void PlayoutStream::Impl::deinterleave() noexcept VOCROZ_NONBLOCKING {
+    for (std::size_t ch = 0; ch < channels; ++ch) {
+        std::vector<float>& buffer = frame_buffers[ch];
+        for (std::size_t i = 0; i < frame_samples; ++i) {
+            buffer[i] = interleaved[(i * channels) + ch];
+        }
+    }
+}
+
+void PlayoutStream::Impl::push_frame() noexcept VOCROZ_NONBLOCKING {
+    for (std::size_t ch = 0; ch < channels; ++ch) {
+        static_cast<void>(resamplers[ch].push(frame_buffers[ch]));
+    }
+}
+
+void PlayoutStream::Impl::reset_resamplers() noexcept VOCROZ_NONBLOCKING {
+    for (auto& resampler : resamplers) {
+        resampler.reset();
+    }
+}
+
+void PlayoutStream::Impl::apply_fade_in(const Outputs& outs, std::size_t offset,
+                                        std::size_t count) noexcept VOCROZ_NONBLOCKING {
+    for (std::size_t i = offset; i < offset + count; ++i) {
         if (fade_in_remaining == 0) {
             return;
         }
         const auto done = static_cast<float>(kFadeInSamples - fade_in_remaining);
-        sample *= done / static_cast<float>(kFadeInSamples);
+        const float gain = done / static_cast<float>(kFadeInSamples);
+        for (std::size_t ch = 0; ch < channels; ++ch) {
+            outs[ch][i] *= gain;
+        }
         --fade_in_remaining;
     }
+}
+
+void PlayoutStream::Impl::render(const Outputs& outs,
+                                 std::size_t frames) noexcept VOCROZ_NONBLOCKING {
+    drain();
+    std::size_t produced = 0;
+    while (produced < frames) {
+        if (mode == Mode::kBuffering) {
+            if (jitter.stored_frames() == 0 || jitter.depth_samples() < target) {
+                for (std::size_t ch = 0; ch < channels; ++ch) {
+                    std::fill(outs[ch].begin() + static_cast<std::ptrdiff_t>(produced),
+                              outs[ch].end(), 0.0F);
+                }
+                jitter.advance_floor(frames - produced);
+                break;
+            }
+            start_playout();
+        }
+        // どのチャンネルにも同じ長さを積んでいるので、取り出せる長さも同じになる。
+        const std::size_t pulled =
+            resamplers[0].pull(outs[0].subspan(produced), controller.ratio());
+        for (std::size_t ch = 1; ch < channels; ++ch) {
+            static_cast<void>(
+                resamplers[ch].pull(outs[ch].subspan(produced, pulled), controller.ratio()));
+        }
+        apply_fade_in(outs, produced, pulled);
+        produced += pulled;
+        if (produced < frames) {
+            // 溜め直しに入ったら次の周回で無音を埋める。
+            static_cast<void>(decode_next());
+        }
+    }
+    update_after_render(frames);
 }
 
 void PlayoutStream::Impl::raise_target() noexcept VOCROZ_NONBLOCKING {
@@ -268,17 +353,18 @@ void PlayoutStream::Impl::update_after_render(std::size_t rendered) noexcept VOC
 }
 
 double PlayoutStream::Impl::total_depth() const noexcept VOCROZ_NONBLOCKING {
-    return static_cast<double>(jitter.depth_samples()) + resampler.buffered_samples();
+    return static_cast<double>(jitter.depth_samples()) + resamplers[0].buffered_samples();
 }
 
 common::Result<std::unique_ptr<PlayoutStream>, PlayoutError> PlayoutStream::create(
     const PlayoutConfig& config) {
     const std::size_t frame = frame_samples(config.frame_duration);
     if (config.min_delay > config.max_delay || config.max_delay > kLongestMaxDelay ||
-        to_samples(config.min_delay) < frame) {
+        to_samples(config.min_delay) < frame || config.channels == 0 ||
+        config.channels > kMaxStreamChannels) {
         return common::make_unexpected(PlayoutError::kInvalidConfig);
     }
-    auto decoder = OpusFrameDecoder::create();
+    auto decoder = OpusFrameDecoder::create(config.channels);
     if (!decoder) {
         return common::make_unexpected(PlayoutError::kCodecFailed);
     }
@@ -303,28 +389,25 @@ bool PlayoutStream::enqueue(const MediaFrame& frame) noexcept {
 }
 
 void PlayoutStream::render(std::span<float> out) noexcept VOCROZ_NONBLOCKING {
-    Impl& s = *impl_;
-    s.drain();
-    std::size_t produced = 0;
-    while (produced < out.size()) {
-        if (s.mode == Impl::Mode::kBuffering) {
-            if (s.jitter.stored_frames() == 0 || s.jitter.depth_samples() < s.target) {
-                const std::size_t remaining = out.size() - produced;
-                std::fill(out.begin() + static_cast<std::ptrdiff_t>(produced), out.end(), 0.0F);
-                s.jitter.advance_floor(remaining);
-                break;
-            }
-            s.start_playout();
-        }
-        const std::size_t pulled = s.resampler.pull(out.subspan(produced), s.controller.ratio());
-        s.apply_fade_in(out.subspan(produced, pulled));
-        produced += pulled;
-        if (produced < out.size()) {
-            // 溜め直しに入ったら次の周回で無音を埋める。
-            static_cast<void>(s.decode_next());
-        }
+    if (impl_->channels != 1) {
+        std::ranges::fill(out, 0.0F);
+        return;
     }
-    s.update_after_render(out.size());
+    impl_->render({out, {}}, out.size());
+}
+
+void PlayoutStream::render(std::span<float> left,
+                           std::span<float> right) noexcept VOCROZ_NONBLOCKING {
+    if (impl_->channels != 2 || left.size() != right.size()) {
+        std::ranges::fill(left, 0.0F);
+        std::ranges::fill(right, 0.0F);
+        return;
+    }
+    impl_->render({left, right}, left.size());
+}
+
+std::size_t PlayoutStream::channels() const noexcept {
+    return impl_->channels;
 }
 
 PlayoutStats PlayoutStream::stats() const noexcept {

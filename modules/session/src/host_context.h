@@ -64,6 +64,12 @@ struct HostContext {
     /// 接続状態は観測値なので revision は進めない。受け付けないイベントなら false。
     bool advance_connection(Participant& participant, state::ConnectionEvent event);
 
+    /// 参加者のすべてのストリップ（子機のすべての入力）の接続状態を進める。
+    /// 接続状態は子機ごとの値なので、同じ子機のストリップはそろえて進める。
+    /// @param participant 参加者のストリップのどれか
+    /// @return 受け付けたら true。受け付けないイベントなら false
+    bool advance_participant(Participant& participant, state::ConnectionEvent event);
+
     /// CONNECTED か RECONNECTING の参加者の有無で、READY と ACTIVE を切り替える。
     void update_session_activity();
 
@@ -82,6 +88,18 @@ struct HostContext {
     /// REVISION_CONFLICT で拒否できるようにする。
     void mute_master(control_protocol::MasterMuteReason reason);
 
+    /// 開いている出力デバイスを閉じ、出力デバイスを未選択（NONE）にする。
+    void close_output();
+
+    /// 開いている出力デバイスを閉じてから、指定したデバイスを開く。開けたら設定に保存する。
+    /// 開けなければ未選択（NONE）のままにし、保存した設定は変えない。UI には知らせない。
+    /// @param device_id デバイスの永続 ID
+    /// @return 開けたら true
+    bool open_output(const std::string& device_id);
+
+    /// 選べる出力デバイスの一覧を列挙し直す。UI には知らせない。
+    void refresh_output_devices();
+
     /// 設定を保存する。失敗はログに残して続行する。
     void save_settings();
 
@@ -89,7 +107,22 @@ struct HostContext {
     void deny(PeerHandle peer, control_protocol::ErrorCode reason);
 
     /// 参加者と接続の結び付きを解き、接続を閉じる。ストリップと再接続トークンは残す。
+    /// 同じ子機のほかのストリップの結び付きも解く。
     void release_peer(Participant& participant);
+
+    /// 参加者の接続のメディアを受け付け、入力ごとにストリップへ流すよう PeerLink に渡す。
+    /// 入力の申告が変わるたびに呼び、流し込み先の対応を置き換える。
+    /// @param peer           接続
+    /// @param participant_id 参加者
+    void admit_streams(PeerHandle peer, const std::string& participant_id);
+
+    /// 参加者のストリップと、それを参照するミキサーと UI とルーティングを、すべて片付ける。
+    /// @param participant_id 参加者
+    void remove_participant_strips(const std::string& participant_id);
+
+    /// ストリップを 1 本片付ける（ミキサーと UI とルーティングを含む）。
+    /// @param strip_id 片付けるストリップ
+    void remove_strip(const std::string& strip_id);
 
     /// ストリップを削除したあと、そのストリップを参照するルーティングを片付ける。
     /// 適用中の構成が変わったらミキサーへ適用し直し、UI にルーティングを知らせる。

@@ -184,6 +184,20 @@
     "muted": false
   },
   {
+    "type": "select_output",
+    "request_id": "r-24",
+    "entity_id": "session",
+    "expected_revision": 6,
+    "device_id": "{0.0.0.00000000}.{usb-audio}"
+  },
+  {
+    "type": "select_output",
+    "request_id": "r-25",
+    "entity_id": "session",
+    "expected_revision": 7,
+    "device_id": null
+  },
+  {
     "type": "set_gain",
     "entity_id": "send-1",
     "seq": 7,

@@ -17,23 +17,28 @@ void OpusFrameDecoder::Deleter::operator()(::OpusDecoder* decoder) const noexcep
 
 namespace {
 
-constexpr int kChannels = 1;
 // PLC で補間できる長さの単位。
 // Opus のフレーム長の最小値（2.5ms）の整数倍でなければ libopus が拒否する。
 constexpr std::size_t kPlcGranularitySamples = 120;
 
 }  // namespace
 
-common::Result<OpusFrameDecoder, CodecError> OpusFrameDecoder::create() noexcept {
+common::Result<OpusFrameDecoder, CodecError> OpusFrameDecoder::create(
+    std::size_t channels) noexcept {
+    if (channels == 0 || channels > kMaxStreamChannels) {
+        return common::make_unexpected(CodecError::kCreateFailed);
+    }
     int error = OPUS_OK;
-    Handle decoder{opus_decoder_create(static_cast<opus_int32>(kSampleRate), kChannels, &error)};
+    Handle decoder{opus_decoder_create(static_cast<opus_int32>(kSampleRate),
+                                       static_cast<int>(channels), &error)};
     if (error != OPUS_OK || decoder == nullptr) {
         return common::make_unexpected(CodecError::kCreateFailed);
     }
-    return OpusFrameDecoder{std::move(decoder)};
+    return OpusFrameDecoder{std::move(decoder), channels};
 }
 
-OpusFrameDecoder::OpusFrameDecoder(Handle decoder) noexcept : decoder_(std::move(decoder)) {}
+OpusFrameDecoder::OpusFrameDecoder(Handle decoder, std::size_t channels) noexcept
+    : decoder_(std::move(decoder)), channels_(channels) {}
 
 OpusFrameDecoder::OpusFrameDecoder(OpusFrameDecoder&&) noexcept = default;
 OpusFrameDecoder& OpusFrameDecoder::operator=(OpusFrameDecoder&&) noexcept = default;
@@ -46,9 +51,10 @@ common::Result<std::size_t, CodecError> OpusFrameDecoder::decode(
         // 受信したパケットの欠陥として区別する。
         return common::make_unexpected(CodecError::kInvalidPacket);
     }
+    // libopus のフレーム長は 1 チャンネルあたりのサンプル数で渡す。
     const int samples =
         opus_decode_float(decoder_.get(), payload.data(), static_cast<opus_int32>(payload.size()),
-                          out.data(), static_cast<int>(out.size()), 0);
+                          out.data(), static_cast<int>(out.size() / channels_), 0);
     if (samples <= 0) {
         return common::make_unexpected(CodecError::kInvalidPacket);
     }
@@ -57,11 +63,11 @@ common::Result<std::size_t, CodecError> OpusFrameDecoder::decode(
 
 common::Result<std::size_t, CodecError> OpusFrameDecoder::conceal(std::span<float> out) noexcept
     VOCROZ_NONBLOCKING {
-    if (out.empty() || out.size() % kPlcGranularitySamples != 0) {
+    if (out.empty() || out.size() % (kPlcGranularitySamples * channels_) != 0) {
         return common::make_unexpected(CodecError::kInvalidFrameSize);
     }
-    const int samples =
-        opus_decode_float(decoder_.get(), nullptr, 0, out.data(), static_cast<int>(out.size()), 0);
+    const int samples = opus_decode_float(decoder_.get(), nullptr, 0, out.data(),
+                                          static_cast<int>(out.size() / channels_), 0);
     if (samples <= 0) {
         return common::make_unexpected(CodecError::kInvalidPacket);
     }

@@ -6,6 +6,7 @@
 
 #include "vocroz/session/host_session.h"
 
+#include <algorithm>
 #include <chrono>
 #include <optional>
 #include <string>
@@ -16,11 +17,13 @@
 #include "fakes/fake_clock.h"
 #include "fakes/fake_logger.h"
 #include "fakes/fake_mixer_control.h"
+#include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
 #include "fakes/fake_ui_event_sink.h"
+#include "session_constants.h"
 #include "wire/peer_message_codec.h"
 
 namespace vocroz::session {
@@ -41,7 +44,7 @@ protected:
 
     HostSession& session() {
         if (!session_) {
-            session_.emplace(config_, HostSession::Ports{ui_, mixer_, peers_, rendezvous_,
+            session_.emplace(config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_,
                                                          settings_, random_, clock_, logger_});
             session_->start();
         }
@@ -179,6 +182,7 @@ protected:
     HostSession::Config config_;
     FakeUiEventSink ui_;
     FakeMixerControl mixer_;
+    FakeOutputDeviceControl outputs_;
     FakePeerLink peers_;
     FakeRendezvousClient rendezvous_;
     FakeSettingsStore settings_;
@@ -590,17 +594,124 @@ TEST_F(HostSessionTest, MasterFaderIsSavedWithTheSettings) {
     EXPECT_EQ(settings_.host()->master_gain_db, cp::GainDb{-3.0});
 }
 
-// --- 出力デバイスの抜去 ---
+// --- 出力デバイス ---
+
+TEST_F(HostSessionTest, OpensOnlyTheSavedOutputDeviceAtStart) {
+    outputs_.add("dev-1", "スピーカー");
+    outputs_.add("dev-2", "USB Audio");
+    settings_.host() = HostSettings{.output_device_id = "dev-2"};
+
+    const auto s = session().snapshot();
+    EXPECT_EQ(outputs_.opened(), "dev-2");
+    EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kOpen);
+    EXPECT_EQ(s.session.output_device_id, "dev-2");
+    EXPECT_EQ(s.session.output_device_name, "USB Audio");
+    EXPECT_EQ(s.session.output_devices.size(), 2U);
+    // 出力デバイスを開いても、Master はミュートのまま始める。
+    EXPECT_TRUE(mixer_.master_muted());
+}
+
+TEST_F(HostSessionTest, DoesNotFallBackWhenTheSavedOutputDeviceIsGone) {
+    outputs_.add("dev-1", "スピーカー");
+    settings_.host() = HostSettings{.output_device_id = "dev-gone"};
+
+    const auto s = session().snapshot();
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
+    EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kNone);
+    EXPECT_EQ(s.session.output_device_id, std::nullopt);
+    // 次の起動でもまた試せるよう、保存した ID は消さない。
+    EXPECT_EQ(settings_.host()->output_device_id, "dev-gone");
+}
+
+TEST_F(HostSessionTest, SelectOutputOpensTheDeviceAndSavesIt) {
+    outputs_.add("dev-1", "スピーカー");
+    outputs_.add("dev-2", "USB Audio");
+
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-1"}));
+    EXPECT_EQ(outputs_.opened(), "dev-1");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-2"}));
+    EXPECT_EQ(outputs_.opened(), "dev-2");
+    EXPECT_FALSE(outputs_.opened_while_open());
+
+    const auto s = session().snapshot();
+    EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kOpen);
+    EXPECT_EQ(s.session.output_device_name, "USB Audio");
+    EXPECT_EQ(settings_.host()->output_device_id, "dev-2");
+    EXPECT_EQ(ui_.last<cp::SessionUpdated>()->session.output_device_id, "dev-2");
+    // 選んでも Master のミュートは変えない。
+    EXPECT_TRUE(mixer_.master_muted());
+}
+
+TEST_F(HostSessionTest, SelectingTheOpenDeviceAgainKeepsItOpen) {
+    outputs_.add("dev-1", "スピーカー");
+    const auto opened = command("session", cp::SelectOutput{"dev-1"});
+    ASSERT_TRUE(opened);
+    const auto saves = settings_.save_count();
+
+    EXPECT_EQ(command("session", cp::SelectOutput{"dev-1"}), opened);
+    EXPECT_EQ(outputs_.opened(), "dev-1");
+    EXPECT_EQ(settings_.save_count(), saves);
+}
+
+TEST_F(HostSessionTest, SelectOutputRejectsADeviceThatCannotBeOpened) {
+    outputs_.add("dev-1", "スピーカー");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-1"}));
+
+    EXPECT_FALSE(command("session", cp::SelectOutput{"dev-missing"}));
+    EXPECT_EQ(last_reject_, ErrorCode::kDeviceUnavailable);
+    // 前のデバイスは閉じ、ほかのデバイスへは切り替えない。
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
+    const auto s = session().snapshot();
+    EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kNone);
+    EXPECT_EQ(s.session.output_device_id, std::nullopt);
+    EXPECT_EQ(ui_.last<cp::SessionUpdated>()->session.output_device_state,
+              cp::OutputDeviceState::kNone);
+}
+
+TEST_F(HostSessionTest, SelectingNoOutputClosesTheDeviceAndForgetsIt) {
+    outputs_.add("dev-1", "スピーカー");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-1"}));
+
+    ASSERT_TRUE(command("session", cp::SelectOutput{std::nullopt}));
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
+    EXPECT_EQ(session().snapshot().session.output_device_state, cp::OutputDeviceState::kNone);
+    EXPECT_EQ(settings_.host()->output_device_id, std::nullopt);
+}
+
+TEST_F(HostSessionTest, SelectOutputTargetsOnlyTheSessionEntity) {
+    outputs_.add("dev-1", "スピーカー");
+    EXPECT_FALSE(command("master", cp::SelectOutput{"dev-1"}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
+}
+
+TEST_F(HostSessionTest, HelloListsTheOutputDevicesAgain) {
+    session();
+    outputs_.add("dev-new", "挿したデバイス");
+    session().handle_ui_message(cp::Hello{});
+    const auto snapshot = ui_.last<cp::MixerSnapshotEvent>();
+    ASSERT_TRUE(snapshot);
+    const auto& devices = snapshot->snapshot.session.output_devices;
+    ASSERT_EQ(devices.size(), 1U);
+    EXPECT_EQ(devices[0].id, "dev-new");
+}
 
 TEST_F(HostSessionTest, LosingTheOutputDeviceSafetyMutesTheMaster) {
-    session().on_output_device_opened("dev-1", "スピーカー");
+    outputs_.add("dev-1", "スピーカー");
+    outputs_.add("dev-2", "USB Audio");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-1"}));
     ASSERT_TRUE(command("master", cp::SetMasterMute{false}));
     EXPECT_FALSE(mixer_.master_muted());
     const auto stale = revision_of("master");
 
+    outputs_.remove("dev-1");
     session().on_output_device_lost();
     const auto s = session().snapshot();
+    EXPECT_EQ(outputs_.opened(), std::nullopt);
     EXPECT_EQ(s.session.output_device_state, cp::OutputDeviceState::kLost);
+    // 挿し直したデバイスを選び直しやすいよう、ID は残す。
+    EXPECT_EQ(s.session.output_device_id, "dev-1");
+    EXPECT_EQ(s.session.output_devices.size(), 1U);
     EXPECT_TRUE(s.master.master_muted);
     EXPECT_EQ(s.master.master_mute_reason, cp::MasterMuteReason::kSafety);
     EXPECT_TRUE(mixer_.master_muted());
@@ -612,7 +723,8 @@ TEST_F(HostSessionTest, LosingTheOutputDeviceSafetyMutesTheMaster) {
     EXPECT_TRUE(mixer_.master_muted());
 
     // 新しいデバイスを開いても、ミュートはオペレーターが解除するまで続く。
-    session().on_output_device_opened("dev-2", "USB Audio");
+    ASSERT_TRUE(command("session", cp::SelectOutput{"dev-2"}));
+    EXPECT_EQ(outputs_.opened(), "dev-2");
     EXPECT_TRUE(mixer_.master_muted());
     ASSERT_TRUE(command("master", cp::SetMasterMute{false}));
     EXPECT_FALSE(mixer_.master_muted());
@@ -922,6 +1034,149 @@ TEST_F(HostSessionTest, DoesNotRestoreARoutingTheMixerRefuses) {
     const auto routing = session().snapshot().routing;
     EXPECT_EQ(routing.applied, cp::RoutingConfig{});
     EXPECT_FALSE(routing.staged);
+}
+
+// --- 子機の複数の入力（ステレオ、複数入力、アプリ音声） ---
+
+constexpr InputStream kMic{0, cp::InputSourceKind::kMicrophone, 1};
+constexpr InputStream kAppAudio{1, cp::InputSourceKind::kApplicationAudio, 2};
+constexpr InputStream kSecondMic{2, cp::InputSourceKind::kMicrophone, 1};
+
+TEST_F(HostSessionTest, ApprovalCreatesAMutedStripForEveryDeclaredInput) {
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+
+    const auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 2U);
+    EXPECT_EQ(channels[0].participant_id, channels[1].participant_id);
+    EXPECT_EQ(channels[0].name, "Vo");
+    EXPECT_EQ(channels[1].name, "Vo");
+    EXPECT_EQ(channels[0].source_kind, cp::InputSourceKind::kMicrophone);
+    EXPECT_EQ(channels[0].channel_count, 1);
+    EXPECT_EQ(channels[1].source_kind, cp::InputSourceKind::kApplicationAudio);
+    EXPECT_EQ(channels[1].channel_count, 2);
+    for (const auto& c : channels) {
+        EXPECT_TRUE(c.channel_muted);  // 初期ミュート
+        EXPECT_TRUE(mixer_.channels().at(c.entity_id).muted);
+    }
+    const auto& routes = peers_.routes().at(7);
+    ASSERT_EQ(routes.size(), 2U);
+    EXPECT_EQ(routes[0], (StreamRoute{0, 1, channels[0].entity_id}));
+    EXPECT_EQ(routes[1], (StreamRoute{1, 2, channels[1].entity_id}));
+}
+
+TEST_F(HostSessionTest, ClientWithoutStreamsReportGetsOneMonoMicrophoneStrip) {
+    create();
+    const auto a = connect(7, "Vo");
+    EXPECT_EQ(session().snapshot().channels.size(), 1U);
+    EXPECT_EQ(peers_.routes().at(7), (std::vector<StreamRoute>{{0, 1, a}}));
+}
+
+TEST_F(HostSessionTest, ConnectionStateAndSendMuteApplyToEveryStripOfTheClient) {
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+    session().on_peer_established(7);
+    const auto channels = session().snapshot().channels;
+
+    send_from(7, wire::SendMuteReport{false, 1});
+    for (const auto& c : channels) {
+        EXPECT_FALSE(strip(c.entity_id).send_muted);
+    }
+    session().on_peer_timeout(7);
+    for (const auto& c : channels) {
+        EXPECT_EQ(strip(c.entity_id).connection_state, ConnectionState::kReconnecting);
+    }
+    clock_.advance(121s);
+    session().tick();
+    for (const auto& c : channels) {
+        EXPECT_EQ(strip(c.entity_id).connection_state, ConnectionState::kLost);
+    }
+    // 同じ子機のストリップがそろって LOST になっても、通知は 1 回だけ。
+    const auto lost =
+        std::count_if(ui_.messages().begin(), ui_.messages().end(), [](const auto& m) {
+            const auto* n = std::get_if<cp::Notice>(&m);
+            return n != nullptr && n->code == "participant_lost";
+        });
+    EXPECT_EQ(lost, 1);
+}
+
+TEST_F(HostSessionTest, AddedInputGetsANewMutedStripAndKeepsTheExistingOne) {
+    create();
+    const auto a = connect(7, "Vo");
+    ASSERT_TRUE(command(a, cp::SetChannelMute{false}));
+
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    const auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 2U);
+    EXPECT_EQ(channels[0].entity_id, a);
+    EXPECT_FALSE(channels[0].channel_muted);  // 変わらない入力の操作者の設定は保つ
+    EXPECT_TRUE(channels[1].channel_muted);
+    EXPECT_EQ(channels[1].connection_state, ConnectionState::kConnected);
+    EXPECT_EQ(channels[1].participant_id, channels[0].participant_id);
+    EXPECT_EQ(peers_.routes().at(7).size(), 2U);
+}
+
+TEST_F(HostSessionTest, InputWhoseChannelCountChangesGetsANewStrip) {
+    create();
+    const auto a = connect(7, "Vo");
+    ASSERT_TRUE(command(a, cp::SetChannelMute{false}));
+
+    send_from(7, wire::StreamsReport{{InputStream{0, cp::InputSourceKind::kMicrophone, 2}}});
+    const auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 1U);
+    EXPECT_NE(channels[0].entity_id, a);
+    EXPECT_EQ(channels[0].channel_count, 2);
+    EXPECT_TRUE(channels[0].channel_muted);
+    EXPECT_FALSE(mixer_.channels().contains(a));
+    EXPECT_TRUE(ui_.last<cp::ChannelRemoved>());
+}
+
+TEST_F(HostSessionTest, NumbersMicrophonesInStreamOrderAndRenumbersWhenOneIsRemoved) {
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio, kSecondMic}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+    auto channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 3U);
+    EXPECT_EQ(channels[0].source_number, 1);
+    EXPECT_EQ(channels[1].source_number, 1);  // アプリ音声は別に数える
+    EXPECT_EQ(channels[2].source_number, 2);
+
+    send_from(7, wire::StreamsReport{{kAppAudio, kSecondMic}});
+    channels = session().snapshot().channels;
+    ASSERT_EQ(channels.size(), 2U);
+    EXPECT_EQ(channels[1].source_kind, cp::InputSourceKind::kMicrophone);
+    EXPECT_EQ(channels[1].source_number, 1);
+}
+
+TEST_F(HostSessionTest, RemovingAStripRemovesEveryStripOfTheDisconnectedClient) {
+    create();
+    request_join(7, "Vo");
+    send_from(7, wire::StreamsReport{{kMic, kAppAudio}});
+    ASSERT_TRUE(command("pending1", cp::ApproveParticipant{}));
+    session().on_peer_established(7);
+    send_from(7, wire::LeaveNotice{});
+    const auto second = session().snapshot().channels[1].entity_id;
+
+    ASSERT_TRUE(command(second, cp::RemoveStrip{}));
+    EXPECT_TRUE(session().snapshot().channels.empty());
+    EXPECT_TRUE(mixer_.channels().empty());
+}
+
+TEST_F(HostSessionTest, RejectsApprovalWhenTheInputsDoNotFitInTheStripLimit) {
+    create();
+    for (PeerHandle peer = 1; peer < kMaxChannelStrips; ++peer) {
+        static_cast<void>(connect(peer, "p"));
+    }
+    request_join(100, "Vo");
+    send_from(100, wire::StreamsReport{{kMic, kAppAudio}});
+    const auto pending = session().snapshot().pending.back().entity_id;
+    EXPECT_FALSE(command(pending, cp::ApproveParticipant{}));
+    EXPECT_EQ(last_reject_, ErrorCode::kInvalidState);
 }
 
 }  // namespace

@@ -8,6 +8,7 @@ import type {
   DiscreteCommand,
   MasterStrip,
   MixerSnapshot,
+  OutputDevice,
   PendingParticipant,
   RouteLevel,
   SessionInfo,
@@ -58,10 +59,21 @@ function channel(
     send_muted: true,
     channel_muted: true,
     gain_db: 0,
+    source_kind: "MICROPHONE",
+    channel_count: 1,
+    source_number: 1,
     error_code: null,
     ...overrides,
   };
 }
+
+// 選べる出力デバイス。"broken" は開けないデバイスとして DEVICE_UNAVAILABLE を再現する。
+const kDefaultOutput: OutputDevice = { id: "usb", name: "スピーカー (USB Audio Interface)" };
+const kOutputDevices: OutputDevice[] = [
+  kDefaultOutput,
+  { id: "onboard", name: "スピーカー (Realtek)" },
+  { id: "broken", name: "HDMI (開けないデバイス)" },
+];
 
 function initialSnapshot(scenario: MixerScenario): Omit<MixerSnapshot, "routing"> {
   const master: MasterStrip = {
@@ -80,7 +92,9 @@ function initialSnapshot(scenario: MixerScenario): Omit<MixerSnapshot, "routing"
     error_code: null,
     invite_url: null,
     output_device_state: "OPEN",
-    output_device_name: "スピーカー (USB Audio Interface)",
+    output_device_name: kDefaultOutput.name,
+    output_device_id: kDefaultOutput.id,
+    output_devices: kOutputDevices,
     update_available: null,
   };
   if (scenario === "empty") return { session, channels: [], master, pending: [] };
@@ -100,6 +114,14 @@ function initialSnapshot(scenario: MixerScenario): Omit<MixerSnapshot, "routing"
       channel(5, "Key 高橋", "LOST", null),
       channel(6, "Cho 伊藤", "CONNECTED", "RECEIVING", { send_muted: false, gain_db: null }),
       channel(7, "Sax 中村", "FAILED", null, { error_code: "UNREACHABLE" }),
+      // 1 台の子機の 2 つ目の入力（PC のアプリ音声をステレオで送る）。
+      channel(8, "Vo 山田", "CONNECTED", "RECEIVING", {
+        participant_id: "p1",
+        short_id: "#01",
+        send_muted: false,
+        source_kind: "APP_AUDIO",
+        channel_count: 2,
+      }),
     ],
     master,
     pending: [{ entity_id: "pending1", revision: 1, name: "Tp 渡辺", short_id: "#08" }],
@@ -184,6 +206,7 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "approve_participant":
       case "reject_participant":
       case "remove_strip":
+      case "select_output":
       case "stage_routing":
       case "commit_routing":
       case "discard_routing":
@@ -309,6 +332,9 @@ export class FakeMixerEngine extends FakeEngineBase {
         return;
       case "approve_participant":
         this.approve(command);
+        return;
+      case "select_output":
+        this.selectOutput(command, command.device_id);
         return;
       case "reject_participant":
         this.removePending(command.entity_id);
@@ -440,6 +466,36 @@ export class FakeMixerEngine extends FakeEngineBase {
    * revision は、コマンドで変えられる値が変わったときだけ進める（bumpRevision = true）。
    * 観測値（接続状態、信号状態など）だけの変化では進めない（docs/adr/0015-control-protocol-messages.md）。
    */
+  // 出力デバイスの選択。選んでも Master のミュートは変えない。開けなければ前のデバイスも閉じたまま。
+  private selectOutput(command: DiscreteCommand, deviceId: string | null): void {
+    if (command.entity_id !== kSessionId) return this.reject(command, "INVALID_STATE");
+    const session = this.state.session;
+    if (session.output_device_state === "OPEN" && session.output_device_id === deviceId) {
+      this.ack(command, session.revision);
+      return;
+    }
+    const device = session.output_devices.find((d) => d.id === deviceId);
+    if (deviceId !== null && (device === undefined || device.id === "broken")) {
+      this.updateSession({
+        output_device_state: "NONE",
+        output_device_name: null,
+        output_device_id: null,
+      });
+      this.reject(command, "DEVICE_UNAVAILABLE");
+      return;
+    }
+    const revision = this.updateSession(
+      device === undefined
+        ? { output_device_state: "NONE", output_device_name: null, output_device_id: null }
+        : {
+            output_device_state: "OPEN",
+            output_device_name: device.name,
+            output_device_id: device.id,
+          },
+    );
+    this.ack(command, revision);
+  }
+
   private updateSession(patch: Partial<SessionInfo>, bumpRevision = true): number {
     const current = this.state.session;
     const session = { ...current, ...patch, revision: current.revision + (bumpRevision ? 1 : 0) };

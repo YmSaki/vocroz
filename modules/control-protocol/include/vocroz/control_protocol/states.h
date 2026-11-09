@@ -82,6 +82,7 @@ enum class ErrorCode {
     kNotFound,      ///< NOT_FOUND: コマンドの対象の entity がない
     kInvalidState,  ///< INVALID_STATE: 今の状態ではそのコマンドを適用できない
     kEngineError,   ///< ENGINE_ERROR: エンジン内部のエラー
+    kDeviceUnavailable,  ///< DEVICE_UNAVAILABLE: 選んだデバイスがないか、開けない
 };
 
 /// エンジンからの通知の重要度。
@@ -117,6 +118,12 @@ enum class RoutingIssue {
     kOutputChannelOutOfRange,  ///< OUTPUT_CHANNEL_OUT_OF_RANGE: 出力のチャンネルが範囲外
     kOverlappingOutputs,  ///< OVERLAPPING_OUTPUTS: 複数の出力が同じデバイスのチャンネルに書く
     kUndelayedLoop,  ///< UNDELAYED_LOOP: 遅延ノードを通らないループがある。承認しても適用できない
+};
+
+/// 子機の入力の種類。ストリップの表示（マイク、アプリ音声）に使う。
+enum class InputSourceKind {
+    kMicrophone,  ///< MICROPHONE: 入力デバイス（マイク、ライン入力、オーディオインターフェース）
+    kApplicationAudio,  ///< APP_AUDIO: PC 内のアプリ音声（WASAPI のループバック）
 };
 
 }  // namespace vocroz::control_protocol

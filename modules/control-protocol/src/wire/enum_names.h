@@ -92,7 +92,7 @@ struct EnumNames<ClientState> {
 
 template <>
 struct EnumNames<ErrorCode> {
-    static constexpr std::array<EnumName<ErrorCode>, 11> kTable{{
+    static constexpr std::array<EnumName<ErrorCode>, 12> kTable{{
         {ErrorCode::kRejected, "REJECTED"},
         {ErrorCode::kInviteExpired, "INVITE_EXPIRED"},
         {ErrorCode::kInviteRevoked, "INVITE_REVOKED"},
@@ -104,6 +104,7 @@ struct EnumNames<ErrorCode> {
         {ErrorCode::kNotFound, "NOT_FOUND"},
         {ErrorCode::kInvalidState, "INVALID_STATE"},
         {ErrorCode::kEngineError, "ENGINE_ERROR"},
+        {ErrorCode::kDeviceUnavailable, "DEVICE_UNAVAILABLE"},
     }};
 };
 
@@ -148,6 +149,14 @@ struct EnumNames<RoutingIssue> {
     }};
 };
 
+template <>
+struct EnumNames<InputSourceKind> {
+    static constexpr std::array<EnumName<InputSourceKind>, 2> kTable{{
+        {InputSourceKind::kMicrophone, "MICROPHONE"},
+        {InputSourceKind::kApplicationAudio, "APP_AUDIO"},
+    }};
+};
+
 /// 対応表が列挙子の宣言順（0, 1, 2, ...）に並んでいるかを確かめる。
 /// 列挙子を追加したのに表を更新し忘れると、途中の抜けはここで、末尾の抜けは往復のテストで見つかる。
 template <typename E>
@@ -172,6 +181,7 @@ static_assert(is_in_declaration_order<NoticeSeverity>());
 static_assert(is_in_declaration_order<BusKind>());
 static_assert(is_in_declaration_order<SendTap>());
 static_assert(is_in_declaration_order<RoutingIssue>());
+static_assert(is_in_declaration_order<InputSourceKind>());
 
 /// 列挙子の JSON での名前を返す。
 template <typename E>

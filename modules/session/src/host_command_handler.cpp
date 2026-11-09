@@ -31,6 +31,8 @@ void HostCommandHandler::handle_ui_message(const cp::UiToEngineMessage& message)
         [this](const auto& m) {
             using M = std::decay_t<decltype(m)>;
             if constexpr (std::is_same_v<M, cp::Hello>) {
+                // 前の接続から抜き差しされたデバイスがあるかもしれないので、列挙し直してから送る。
+                ctx_.refresh_output_devices();
                 ctx_.ports.ui.publish(cp::MixerSnapshotEvent{ctx_.snapshot()});
             } else if constexpr (std::is_same_v<M, cp::DiscreteCommand>) {
                 handle_discrete(m);
@@ -116,6 +118,8 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
                 return id == kRoutingEntityId ? discard_routing() : invalid_state();
             } else if constexpr (std::is_same_v<B, cp::SetRouteMute>) {
                 return set_route_mute(id, body.muted);
+            } else if constexpr (std::is_same_v<B, cp::SelectOutput>) {
+                return id == kSessionEntityId ? select_output(body.device_id) : invalid_state();
             } else {
                 static_assert(std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
                               std::is_same_v<B, cp::SelectInput> ||
@@ -203,19 +207,26 @@ HostCommandHandler::CommandResult HostCommandHandler::approve(const std::string&
     if (pending == nullptr) {
         return invalid_state();
     }
-    if (ctx_.registry.participants().size() >= kMaxChannelStrips) {
+    // 子機の入力ごとにストリップを作るので、すべての入力のぶんの空きが要る。
+    if (ctx_.registry.participants().size() + pending->streams.size() > kMaxChannelStrips) {
         return invalid_state();
     }
     const auto revision = pending->entry.revision;
     const auto peer = pending->peer;
     const auto token = detail::random_bytes<std::tuple_size_v<ReconnectToken>>(ctx_.ports.random);
-    auto& p = ctx_.registry.add_participant(*pending, token);
+    const std::string participant_id =
+        ctx_.registry.add_participant(*pending, token).strip.participant_id;
     ctx_.registry.remove_pending(entity_id);
-    ctx_.ports.mixer.add_channel(p.strip.entity_id);
-    ctx_.ports.peers.admit(peer, p.strip.entity_id);
+    const auto strips = ctx_.registry.strips_of(participant_id);
+    for (const Participant* strip : strips) {
+        ctx_.ports.mixer.add_channel(strip->strip.entity_id);
+    }
+    ctx_.admit_streams(peer, participant_id);
     ctx_.send(peer, wire::JoinApproved{token});
     ctx_.publish_pending();
-    ctx_.publish_channel(p);
+    for (const Participant* strip : strips) {
+        ctx_.publish_channel(*strip);
+    }
     return revision;
 }
 
@@ -243,11 +254,11 @@ HostCommandHandler::CommandResult HostCommandHandler::remove_strip(const std::st
         p->strip.connection_state != ConnectionState::kFailed) {
         return invalid_state();
     }
+    // 同じ子機の入力のストリップは接続状態と再接続トークンを共有するので、まとめて削除する。
+    // どれも接続が終わっているので、音を出しうるストリップは消さない。
     const auto revision = p->strip.revision;
-    ctx_.ports.mixer.remove_channel(entity_id);
-    ctx_.registry.remove(entity_id);
-    ctx_.ports.ui.publish(cp::ChannelRemoved{entity_id});
-    ctx_.forget_strip_in_routing(entity_id);
+    const std::string participant_id = p->strip.participant_id;
+    ctx_.remove_participant_strips(participant_id);
     return revision;
 }
 
@@ -298,6 +309,39 @@ HostCommandHandler::CommandResult HostCommandHandler::set_route_mute(const std::
         ctx_.publish_route_level(*level);
     }
     return level->revision;
+}
+
+// --- 出力デバイス ---
+
+HostCommandHandler::CommandResult HostCommandHandler::select_output(
+    const std::optional<std::string>& device_id) {
+    ctx_.refresh_output_devices();
+    const bool already_open = ctx_.session.output_device_state == cp::OutputDeviceState::kOpen &&
+                              ctx_.session.output_device_id == device_id;
+    const bool already_none =
+        !device_id && ctx_.session.output_device_state == cp::OutputDeviceState::kNone;
+    if (already_open || already_none) {
+        // 開き直すと音が途切れるので何もしない。一覧だけは新しくなっているので知らせる。
+        ctx_.publish_session();
+        return ctx_.session.revision;
+    }
+    bool opened = true;
+    if (device_id) {
+        opened = ctx_.open_output(*device_id);
+    } else {
+        ctx_.close_output();
+        ctx_.settings.output_device_id.reset();
+        ctx_.save_settings();
+    }
+    // 開けなかったときも、前のデバイスは閉じて状態が変わっているので revision を進めて知らせる。
+    // Master のミュートは変えない（音を出すかはオペレーターが Master で決める）。
+    detail::bump_revision(ctx_.session.revision);
+    ctx_.publish_session();
+    if (!opened) {
+        ctx_.log(common::LogLevel::kWarning, "選択した出力デバイスを開けませんでした");
+        return common::make_unexpected(ErrorCode::kDeviceUnavailable);
+    }
+    return ctx_.session.revision;
 }
 
 // --- 連続値のコマンド ---

@@ -11,6 +11,11 @@
         "invite_url": "https://vocroz.example/join#ABCD-EFGH",
         "output_device_state": "OPEN",
         "output_device_name": "スピーカー (USB Audio)",
+        "output_device_id": "{0.0.0.00000000}.{usb-audio}",
+        "output_devices": [
+          { "id": "{0.0.0.00000000}.{usb-audio}", "name": "スピーカー (USB Audio)" },
+          { "id": "{0.0.0.00000000}.{onboard}", "name": "スピーカー (Realtek)" }
+        ],
         "update_available": null
       },
       "channels": [
@@ -25,7 +30,10 @@
           "send_muted": false,
           "channel_muted": true,
           "gain_db": 0.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch2",
@@ -38,7 +46,10 @@
           "send_muted": true,
           "channel_muted": true,
           "gain_db": 0.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch3",
@@ -51,7 +62,10 @@
           "send_muted": false,
           "channel_muted": true,
           "gain_db": 0.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "APP_AUDIO",
+          "channel_count": 2,
+          "source_number": 1
         },
         {
           "entity_id": "ch4",
@@ -64,7 +78,10 @@
           "send_muted": false,
           "channel_muted": true,
           "gain_db": null,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch5",
@@ -77,7 +94,10 @@
           "send_muted": false,
           "channel_muted": true,
           "gain_db": 0.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch6",
@@ -90,7 +110,10 @@
           "send_muted": false,
           "channel_muted": true,
           "gain_db": 10.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch7",
@@ -103,7 +126,10 @@
           "send_muted": false,
           "channel_muted": true,
           "gain_db": -60.0,
-          "error_code": null
+          "error_code": null,
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         },
         {
           "entity_id": "ch8",
@@ -116,7 +142,10 @@
           "send_muted": false,
           "channel_muted": true,
           "gain_db": 0.0,
-          "error_code": "UNREACHABLE"
+          "error_code": "UNREACHABLE",
+          "source_kind": "MICROPHONE",
+          "channel_count": 1,
+          "source_number": 1
         }
       ],
       "master": {
@@ -263,6 +292,8 @@
         "invite_url": null,
         "output_device_state": "NONE",
         "output_device_name": null,
+        "output_device_id": null,
+        "output_devices": [],
         "update_available": null
       },
       "channels": [],
@@ -301,6 +332,8 @@
       "invite_url": null,
       "output_device_state": "OPEN",
       "output_device_name": "スピーカー (USB Audio)",
+      "output_device_id": "{0.0.0.00000000}.{usb-audio}",
+      "output_devices": [],
       "update_available": null
     }
   },
@@ -315,6 +348,8 @@
       "invite_url": "https://vocroz.example/join#ABCD-EFGH",
       "output_device_state": "OPEN",
       "output_device_name": "スピーカー (USB Audio)",
+      "output_device_id": "{0.0.0.00000000}.{usb-audio}",
+      "output_devices": [],
       "update_available": "1.0.1"
     }
   },
@@ -329,6 +364,8 @@
       "invite_url": null,
       "output_device_state": "OPEN",
       "output_device_name": "スピーカー (USB Audio)",
+      "output_device_id": "{0.0.0.00000000}.{usb-audio}",
+      "output_devices": [],
       "update_available": null
     }
   },
@@ -343,6 +380,8 @@
       "invite_url": null,
       "output_device_state": "LOST",
       "output_device_name": null,
+      "output_device_id": "{0.0.0.00000000}.{usb-audio}",
+      "output_devices": [],
       "update_available": null
     }
   },
@@ -359,7 +398,10 @@
       "send_muted": false,
       "channel_muted": true,
       "gain_db": -12.3,
-      "error_code": null
+      "error_code": null,
+      "source_kind": "MICROPHONE",
+      "channel_count": 1,
+      "source_number": 1
     }
   },
   {
@@ -664,7 +706,11 @@
         "check": {
           "issue": null,
           "issue_entity_id": null,
-          "looped_entity_ids": ["bus-fx", "delay-echo", "master"],
+          "looped_entity_ids": [
+            "bus-fx",
+            "delay-echo",
+            "master"
+          ],
           "needs_approval": true
         }
       },
@@ -974,7 +1020,10 @@
         "check": {
           "issue": "UNDELAYED_LOOP",
           "issue_entity_id": "bus-fx",
-          "looped_entity_ids": ["bus-fx", "master"],
+          "looped_entity_ids": [
+            "bus-fx",
+            "master"
+          ],
           "needs_approval": false
         }
       },
@@ -1083,5 +1132,10 @@
     "type": "reject",
     "request_id": "r-engine_error",
     "error_code": "ENGINE_ERROR"
+  },
+  {
+    "type": "reject",
+    "request_id": "r-device_unavailable",
+    "error_code": "DEVICE_UNAVAILABLE"
   }
 ]
