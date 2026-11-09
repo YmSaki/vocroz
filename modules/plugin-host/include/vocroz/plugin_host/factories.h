@@ -2,18 +2,18 @@
 //
 // plugin-host のアダプターを作る関数。JUCE を使うので、VOCROZ_WITH_JUCE が ON のときだけある。
 // 具象クラスは公開せず、ここの関数だけを公開する（AGENTS.md 5.1）。
-// session のポート（PluginLoader、PluginScanner、PluginEditorHost）ができたら、
-// それを返すファクトリー関数をここに加える。
+// エディターのウィンドウ（session の PluginEditorHost）は、作るときにここへ加える。
 #pragma once
 
 #include <chrono>
 #include <filesystem>
 #include <memory>
-#include <string>
+#include <vector>
 
-#include "vocroz/audio_core/ports/plugin_processor.h"
 #include "vocroz/common/result.h"
 #include "vocroz/plugin_host/scan_messages.h"
+#include "vocroz/session/ports/plugin_loader.h"
+#include "vocroz/session/ports/plugin_scanner.h"
 
 namespace vocroz::plugin_host {
 
@@ -45,22 +45,24 @@ enum class HelperScanError {
 /// スレッド安全性: JUCE のメッセージスレッドから呼ぶ。
 [[nodiscard]] ScanReport scan_in_process(const std::filesystem::path& plugin_file);
 
-/// プラグインを読み込めなかった理由。
-enum class PluginLoadError {
-    kNotFound,  ///< ファイルがないか、記述の識別子に合うプラグインがファイルの中にない
-    kInstantiateFailed,  ///< プラグインのインスタンスを作れなかった
-    kUnsupportedLayout,  ///< 入力 0〜2、出力 1〜2 のチャンネル構成にできなかった
-};
+/// スキャン用ヘルパーでスキャンする PluginScanner を作る。
+/// directories の下の .vst3 のファイルとバンドルを列挙し、ファイルごとに scan_in_helper()
+/// でスキャンする。
+/// @param helper ヘルパーの実行ファイル（pa-plugin-scanner）
+/// @param directories 探す場所
+/// @param timeout ファイル 1 つの制限時間（既定値は constants.h の kDefaultScanTimeout）
+/// @return スキャナー
+/// スレッド安全性: 返したスキャナーは PluginCatalog と同じスレッドから使う。
+[[nodiscard]] std::unique_ptr<session::PluginScanner> make_helper_plugin_scanner(
+    std::filesystem::path helper, std::vector<std::filesystem::path> directories,
+    std::chrono::milliseconds timeout);
 
-/// プラグインを読み込み、グラフのプラグインノードに渡せる形にする。
-/// 処理の準備は kSampleRate と kBlockSize で済ませる。
-/// サイドチェインなどのメイン以外のバスは無効にする。
-/// エフェクトはステレオ入出力を、それができなければモノラル入出力を選ぶ。
-/// @param description スキャン結果の記述
-/// @return 準備済みのプラグイン。失敗なら PluginLoadError
-/// スレッド安全性: JUCE のメッセージスレッドから呼ぶ。返したプラグインの最後の参照も、
-/// JUCE のメッセージスレッド（pa-engine ではコントロールスレッド）で外す。
-[[nodiscard]] common::Result<std::shared_ptr<audio_core::PluginProcessor>, PluginLoadError>
-make_vst3_plugin_processor(const PluginDescription& description);
+/// VST3 のプラグインをこのプロセスの中に読み込む PluginLoader を作る（信頼済みインプロセス）。
+/// 読み込んだプラグインは、エンジン内部のサンプルレートとブロック長で処理の準備を済ませる。
+/// サイドチェインなどのメイン以外のバスは無効にし、エフェクトはステレオ入出力を、
+/// それができなければモノラル入力とステレオ出力、モノラル入出力の順に選ぶ。
+/// @return ローダー
+/// スレッド安全性: 返したローダーは JUCE のメッセージスレッドから使う。
+[[nodiscard]] std::unique_ptr<session::PluginLoader> make_vst3_plugin_loader();
 
 }  // namespace vocroz::plugin_host

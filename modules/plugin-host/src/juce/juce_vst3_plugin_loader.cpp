@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// make_vst3_plugin_processor()（factories.h）の実装。
+// JuceVst3PluginLoader と make_vst3_plugin_loader()（factories.h）の実装。
 // スキャン結果の記述からプラグインを探してインスタンスを作り、グラフのプラグインノードに渡せる
 // チャンネル構成と、エンジン内部のサンプルレートとブロック長で処理の準備をする。
+
+#include "juce_vst3_plugin_loader.h"
 
 #include <array>
 #include <memory>
@@ -14,6 +16,7 @@
 #include "vocroz/plugin_host/factories.h"
 
 #include "juce_plugin_description.h"
+#include "juce_plugin_instance.h"
 #include "juce_plugin_processor.h"
 
 namespace vocroz::plugin_host {
@@ -73,8 +76,8 @@ bool configure_layout(juce::AudioPluginInstance& instance, bool is_instrument) {
 
 }  // namespace
 
-common::Result<std::shared_ptr<audio_core::PluginProcessor>, PluginLoadError>
-make_vst3_plugin_processor(const PluginDescription& description) {
+common::Result<std::unique_ptr<session::PluginInstance>, session::PluginLoadError>
+JuceVst3PluginLoader::load(const session::PluginDescription& description) {
     juce::VST3PluginFormatHeadless format;
     juce::OwnedArray<juce::PluginDescription> found;
     format.findAllTypesForFile(found, juce::String::fromUTF8(description.file_path.c_str()));
@@ -86,7 +89,7 @@ make_vst3_plugin_processor(const PluginDescription& description) {
         }
     }
     if (match == nullptr) {
-        return make_unexpected(PluginLoadError::kNotFound);
+        return make_unexpected(session::PluginLoadError::kNotFound);
     }
 
     constexpr auto kRate = static_cast<double>(audio_core::kSampleRate);
@@ -95,16 +98,20 @@ make_vst3_plugin_processor(const PluginDescription& description) {
     std::unique_ptr<juce::AudioPluginInstance> instance =
         format.createInstanceFromDescription(*match, kRate, kBlock, error);
     if (!instance) {
-        return make_unexpected(PluginLoadError::kInstantiateFailed);
+        return make_unexpected(session::PluginLoadError::kInstantiateFailed);
     }
     if (!configure_layout(*instance, match->isInstrument)) {
-        return make_unexpected(PluginLoadError::kUnsupportedLayout);
+        return make_unexpected(session::PluginLoadError::kUnsupportedLayout);
     }
     instance->setRateAndBufferSizeDetails(kRate, kBlock);
     instance->setNonRealtime(false);
     instance->prepareToPlay(kRate, kBlock);
-    return std::shared_ptr<audio_core::PluginProcessor>(
-        std::make_shared<JucePluginProcessor>(std::move(instance)));
+    return std::unique_ptr<session::PluginInstance>(std::make_unique<JucePluginInstance>(
+        std::make_shared<JucePluginProcessor>(std::move(instance))));
+}
+
+std::unique_ptr<session::PluginLoader> make_vst3_plugin_loader() {
+    return std::make_unique<JuceVst3PluginLoader>();
 }
 
 }  // namespace vocroz::plugin_host

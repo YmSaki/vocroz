@@ -6,31 +6,19 @@
 // ヘルパーの出力は不良プラグインに壊されうるので、pa-engine 側は信頼境界として検証してから使う。
 #pragma once
 
-#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "vocroz/common/result.h"
+#include "vocroz/session/plugin_description.h"
 
 namespace vocroz::plugin_host {
 
 /// スキャンで見つけたプラグイン 1 つの記述。
-/// 1 つのファイルが複数のプラグインを含むことがある（シェルプラグイン）。
-struct PluginDescription {
-    std::string name;       ///< 表示名
-    std::string vendor;     ///< 製造元
-    std::string version;    ///< プラグインのバージョン（表示用）
-    std::string file_path;  ///< プラグインファイルのパス（UTF-8）
-    /// 読み込むときにファイル内のプラグインを特定する識別子。
-    /// 同じファイルの中のプラグインを区別し、保存したセッションから同じプラグインを開き直すために使う。
-    std::string identifier;
-    bool is_instrument = false;      ///< VSTi（音声入力を持たず MIDI で発音する）か
-    std::size_t input_channels = 0;  ///< 既定のメインバスの入力チャンネル数
-    std::size_t output_channels = 0;  ///< 既定のメインバスの出力チャンネル数
-
-    friend bool operator==(const PluginDescription&, const PluginDescription&) = default;
-};
+/// プラグインの一覧と挿入を扱う session と同じ型を使う。
+/// session に置く理由は docs/adr/0032-plugin-catalog-and-loader.md に書いた。
+using PluginDescription = session::PluginDescription;
 
 /// プラグインファイル 1 つのスキャン結果。
 struct ScanReport {
