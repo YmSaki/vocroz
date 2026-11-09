@@ -31,8 +31,8 @@
 #include "client_runtime.h"
 #include "invite_inbox.h"
 #include "peer_inbox.h"
-#include "unavailable_app_audio.h"
 #include "win/wasapi_input_device_opener.h"
+#include "win/wasapi_loopback_opener.h"
 
 namespace vocroz::client {
 
@@ -75,7 +75,7 @@ private:
     std::unique_ptr<session::SettingsStore> settings_;
     std::unique_ptr<audio_core::AudioDeviceCatalog> devices_;
     win::WasapiInputDeviceOpener inputs_;
-    UnavailableAppAudio app_audio_;
+    win::WasapiLoopbackOpener app_audio_;
     std::unique_ptr<network::NetworkEnvironment> environment_;
 
     // --- 招待の解決（作業用スレッドの結果を受け箱へ） ---
