@@ -15,6 +15,7 @@ add_library(pa_engine_core STATIC
   src/device_loss_relay.cpp
   src/engine_activity.cpp
   src/engine_mixer.cpp
+  src/engine_output_devices.cpp
   src/host_key_loader.cpp
   src/invite_result_relay.cpp
   src/launch_options.cpp
@@ -62,6 +63,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/device_loss_relay_test.cpp
     tests/engine_activity_test.cpp
     tests/engine_mixer_test.cpp
+    tests/engine_output_devices_test.cpp
     tests/host_key_loader_test.cpp
     tests/invite_result_relay_test.cpp
     tests/launch_options_test.cpp

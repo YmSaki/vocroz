@@ -55,6 +55,17 @@ ADR-0020 の名前付きパイプのサーバーは、UI の接続をまたい�
 
 - 起動時に、保存された出力デバイスの ID があればそのデバイスだけを開く。開けなければ何も開かず、既定のデバイスへフォールバックしない（ADR-0023）。
 
+**追記（2026-11-09、出力デバイスの選択）**: UI から出力デバイスを選べるようにした。
+
+- control-protocol に離散コマンド `select_output`（対象は `session`。`device_id` が null なら出力なし）、エラーコード `DEVICE_UNAVAILABLE`、`SessionInfo` の `output_device_id` と `output_devices`（選べるデバイスの一覧）を足した。
+- 出力デバイスを開く判断は session に移した。session に `OutputDeviceControl` ポート（一覧、開く、閉じる）を足し、`HostSession` が起動時に保存した ID のデバイスを開き、`SelectOutput` で開き直す。エンジンは `EngineOutputDevices` で、device の `AudioDeviceCatalog` と `make_wasapi_audio_output()` を使って実装する。`HostSession::on_output_device_opened()` と `on_output_device_closed()` は外した。
+- 開き直すときは、前の出力を止めてから次を開く。ミキサーを 2 つのオーディオスレッドから呼ばないためである。開けなければ DEVICE_UNAVAILABLE で拒否し、未選択（NONE）のままにする。前のデバイスにもほかのデバイスにも戻さない。
+- 選んでも Master のミュートは変えない。抜去で LOST になったあとに選び直しても、SAFETY のミュートはオペレーターが解くまで続く。
+- LOST のときは抜けたデバイスの ID を残す。挿し直したデバイスを選び直しやすくするためである。
+- デバイスの一覧は、UI の接続（`hello`）、選択、抜去のときに列挙し直す。スナップショットはコントロールスレッドが周期的に作るので、そのたびには列挙しない。
+- 選択は設定に保存する。起動時に開けなかったときは保存した ID を消さず、次の起動でまた試す。
+- 抜去の通知が積まれたあとにオペレーターが別のデバイスを選んでいた場合も、通知を受けた時点で開いているデバイスを閉じて LOST にする。ミキサーにはすでに安全ミュートがかかっているので、session の表示をそれに合わせ、オペレーターに選び直してもらう（フェイルセーフ）。
+
 ### 仮の部品
 
 まだ実装のないポートは、次の仮の部品で埋める。どれも `composition_root` のメンバーを差し替えるだけで本物に替えられるようにし、ドメインには手を入れない。
@@ -88,6 +99,6 @@ ADR-0020 の名前付きパイプのサーバーは、UI の接続をまたい�
 ## 結果
 
 - `pa-engine` は起動して UI とつながり、スナップショットとイベントを送り、ルーティングの構成をミキサーに適用できる。UI が落ちても動き続け、つなぎ直した UI にスナップショットを送る（`pa_engine_smoke_tests`、Windows）。
-- 出力デバイスを選ぶ UI のコマンドがまだなく、設定も保存されないので、この段階では出力デバイスを開かない。出力デバイスの選択（control-protocol、session、UI）と、子機の受信（network、transport → `EngineMixer::attach_source()`）は、続きの PR で追加する。
+- 出力デバイスを選ぶ UI のコマンドがまだなく、設定も保存されないので、この段階では出力デバイスを開かない（出力デバイスの選択は追記のとおり追加した）。出力デバイスの選択（control-protocol、session、UI）と、子機の受信（network、transport → `EngineMixer::attach_source()`）は、続きの PR で追加する。
 - `known_paths`（`%LOCALAPPDATA%\VOCROZ`）は `apps/updater` と同じ知識を持つ。次の定期リファクタリングで `update` か `common` への移動を検討する（drift）。
 - `common` に `SteadyClock`（`Clock` の `std::chrono::steady_clock` による実装）を追加した。ステートレスで OS の API を呼ばないため、共通基盤に置く。
