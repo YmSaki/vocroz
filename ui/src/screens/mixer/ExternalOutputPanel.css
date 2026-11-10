@@ -1,0 +1,123 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* 外部出力のサイドパネル。承認パネルと同じく、ミキサーの右側に開く。 */
+
+.external-output-panel {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    background: var(--color-panel);
+    border-left: 1px solid var(--color-border);
+}
+
+.external-output-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.external-output-panel__header h2 {
+    margin: 0;
+    font-size: 14px;
+}
+
+.external-output-panel__body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px;
+    overflow-y: auto;
+}
+
+.external-output-panel__hint,
+.external-output-panel__note {
+    margin: 0;
+    font-size: 12px;
+    color: var(--color-text-dim);
+}
+
+.external-output-panel__status {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    margin: 0;
+    font-size: 13px;
+}
+
+.external-output-panel__status dt {
+    color: var(--color-text-dim);
+}
+
+.external-output-panel__status dd {
+    margin: 0;
+}
+
+.external-output-panel__state--RUNNING {
+    color: var(--color-live);
+    font-weight: bold;
+}
+
+.external-output-panel__state--TESTING {
+    color: var(--color-warning);
+}
+
+.external-output-panel__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.external-output-panel__form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--color-border);
+}
+
+.external-output-panel__form label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12px;
+    color: var(--color-text-dim);
+}
+
+.external-output-panel__form input,
+.external-output-panel__form select {
+    padding: 4px 6px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-text);
+    background: var(--color-field);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+}
+
+.external-output-panel__button {
+    align-self: flex-start;
+    padding: 4px 10px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--color-text);
+    background: var(--color-button);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.external-output-panel__button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.external-output-panel__start {
+    background: var(--color-live);
+    border-color: var(--color-live);
+}
+
+.external-output-panel__stop {
+    background: var(--color-mute);
+    border-color: var(--color-mute);
+}

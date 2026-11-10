@@ -18,6 +18,7 @@ if(VOCROZ_WITH_JUCE)
     src/juce/juce_helper_plugin_scanner.cpp
     src/juce/juce_helper_scan.cpp
     src/juce/juce_plugin_description.cpp
+    src/juce/juce_plugin_editor_host.cpp
     src/juce/juce_plugin_instance.cpp
     src/juce/juce_plugin_processor.cpp
     src/juce/juce_vst3_plugin_loader.cpp
@@ -44,6 +45,7 @@ if(VOCROZ_BUILD_TESTS)
     target_sources(plugin_host_tests PRIVATE
       tests/juce_helper_plugin_scanner_test.cpp
       tests/juce_helper_scan_test.cpp
+      tests/juce_plugin_editor_host_test.cpp
       tests/juce_plugin_instance_test.cpp
       tests/juce_plugin_processor_test.cpp)
     target_link_libraries(plugin_host_tests PRIVATE vocroz::audio_core_fakes vocroz::session_fakes)

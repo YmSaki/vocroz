@@ -3,6 +3,8 @@
 // 文字列のフィールドの種類ごとの規則。同じ種類のフィールドは、どのメッセージでも同じ規則で検査する。
 #pragma once
 
+#include "vocroz/control_protocol/constants.h"
+
 #include "control_protocol_constants.h"
 #include "wire/object_reader.h"
 
@@ -32,4 +34,8 @@ inline constexpr TextRule kNoticeKeyRule{1, kMaxNoticeKeyBytes, Charset::kLowerS
 /// 通知に埋め込む値。
 inline constexpr TextRule kNoticeValueRule{0, kMaxNoticeValueBytes, Charset::kAny};
 
+/// SRTP 外部出力の宛先のホスト名か IP アドレス。未設定は空。形式の検証は名前解決で行う。
+inline constexpr TextRule kHostRule{0, kMaxExternalOutputHostBytes, Charset::kAny};
+/// SRTP 外部出力の鍵。形式の検証は session が行う（transport の parse_srtp_master_key()）。
+inline constexpr TextRule kSrtpKeyRule{1, kMaxSrtpKeyBytes, Charset::kAny};
 }  // namespace vocroz::control_protocol::wire

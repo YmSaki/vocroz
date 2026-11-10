@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 端から端までの遅延（子機のキャプチャから親機の出力まで）を、実際の伝送の部品を通して計る。
+// 端から端までの片道の遅延（子機のキャプチャから親機の出力までか、親機のミックスから子機の出力
+// までの返送）を、実際の伝送の部品を通して計る。
 // 無音の間に正弦波のバーストを周期的に送り、出力でバーストの立ち上がりを検出して、
 // 入力での立ち上がりとの時刻の差を遅延とする。デバイスの入出力の遅延（ドライバーのバッファ）は
 // シミュレーションの外なので、設定した値を足して「口から耳まで」の見積もりにする。
@@ -27,9 +28,11 @@ struct LatencyScenario {
     MediaLinkConfig link;
     /// 計測する長さ。
     std::chrono::milliseconds duration{10'000};
-    /// 子機の入力デバイスの遅延（シミュレーションの外。見積もりに足す）。
+    /// 送信側の入力デバイスの遅延（シミュレーションの外。見積もりに足す）。上りは子機のマイク。
+    /// 返送はミックスを作るところから計るので、ふつうは 0 にする。
     std::chrono::microseconds device_input_latency{0};
-    /// 親機の出力デバイスの遅延（シミュレーションの外。見積もりに足す）。
+    /// 受信側の出力デバイスの遅延（シミュレーションの外。見積もりに足す）。上りは親機の出力、
+    /// 返送は子機のモニターの出力。
     std::chrono::microseconds device_output_latency{0};
 };
 
@@ -61,8 +64,14 @@ struct LatencyReport {
     double max_ms = 0.0;              ///< 最大
     LatencyBudget budget;             ///< 構成から計算した内訳
     transport::PlayoutStats playout;  ///< 計測の終わりの再生ストリームの統計
-    netsim::LinkStats uplink;         ///< 子機から親機への経路の統計
+    MediaDirection direction = MediaDirection::kUplink;  ///< 計ったストリームの向き
+    netsim::LinkStats path;  ///< 送信側から受信側への経路の統計
 };
+
+/// ストリームの向きを、計測ツールの出力に使う短い名前にする。
+/// @param direction 向き
+/// @return "uplink" か "return"
+[[nodiscard]] const char* direction_label(MediaDirection direction) noexcept;
 
 /// 構成から遅延の内訳を計算する。
 /// @param scenario 条件

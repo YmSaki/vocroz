@@ -58,7 +58,7 @@ CompositionRoot::CompositionRoot(ConstructionKey /*key*/, ClientAppConfig config
       logger_(logger),
       inputs_(logger),
       app_audio_(logger),
-      router_(peer_inbox_) {}
+      outputs_(logger) {}
 
 CompositionRoot::~CompositionRoot() {
     // 周期の処理を止めてから、参加中なら切断の通知を送る。送信スレッドは ClientRuntime の
@@ -80,8 +80,18 @@ common::Result<void, ClientAppError> CompositionRoot::start() {
     environment_ = network::make_win_network_environment();
     make_rendezvous_client();
 
+    // 返送は低遅延プロファイル（docs/adr/0002-opus-low-delay.md）のモノラルで受ける。
+    auto returns = transport::PlayoutStream::create(transport::PlayoutConfig{});
+    if (!returns) {
+        logger_.log(common::LogLevel::kError, "返送の Opus のデコーダーを作れません");
+        return common::make_unexpected(ClientAppError::kEncoderFailed);
+    }
+    returns_ = std::move(returns).value();
+    receive_path_ = std::make_unique<HostReceivePath>(peer_inbox_, *returns_);
+    router_ = std::make_unique<network::ReceiveRouter>(*receive_path_);
+
     // ポート 0 で OS に選ばせる。子機は待ち受けず、ホールパンチで相手に知らせたポートだけを使う。
-    auto endpoint = network::make_winsock_udp_endpoint(0, router_);
+    auto endpoint = network::make_winsock_udp_endpoint(0, *router_);
     if (!endpoint) {
         logger_.log(common::LogLevel::kError, "UDP のソケットを開けません");
         return common::make_unexpected(ClientAppError::kSocketFailed);
@@ -104,12 +114,15 @@ common::Result<void, ClientAppError> CompositionRoot::start() {
     auto runtime =
         ClientRuntime::create(ClientRuntime::Ports{.ui_channel = web_ui_->channel(),
                                                    .endpoint = *endpoint_,
-                                                   .router = router_,
+                                                   .router = *router_,
                                                    .inbox = peer_inbox_,
+                                                   .path = *receive_path_,
+                                                   .returns = *returns_,
                                                    .environment = *environment_,
                                                    .devices = *devices_,
                                                    .inputs = inputs_,
                                                    .app_audio = app_audio_,
+                                                   .outputs = outputs_,
                                                    .rendezvous = *rendezvous_,
                                                    .invites = invites_,
                                                    .settings = *settings_,

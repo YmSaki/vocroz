@@ -9,9 +9,12 @@ add_library(vocroz_client STATIC
   src/client_capture.cpp
   src/client_runtime.cpp
   src/host_connection.cpp
+  src/host_receive_path.cpp
   src/invite_inbox.cpp
   src/packet_sender.cpp
   src/peer_inbox.cpp
+  src/return_output_devices.cpp
+  src/return_player.cpp
   src/sender_thread.cpp
   src/ui_bridge.cpp
   src/unavailable_rendezvous_client.cpp)
@@ -42,9 +45,12 @@ if(VOCROZ_BUILD_TESTS)
     tests/client_capture_test.cpp
     tests/client_runtime_test.cpp
     tests/host_connection_test.cpp
+    tests/host_receive_path_test.cpp
     tests/invite_inbox_test.cpp
     tests/packet_sender_test.cpp
     tests/peer_inbox_test.cpp
+    tests/return_output_devices_test.cpp
+    tests/return_player_test.cpp
     tests/ui_bridge_test.cpp
     tests/unavailable_rendezvous_client_test.cpp)
   # src/ のクラスは公開せず、このアプリのテストからだけ参照する。

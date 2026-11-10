@@ -13,6 +13,9 @@ target_link_libraries(libsodium_link_test PRIVATE sodium)
 vocroz_add_unit_test(noise_c_link_test noise_c_link_test.cpp)
 target_link_libraries(noise_c_link_test PRIVATE noise::protocol)
 
+vocroz_add_unit_test(libsrtp_link_test libsrtp_link_test.cpp)
+target_link_libraries(libsrtp_link_test PRIVATE libSRTP::srtp2)
+
 vocroz_add_unit_test(nlohmann_json_link_test nlohmann_json_link_test.cpp)
 target_link_libraries(nlohmann_json_link_test PRIVATE nlohmann_json::nlohmann_json)
 

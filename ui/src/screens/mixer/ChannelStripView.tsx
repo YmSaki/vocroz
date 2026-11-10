@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // 入力チャンネルストリップ 1 本。
 // 参加者名、短い識別 ID、入力の種類（2 本目以降の入力とステレオのとき）、状態欄、ミュートの表示（子機側と親機側を区別）、メーター、フェーダー、
-// MUTE と SEL を常に表示する（ホバーしないと見えない操作は置かない）。
+// MUTE と SEL と返送の切り替えを常に表示する（ホバーしないと見えない操作は置かない）。
+// 返送（Minus-Me）は子機 1 台に 1 本なので、同じ子機のどのストリップから切り替えても同じ返送が
+// 変わる。初期値は OFF で、オペレーターが押したときだけ送る（docs/adr/0036-return-monitor.md）。
 // 受信の実測値（ジッターとバッファの長さ）も、目標遅延を選ぶ判断材料として常に表示する。
 
 import { Fader } from "../../components/fader/Fader";
@@ -31,6 +33,8 @@ export interface ChannelStripViewProps {
   onGainInput: (value: GainDb) => void;
   onGainCommit: (value: GainDb) => void;
   onToggleMute: () => void;
+  /** 返送の切り替え。ミュートと同じく ACK を待つ間は押せない。 */
+  onToggleReturn: () => void;
   onSelect: () => void;
   onRemove: () => void;
   onPlanned: () => void;
@@ -57,6 +61,7 @@ export function ChannelStripView({
   onGainInput,
   onGainCommit,
   onToggleMute,
+  onToggleReturn,
   onSelect,
   onRemove,
   onPlanned,
@@ -136,6 +141,17 @@ export function ChannelStripView({
           onClick={onSelect}
         >
           {t("mixer.sel")}
+        </button>
+        <button
+          type="button"
+          class={`strip__return${channel.return_muted ? "" : " strip__return--on"}`}
+          aria-pressed={!channel.return_muted}
+          aria-label={t("mixer.return_label", { name: channel.name })}
+          title={t("mixer.return_hint")}
+          disabled={mutePending}
+          onClick={onToggleReturn}
+        >
+          {t("mixer.return")}
         </button>
         {channel.connection_state === "LOST" || channel.connection_state === "FAILED" ? (
           <button type="button" class="strip__remove" onClick={onRemove}>

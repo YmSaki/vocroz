@@ -28,6 +28,14 @@ public:
     [[nodiscard]] common::Result<void, session::PluginStateError> restore_state(
         std::span<const std::uint8_t> state) override;
 
+    /// エディターのウィンドウのために、包んでいる処理を返す。
+    /// ウィンドウが持つことで、エディターより先にプラグインが破棄されないようにする。
+    /// @return 処理（null にならない）
+    /// スレッド安全性: JUCE のメッセージスレッドから呼ぶ。
+    [[nodiscard]] const std::shared_ptr<JucePluginProcessor>& juce_processor() const noexcept {
+        return processor_;
+    }
+
 private:
     std::shared_ptr<JucePluginProcessor> processor_;
 };

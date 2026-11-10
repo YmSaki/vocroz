@@ -25,6 +25,12 @@ session::HostSettings sample_host() {
     s.routing.input_delays.push_back(cp::InputDelay{"ch1", 3.0});
     s.route_gains = {{"bus-1", -3.0}, {"send-1", std::nullopt}};
     s.latency_target_ms = 40.0;
+    s.external_output.host = "encoder.example";
+    s.external_output.port = 6000;
+    s.external_output.source_id = "bus-2";
+    s.external_output.profile = cp::ExternalOutputProfile::kOpusMono;
+    s.external_output.payload_type = 96;
+    s.external_output.crypto_suite = cp::SrtpSuite::kAesCm128HmacSha1_32;
     return s;
 }
 
@@ -34,6 +40,7 @@ session::ClientSettings sample_client() {
     s.selected_input_id = "{0.0.1.00000000}.{def}";
     s.send_level_db = 3.0;
     s.input_channels = 2;
+    s.output_device_id = "{0.0.0.00000000}.{spk}";
     return s;
 }
 
@@ -76,6 +83,20 @@ TEST(SettingsCodecTest, ReadsClientSettingsWithoutOrWithInvalidInputChannelsAsMo
         EXPECT_EQ(decoded->input_channels, 1);
         EXPECT_EQ(decoded->send_level_db, -3.0);
     }
+}
+
+TEST(SettingsCodecTest, ReadsClientSettingsWithoutReturnOutputAsNone) {
+    // 返送モニターの前のファイルには output_device_id がない。「出力なし」として読む。
+    const auto decoded = decode_client_settings(
+        R"({"schema_version":1,"display_name":"Vo","selected_input_id":null,"send_level_db":0})");
+    ASSERT_TRUE(decoded);
+    EXPECT_FALSE(decoded->output_device_id);
+}
+
+TEST(SettingsCodecTest, RejectsClientSettingsWithReturnOutputOfAnotherType) {
+    EXPECT_FALSE(decode_client_settings(
+        R"({"schema_version":1,"display_name":"Vo","selected_input_id":null,"send_level_db":0,)"
+        R"("output_device_id":3})"));
 }
 
 TEST(SettingsCodecTest, RejectsTruncatedJson) {
@@ -128,6 +149,29 @@ TEST(SettingsCodecTest, ReadsHostSettingsSavedBeforeRoutingWasPersisted) {
     EXPECT_EQ(decoded->routing, control_protocol::RoutingConfig{});
     EXPECT_TRUE(decoded->route_gains.empty());
     EXPECT_EQ(decoded->latency_target_ms, session::kDefaultLatencyTargetMs);
+}
+
+TEST(SettingsCodecTest, ReadsHostSettingsSavedBeforeExternalOutputAsUnset) {
+    const auto decoded = decode_host_settings(
+        R"({"schema_version":1,"session_name":"a","output_device_id":null,"master_gain_db":-3})");
+    ASSERT_TRUE(decoded);
+    EXPECT_EQ(decoded->external_output, control_protocol::ExternalOutputConfig{});
+}
+
+TEST(SettingsCodecTest, RejectsMalformedExternalOutput) {
+    const std::string head =
+        R"({"schema_version":1,"session_name":"a","output_device_id":null,"master_gain_db":-3,"external_output":)";
+    const std::string valid =
+        R"({"host":"192.0.2.1","port":5004,"source_id":"master","profile":"opus_stereo","payload_type":111,"crypto_suite":"aes_cm_128_hmac_sha1_80"})";
+    EXPECT_TRUE(decode_host_settings(head + valid + "}"));
+    EXPECT_FALSE(decode_host_settings(head + R"("x"})"));
+    // ペイロードタイプが動的な範囲の外、ポートが 0、知らない暗号スイート。
+    for (const auto& [from, to] : {std::pair{"111", "95"}, std::pair{"5004", "0"},
+                                   std::pair{"aes_cm_128_hmac_sha1_80", "null_cipher"}}) {
+        std::string broken = valid;
+        broken.replace(broken.find(from), std::string(from).size(), to);
+        EXPECT_FALSE(decode_host_settings(head + broken + "}")) << broken;
+    }
 }
 
 TEST(SettingsCodecTest, RejectsLatencyTargetOfWrongType) {

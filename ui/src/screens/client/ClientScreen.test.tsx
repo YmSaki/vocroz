@@ -2,7 +2,8 @@
 // 子機の画面の受け入れ。
 // - 送信はミュートから始まり、マイクを選んだだけでは送信を始めない。
 // - 招待の入力から承認待ちを経て接続でき、失敗は原因別の文言で表示する。
-// - AT-A09 の UI 部分: 開発中のボタンはトーストを出すだけで、ウィンドウも状態も変えない。
+// - 返送モニター: 出力デバイスを選べ、返送の ON と OFF は親機の状態のとおりに表示する。
+//   子機の画面には開発中のボタンが残っていない。
 import { act, fireEvent, render, screen } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EngineClient } from "../../ipc/engine-client";
@@ -121,21 +122,41 @@ describe("参加の流れ", () => {
   });
 });
 
-describe("開発中のボタン（AT-A09）", () => {
-  it("押してもトーストを出すだけで、ウィンドウを開かず、エンジンにコマンドを送らない", async () => {
-    const open = vi.spyOn(window, "open").mockImplementation(() => null);
-    const send = vi.spyOn(engine, "send");
-    const before = JSON.stringify(engine.snapshot());
-    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-planned]"));
-    expect(buttons.length).toBeGreaterThan(0);
-    for (const button of buttons) fireEvent.click(button);
+describe("返送モニター", () => {
+  it("返送は OFF の表示から始まり、出力を選んでも ON にはならない", async () => {
+    expect(screen.getByText("親機が返送を止めています。")).toBeTruthy();
+    const output = engine.snapshot().output_devices[0]?.id;
+    fireEvent.change(screen.getByRole("combobox", { name: "出力デバイス" }), {
+      target: { value: output },
+    });
     await advance(20);
-    expect(open).not.toHaveBeenCalled();
-    expect(send).not.toHaveBeenCalled();
-    expect(JSON.stringify(engine.snapshot())).toBe(before);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(toasts.get().history.map((t) => t.text)).toEqual([
-      "『返送モニター』は現在開発中です。今後のアップデートで利用可能になる予定です。",
-    ]);
+    expect(engine.snapshot().selected_output_id).toBe(output);
+    expect(engine.snapshot().return_muted).toBe(true);
+    expect(screen.getByText("親機が返送を止めています。")).toBeTruthy();
+  });
+
+  it("親機が返送を ON にすると、届いていることを表示する", async () => {
+    fireEvent.click(screen.getByRole("button", { name: "参加を申請" }));
+    await advance(8000);
+    expect(engine.snapshot().return_muted).toBe(false);
+    expect(screen.getByText("親機から返送が届いています。")).toBeTruthy();
+  });
+
+  it("出力デバイスが抜けたら、選択を残したまま知らせる", async () => {
+    const output = engine.snapshot().output_devices[0]?.id ?? "";
+    fireEvent.change(screen.getByRole("combobox", { name: "出力デバイス" }), {
+      target: { value: output },
+    });
+    await advance(20);
+    act(() => engine.simulateOutputMissing());
+    await advance(20);
+    expect(
+      (screen.getByRole("combobox", { name: "出力デバイス" }) as HTMLSelectElement).value,
+    ).toBe(output);
+    expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+  });
+
+  it("開発中のボタンは残っていない", () => {
+    expect(document.querySelectorAll("[data-planned]").length).toBe(0);
   });
 });

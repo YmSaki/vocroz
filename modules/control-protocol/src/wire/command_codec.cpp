@@ -116,6 +116,27 @@ void read_fields(ObjectReader& r, SetLatencyTarget& command) {
     command.target_ms = r.number("target_ms", kMinLatencyTargetMs, kMaxLatencyTargetMs);
 }
 
+void write_fields(nlohmann::json& out, const SetExternalOutputConfig& command) {
+    out["config"] = write_json(command.config);
+}
+void read_fields(ObjectReader& r, SetExternalOutputConfig& command) {
+    command.config = r.nested<ExternalOutputConfig>("config", read_external_output_config);
+}
+
+void write_fields(nlohmann::json& out, const SetExternalOutputKey& command) {
+    out["key"] = command.key;
+}
+void read_fields(ObjectReader& r, SetExternalOutputKey& command) {
+    command.key = r.text("key", kSrtpKeyRule);
+}
+
+void write_fields(nlohmann::json& out, const SetExternalOutputRunning& command) {
+    out["running"] = command.running;
+}
+void read_fields(ObjectReader& r, SetExternalOutputRunning& command) {
+    command.running = r.boolean("running");
+}
+
 void write_fields(nlohmann::json& out, const SetGain& command) {
     out["entity_id"] = command.entity_id;
     out["seq"] = command.seq;

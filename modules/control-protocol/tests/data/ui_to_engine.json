@@ -226,6 +226,40 @@
     "target_ms": 40
   },
   {
+    "type": "set_external_output_config",
+    "request_id": "r-30",
+    "entity_id": "external_output",
+    "expected_revision": 0,
+    "config": {
+      "host": "encoder.example",
+      "port": 5004,
+      "source_id": "bus-fx",
+      "profile": "OPUS_STEREO",
+      "payload_type": 111,
+      "crypto_suite": "AES_CM_128_HMAC_SHA1_80"
+    }
+  },
+  {
+    "type": "set_external_output_key",
+    "request_id": "r-31",
+    "entity_id": "external_output",
+    "expected_revision": 1,
+    "key": "inline:AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0e"
+  },
+  {
+    "type": "set_external_output_running",
+    "request_id": "r-32",
+    "entity_id": "external_output",
+    "expected_revision": 2,
+    "running": true
+  },
+  {
+    "type": "test_external_output",
+    "request_id": "r-33",
+    "entity_id": "external_output",
+    "expected_revision": 3
+  },
+  {
     "type": "set_gain",
     "entity_id": "send-1",
     "seq": 7,

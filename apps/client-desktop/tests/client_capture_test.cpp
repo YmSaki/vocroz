@@ -44,7 +44,7 @@ protected:
         return capture_.take_input_peak();
     }
 
-    SendWakeup wakeup_;
+    transport::SendWakeup wakeup_;
     PacketSender sender_{wakeup_};
     RecordingOpener opener_;
     RecordingOpener app_audio_;

@@ -7,6 +7,7 @@
 #include "settings_codec.h"
 
 #include <cstdint>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -276,6 +277,81 @@ std::optional<std::vector<session::SavedRouteGain>> read_route_gains(const json&
     return gains;
 }
 
+const char* profile_name(control_protocol::ExternalOutputProfile profile) {
+    switch (profile) {
+        case control_protocol::ExternalOutputProfile::kOpusStereo:
+            return "opus_stereo";
+        case control_protocol::ExternalOutputProfile::kOpusMono:
+            return "opus_mono";
+    }
+    return "opus_stereo";
+}
+
+std::optional<control_protocol::ExternalOutputProfile> read_profile(const json& object) {
+    const auto name = read_string(object, "profile");
+    if (name == "opus_stereo") {
+        return control_protocol::ExternalOutputProfile::kOpusStereo;
+    }
+    if (name == "opus_mono") {
+        return control_protocol::ExternalOutputProfile::kOpusMono;
+    }
+    return std::nullopt;
+}
+
+const char* suite_name(control_protocol::SrtpSuite suite) {
+    switch (suite) {
+        case control_protocol::SrtpSuite::kAesCm128HmacSha1_80:
+            return "aes_cm_128_hmac_sha1_80";
+        case control_protocol::SrtpSuite::kAesCm128HmacSha1_32:
+            return "aes_cm_128_hmac_sha1_32";
+    }
+    return "aes_cm_128_hmac_sha1_80";
+}
+
+std::optional<control_protocol::SrtpSuite> read_suite(const json& object) {
+    const auto name = read_string(object, "crypto_suite");
+    if (name == "aes_cm_128_hmac_sha1_80") {
+        return control_protocol::SrtpSuite::kAesCm128HmacSha1_80;
+    }
+    if (name == "aes_cm_128_hmac_sha1_32") {
+        return control_protocol::SrtpSuite::kAesCm128HmacSha1_32;
+    }
+    return std::nullopt;
+}
+
+// SRTP 外部出力の設定。鍵は秘密情報なので、ここではなく SecretStore に保存する。
+json external_output_to_json(const control_protocol::ExternalOutputConfig& config) {
+    return {{"host", config.host},
+            {"port", config.port},
+            {"source_id", config.source_id},
+            {"profile", profile_name(config.profile)},
+            {"payload_type", config.payload_type},
+            {"crypto_suite", suite_name(config.crypto_suite)}};
+}
+
+std::optional<control_protocol::ExternalOutputConfig> read_external_output(const json& object) {
+    auto host = read_string(object, "host");
+    const auto port = read_unsigned(object, "port");
+    auto source_id = read_string(object, "source_id");
+    const auto profile = read_profile(object);
+    const auto payload_type = read_unsigned(object, "payload_type");
+    const auto suite = read_suite(object);
+    if (!host || !port || !source_id || !profile || !payload_type || !suite || *port == 0 ||
+        *port > std::numeric_limits<std::uint16_t>::max() ||
+        *payload_type < control_protocol::kMinExternalOutputPayloadType ||
+        *payload_type > control_protocol::kMaxExternalOutputPayloadType) {
+        return std::nullopt;
+    }
+    control_protocol::ExternalOutputConfig config;
+    config.host = std::move(*host);
+    config.port = static_cast<std::uint16_t>(*port);
+    config.source_id = std::move(*source_id);
+    config.profile = *profile;
+    config.payload_type = static_cast<std::uint8_t>(*payload_type);
+    config.crypto_suite = *suite;
+    return config;
+}
+
 // 表示名などに不正な UTF-8 が入っていても保存は止めず、置換文字にして書く。
 std::string dump(const json& root) {
     return root.dump(2, ' ', false, json::error_handler_t::replace) + "\n";
@@ -296,6 +372,7 @@ std::string encode_host_settings(const session::HostSettings& settings) {
     }
     root["route_gains"] = std::move(gains);
     root["latency_target_ms"] = settings.latency_target_ms;
+    root["external_output"] = external_output_to_json(settings.external_output);
     return dump(root);
 }
 
@@ -338,6 +415,18 @@ std::optional<session::HostSettings> decode_host_settings(std::string_view text)
         }
         settings.latency_target_ms = *latency;
     }
+    // SRTP 外部出力を保存する前のバージョンのファイルにはこの値がないので、未設定のまま読む。
+    if (root->contains("external_output")) {
+        const auto section = root->find("external_output");
+        if (!section->is_object()) {
+            return std::nullopt;
+        }
+        auto external_output = read_external_output(*section);
+        if (!external_output) {
+            return std::nullopt;
+        }
+        settings.external_output = std::move(*external_output);
+    }
     return settings;
 }
 
@@ -348,6 +437,7 @@ std::string encode_client_settings(const session::ClientSettings& settings) {
     root["selected_input_id"] = optional_to_json(settings.selected_input_id);
     root["send_level_db"] = settings.send_level_db;
     root["input_channels"] = settings.input_channels;
+    root["output_device_id"] = optional_to_json(settings.output_device_id);
     return dump(root);
 }
 
@@ -371,6 +461,15 @@ std::optional<session::ClientSettings> decode_client_settings(std::string_view t
     if (const auto channels = read_unsigned(*root, "input_channels");
         channels && *channels >= 1 && *channels <= control_protocol::kMaxInputChannels) {
         settings.input_channels = static_cast<std::uint8_t>(*channels);
+    }
+    // 返送モニターの前のバージョンのファイルには output_device_id がない。その場合は「出力なし」
+    // として読む。値の型が違えば、ほかの項目と同じく壊れたファイルとして扱う。
+    if (root->contains("output_device_id")) {
+        auto output_device_id = read_optional_string(*root, "output_device_id");
+        if (!output_device_id) {
+            return std::nullopt;
+        }
+        settings.output_device_id = std::move(*output_device_id);
     }
     return settings;
 }

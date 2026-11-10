@@ -29,27 +29,25 @@ network::RendezvousId to_rendezvous_id(const session::RendezvousId& id) {
 
 }  // namespace
 
-// 確立した 1 つの接続の受信側と信頼制御層。張り直すたびに作り直す。
-// 送信方向（PacketSealer とソケット）は送信スレッドが持ち、ここには送信先の更新に使う
-// ソケットへの参照だけを持つ。
+// 確立した 1 つの接続の信頼制御層と死活監視。張り直すたびに作り直す。
+// 送信方向（PacketSealer とソケット）は送信スレッドが、受信方向の復号器は受信スレッドが持ち、
+// ここには送信先の更新に使うソケットへの参照と、受信スレッドへ渡した接続の番号だけを持つ。
 struct HostConnection::Link {
-    Link(transport::PacketOpener opener_in, const network::UdpAddress& remote_in,
-         network::PeerDatagramSocket& socket_in, HostConnection& owner)
-        : opener(std::move(opener_in)),
-          remote(remote_in),
+    Link(std::uint32_t generation_in, network::PeerDatagramSocket& socket_in, HostConnection& owner)
+        : generation(generation_in),
           socket(socket_in),
           control(owner.ports_.clock, owner, owner),
           liveness(owner.ports_.clock, owner),
-          plaintext(transport::kMaxPacketBytes) {}
+          authenticated(owner.ports_.path.authenticated_packets()) {}
 
-    transport::PacketOpener opener;
-    network::UdpAddress remote;
+    std::uint32_t generation;
     // 送信スレッドが持つ SendPath の中のソケット。この Link がある間は、送信スレッドは
     // 次の set_path() まで破棄しない。
     network::PeerDatagramSocket& socket;
     transport::ReliableControlChannel control;
     transport::LivenessMonitor liveness;
-    std::vector<std::uint8_t> plaintext;
+    // 最後に見た、受信スレッドが認証したパケットの数。増えていれば受信があった。
+    std::uint64_t authenticated;
 };
 
 HostConnection::HostConnection(Ports ports, std::string server_host, std::uint16_t server_port)
@@ -61,6 +59,10 @@ HostConnection::HostConnection(Ports ports, std::string server_host, std::uint16
 
 HostConnection::~HostConnection() {
     // 送信スレッドが古い鍵で送り続けないよう、送信先を外してから破棄する。
+    // 受信スレッドの復号器も手放させる（受信スレッドはこのオブジェクトより長く動くことがある）。
+    if (link_) {
+        static_cast<void>(ports_.path.detach(link_->generation));
+    }
     ports_.sender.set_path(nullptr);
 }
 
@@ -91,9 +93,13 @@ void HostConnection::send(std::span<const std::uint8_t> message) {
     }
 }
 
-void HostConnection::apply_return_mute(bool /*muted*/, std::uint32_t /*epoch*/) {
-    // 子機はまだ返送（下りの音声）を受信しない。受信と再生を組み立てる続きの PR で、
-    // 返送の受信側（世代番号による判定）へ渡す（docs/adr/0036-return-monitor.md）。
+void HostConnection::apply_return_mute(bool muted, std::uint32_t epoch) {
+    // 返送のフレームの受け入れは受信スレッドで判定するので、通知をそこへ渡す。
+    // 通知は今の接続で届いたものだけで、次の接続では親機が承認のあとに送り直す。
+    if (!link_ || !ports_.path.set_return_mute(link_->generation, muted, epoch)) {
+        ports_.logger.log(common::LogLevel::kWarning,
+                          "client: the return mute could not be passed to the receive thread");
+    }
 }
 
 void HostConnection::close() {
@@ -118,9 +124,17 @@ void HostConnection::poll() {
         rendezvous_.poll(now);
     }
     while (const auto datagram = ports_.inbox.pop()) {
-        handle_peer_datagram(*datagram);
+        handle_handshake_response(*datagram);
+    }
+    while (const auto event = ports_.path.pop_event()) {
+        handle_path_event(*event);
     }
     if (link_) {
+        if (const auto authenticated = ports_.path.authenticated_packets();
+            authenticated != link_->authenticated) {
+            link_->authenticated = authenticated;
+            link_->liveness.note_packet_received();
+        }
         if (now >= link_->control.next_deadline()) {
             link_->control.tick();
         }
@@ -148,6 +162,11 @@ void HostConnection::drop_link() {
     rendezvous_.stop();
     handshake_.reset();
     if (link_) {
+        if (!ports_.path.detach(link_->generation)) {
+            // 受信スレッドは次の接続を渡したときに古い復号器を手放すので、受信は止まらないだけ。
+            ports_.logger.log(common::LogLevel::kWarning,
+                              "client: the receive thread could not be told to drop the link");
+        }
         link_.reset();
         ports_.sender.set_path(nullptr);
     }
@@ -222,40 +241,11 @@ void HostConnection::on_path_failed(network::NetworkError cause) {
     attempt_failed();
 }
 
-void HostConnection::handle_peer_datagram(const PeerDatagram& datagram) {
-    const auto header = transport::parse_packet_header(datagram.view());
-    if (!header) {
-        return;
-    }
-    if (header.value().type == transport::PacketType::kHandshakeResponse) {
-        handle_handshake_response(datagram);
-        return;
-    }
-    if (!link_) {
-        return;
-    }
-    const auto opened = link_->opener.open(datagram.view(), link_->plaintext);
-    if (!opened) {
-        return;
-    }
-    link_->liveness.note_packet_received();
-    if (datagram.from != link_->remote) {
-        // NAT のマッピングが変わった。認証済みのパケットの送信元へ送り先を移す。
-        // 渡せなければ、次の認証済みパケットで渡し直す。
-        if (link_->socket.update_remote(datagram.from)) {
-            link_->remote = datagram.from;
-        }
-    }
-    if (opened.value().type == transport::PacketType::kControl) {
-        if (!link_->control.on_control_packet(opened.value().plaintext)) {
-            ports_.logger.log(common::LogLevel::kDebug,
-                              "client: a malformed control packet was dropped");
-        }
-    }
-    // 親機から子機へのメディア（返送）は Beta で受け取る。今は死活監視にだけ使う。
-}
-
 void HostConnection::handle_handshake_response(const PeerDatagram& datagram) {
+    const auto header = transport::parse_packet_header(datagram.view());
+    if (!header || header.value().type != transport::PacketType::kHandshakeResponse) {
+        return;
+    }
     if (!handshake_) {
         // 複数の経路から届いた同じ応答の 2 つ目以降か、古い試行への応答。
         return;
@@ -272,15 +262,42 @@ void HostConnection::handle_handshake_response(const PeerDatagram& datagram) {
         attempt_failed();
         return;
     }
+    const std::uint32_t generation = ++generation_;
+    if (!ports_.path.attach(generation, std::move(secure.value().opener), datagram.from)) {
+        ports_.logger.log(common::LogLevel::kWarning,
+                          "client: the receive thread could not take the new link");
+        attempt_failed();
+        return;
+    }
     auto socket = std::make_unique<network::PeerDatagramSocket>(ports_.endpoint, datagram.from);
     network::PeerDatagramSocket& socket_ref = *socket;
     ports_.sender.set_path(std::make_unique<SendPath>(
         SendPath{std::move(secure.value().sealer), std::move(socket), 0}));
-    link_ =
-        std::make_unique<Link>(std::move(secure.value().opener), datagram.from, socket_ref, *this);
+    link_ = std::make_unique<Link>(generation, socket_ref, *this);
     phase_ = Phase::kLinked;
     backoff_.reset();
     events_.emplace_back(Established{});
+}
+
+void HostConnection::handle_path_event(const HostPacketEvent& event) {
+    if (!link_ || event.generation != link_->generation) {
+        return;  // 捨てた接続の出来事
+    }
+    switch (event.kind) {
+        case HostPacketEvent::Kind::kControl:
+            if (!link_->control.on_control_packet(event.view())) {
+                ports_.logger.log(common::LogLevel::kDebug,
+                                  "client: a malformed control packet was dropped");
+            }
+            return;
+        case HostPacketEvent::Kind::kRemoteChanged:
+            // NAT のマッピングが変わった。認証済みのパケットの送信元へ送り先を移す。
+            if (!link_->socket.update_remote(event.from)) {
+                ports_.logger.log(common::LogLevel::kWarning,
+                                  "client: the new host address could not be passed to the sender");
+            }
+            return;
+    }
 }
 
 void HostConnection::on_control_message(transport::ControlLane lane,

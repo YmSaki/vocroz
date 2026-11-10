@@ -7,8 +7,9 @@
 // 手順: 招待の親機の公開鍵で Noise_IK の 1 つ目のメッセージを作り、ClientRendezvous
 // が親機のすべての
 // 候補へ送る。最初に認証済みの応答を返した送信元を送信先にして、送信方向の暗号化を送信スレッドへ、
-// 受信方向の復号と信頼制御層をこのクラス（コントロールスレッド）に置く
-// （docs/adr/0030-remote-pa-assembly.md）。
+// 受信方向の復号をネットワーク受信スレッド（HostReceivePath）へ渡し、信頼制御層と死活監視を
+// このクラス（コントロールスレッド）に置く（docs/adr/0030-remote-pa-assembly.md、
+// docs/adr/0036-return-monitor.md）。
 //
 // ClientSession からの呼び出し（connect()、reconnect()、close()）は、次の poll() の先頭で反映する。
 // 結果の通知（HostLinkListener）は poll() の最後にまとめて行う。通知の中から session が close() や
@@ -43,6 +44,7 @@
 #include "vocroz/transport/static_key_pair.h"
 
 #include "host_link_listener.h"
+#include "host_receive_path.h"
 #include "packet_sender.h"
 #include "peer_inbox.h"
 
@@ -60,7 +62,8 @@ public:
     struct Ports {
         network::UdpEndpoint& endpoint;  ///< ランデブーと親機との通信に使う 1 本のソケット
         network::ReceiveRouter& router;  ///< ランデブーメッセージの取り出し元
-        PeerInbox& inbox;                ///< 親機のパケットの取り出し元
+        PeerInbox& inbox;                ///< ハンドシェイクの応答の取り出し元
+        HostReceivePath& path;           ///< 鍵交換の後の受信（復号と返送）
         PacketSender& sender;            ///< 暗号化と送信を担う送信スレッドの窓口
         network::NetworkEnvironment& environment;  ///< 名前解決とローカルのアドレス
         transport::RandomSource& random;           ///< ランデブーとバックオフの乱数
@@ -143,8 +146,8 @@ private:
     void drop_link();
     void start_attempt();
     void attempt_failed();
-    void handle_peer_datagram(const PeerDatagram& datagram);
     void handle_handshake_response(const PeerDatagram& datagram);
+    void handle_path_event(const HostPacketEvent& event);
     void dispatch_events();
 
     Ports ports_;
@@ -158,6 +161,8 @@ private:
     common::Clock::TimePoint retry_at_{};
     std::optional<transport::NoiseIkHandshake> handshake_;
     std::unique_ptr<Link> link_;
+    // 受信スレッドへ渡した接続の番号。張り直すたびに進め、古い接続の出来事を見分ける。
+    std::uint32_t generation_ = 0;
     std::vector<Event> events_;
 };
 

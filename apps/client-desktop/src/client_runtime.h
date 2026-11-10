@@ -9,9 +9,9 @@
 // スレッド（docs/adr/0030-remote-pa-assembly.md）:
 // - コントロールスレッド: start()、poll()、UI からのメッセージ。子機モードでは JUCE の
 //   メッセージスレッド
-// - オーディオスレッド: CaptureProcessor（エンコードまで）
+// - オーディオスレッド: CaptureProcessor（エンコードまで）と、返送の出力デバイスの ReturnPlayer
 // - 送信スレッド: PacketSender（暗号化と送信）
-// - ネットワーク受信スレッド: ReceiveRouter と PeerInbox（キューに入れるだけ）
+// - ネットワーク受信スレッド: ReceiveRouter と HostReceivePath（復号と返送のジッターバッファ）
 #pragma once
 
 #include <cstdint>
@@ -30,18 +30,23 @@
 #include "vocroz/session/ports/rendezvous_client.h"
 #include "vocroz/session/ports/settings_store.h"
 #include "vocroz/transport/opus_frame_encoder.h"
+#include "vocroz/transport/playout_stream.h"
 #include "vocroz/transport/ports/random_source.h"
+#include "vocroz/transport/send_wakeup.h"
 #include "vocroz/transport/static_key_pair.h"
 
 #include "capture_processor.h"
 #include "client_capture.h"
 #include "host_connection.h"
 #include "host_link_listener.h"
+#include "host_receive_path.h"
 #include "input_device_opener.h"
 #include "invite_inbox.h"
+#include "output_device_opener.h"
 #include "packet_sender.h"
 #include "peer_inbox.h"
-#include "send_wakeup.h"
+#include "return_output_devices.h"
+#include "return_player.h"
 #include "sender_thread.h"
 #include "ui_bridge.h"
 
@@ -62,12 +67,15 @@ public:
     struct Ports {
         control_protocol::MessageChannel& ui_channel;  ///< UI への経路（webui）
         network::UdpEndpoint& endpoint;  ///< 受信を router へ渡すように作った UDP ソケット
-        network::ReceiveRouter& router;  ///< endpoint の受信の振り分け
-        PeerInbox& inbox;                ///< router が親機のパケットを渡す先
+        network::ReceiveRouter& router;     ///< endpoint の受信の振り分け
+        PeerInbox& inbox;                   ///< path がハンドシェイクの応答を渡す先
+        HostReceivePath& path;              ///< router が親機のパケットを渡す先
+        transport::PlayoutStream& returns;  ///< path が返送を入れるジッターバッファ
         network::NetworkEnvironment& environment;
         audio_core::AudioDeviceCatalog& devices;
         InputDeviceOpener& inputs;
         InputDeviceOpener& app_audio;  ///< アプリ音声（既定の再生デバイスのループバック）を開く
+        OutputDeviceOpener& outputs;  ///< 返送モニターの出力デバイスを開く
         session::RendezvousClient& rendezvous;  ///< 招待の解決（結果は invites に入る）
         InviteInbox& invites;
         session::SettingsStore& settings;
@@ -109,7 +117,8 @@ public:
     void start();
 
     /// コントロールスレッドの周期の処理。数 ms〜十数 ms ごとに呼ぶ。
-    /// 招待の解決の結果、親機との通信、入力デバイスの抜去、session の時刻の処理、メーターを進める。
+    /// 招待の解決の結果、親機との通信、入力と出力のデバイスの抜去、session の時刻の処理、
+    /// メーターを進める。
     void poll();
 
     /// 参加の手続き中か参加中（ウィンドウを閉じる前に確認が要る状態）なら true を返す。
@@ -131,10 +140,13 @@ private:
 
     Ports ports_;
     transport::StaticKeyPair keys_;
-    SendWakeup wakeup_;
+    transport::SendWakeup wakeup_;
     PacketSender sender_;
     ClientCapture capture_;
     UiBridge ui_;
+    // 返送の再生は、出力デバイス（return_outputs_）より先に作り、後に破棄する。
+    ReturnPlayer player_;
+    ReturnOutputDevices return_outputs_;
     HostConnection connection_;
     session::ClientSession session_;
     common::Clock::TimePoint next_tick_{};

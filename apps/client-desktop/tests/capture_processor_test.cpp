@@ -60,7 +60,7 @@ protected:
         return out;
     }
 
-    SendWakeup wakeup_;
+    transport::SendWakeup wakeup_;
     PacketSender sender_{wakeup_};
     CaptureProcessor processor_{transport::OpusFrameEncoder::create({}).value(), sender_,
                                 kMicrophoneLane, 0};

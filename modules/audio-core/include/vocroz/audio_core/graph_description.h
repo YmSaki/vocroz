@@ -15,8 +15,10 @@
 #include <vector>
 
 #include "vocroz/audio_core/playback_track.h"
+#include "vocroz/audio_core/plugin_fault.h"
 #include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
+#include "vocroz/audio_core/ports/audio_stream_sink.h"
 #include "vocroz/audio_core/ports/midi_source.h"
 #include "vocroz/audio_core/ports/plugin_processor.h"
 #include "vocroz/audio_core/recording_track.h"
@@ -68,6 +70,9 @@ enum class NodeKind {
     /// AudioSink に渡す。出力を持たない（後段へつながない）。子機への返送（Minus-Me）に使う
     /// （minus_me.h、docs/adr/0036-return-monitor.md）
     kReturnTap,
+    /// ストリームタップ。ステレオの入力を加算して AudioStreamSink に渡す。出力を持たない
+    /// （後段へつながない）。SRTP 外部出力に使う（docs/adr/0040-srtp-external-output.md）
+    kStreamTap,
 };
 
 /// ノードの記述。各種類のファクトリー関数で作る。
@@ -93,12 +98,17 @@ struct NodeSpec {
     /// kPlugin: 処理の遅延（0〜kMaxLatencyCompensationSamples）。make_plugin() が
     /// PluginProcessor::latency_samples() から写す。PDC はこの値で計算する。
     std::size_t latency_samples = 0;
+    /// kPlugin: 失敗の印（任意）。処理が失敗したらグラフが立てる。立っていれば、グラフを
+    /// 構築した時点からノードを無音にする。null なら、印はそのグラフの中だけで持つ。
+    std::shared_ptr<PluginFault> plugin_fault;
     /// kRecordTap のときの書き込み先。
     std::shared_ptr<RecordingTrack> recording;
     /// kPlayer のときの読み込み元。
     std::shared_ptr<PlaybackTrack> playback;
     /// kReturnTap のときのサンプルの渡し先。
     std::shared_ptr<AudioSink> sink;
+    /// kStreamTap のときのサンプルの渡し先。
+    std::shared_ptr<AudioStreamSink> stream_sink;
 
     /// ソースノードを作る。
     /// @param id ノードの識別子
@@ -144,8 +154,11 @@ struct NodeSpec {
     /// バスへの挿入は「バス → プラグイン → 後段」。
     /// @param id ノードの識別子
     /// @param plugin 処理の呼び出し先（null にしない）
+    /// @param fault 失敗の印。グラフを差し替えても失敗を引き継ぎ、コントロールスレッドから
+    /// 失敗を読むときに渡す。null なら、グラフを構築し直すと無音が解ける
     /// スレッド安全性: コントロールスレッドから呼ぶ（PluginProcessor の取得関数を呼ぶため）。
-    [[nodiscard]] static NodeSpec make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin);
+    [[nodiscard]] static NodeSpec make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin,
+                                              std::shared_ptr<PluginFault> fault = nullptr);
 
     /// 録音タップを作る。録音したいストリップかバス（またはソース）からつなぐ。
     /// フェーダーの前を録るなら SendTap::kPreFader でつなぐ。録音タップへのプリフェーダーの結線は、
@@ -164,6 +177,11 @@ struct NodeSpec {
     /// @param id ノードの識別子
     /// @param sink サンプルの渡し先（null にしない）
     [[nodiscard]] static NodeSpec make_return_tap(NodeId id, std::shared_ptr<AudioSink> sink);
+
+    /// ストリームタップを作る。送り出すバスのポストフェーダーの出力をつなぐ。
+    /// @param id ノードの識別子
+    /// @param sink サンプルの渡し先（null にしない）
+    [[nodiscard]] static NodeSpec make_stream_tap(NodeId id, std::shared_ptr<AudioStreamSink> sink);
 };
 
 /// 結線が送り元のどの位置から信号を取り出すか。
@@ -257,7 +275,7 @@ enum class GraphError {
     /// MIDI の経路が、存在しない MIDI
     /// ソースかノードを指しているか、送り先がプラグインノードでないか、 同じ経路が重複している
     kInvalidMidiConnection,
-    kMissingSink,  ///< 返送タップに AudioSink がない
+    kMissingSink,  ///< 返送タップに AudioSink が、ストリームタップに AudioStreamSink がない
 };
 
 }  // namespace vocroz::audio_core

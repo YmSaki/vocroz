@@ -6,6 +6,8 @@
 // - "expired": 招待の期限切れ（INVITE_EXPIRED）
 // - "reject": 親機が参加を拒否（REJECTED）
 // - "unreachable": NAT 越えの不成立（UNREACHABLE）
+//
+// 接続すると、親機のオペレーターが少し後に返送を ON にしたものとして return_muted を外す。
 
 import type {
   ClientSnapshot,
@@ -42,6 +44,13 @@ function initialSnapshot(): ClientSnapshot {
     input_channels: 1,
     // アプリ音声は既定で送らない。
     app_audio: false,
+    output_devices: [
+      { id: "{0.0.0.00000000}.{phones-usb}", name: "ヘッドホン (USB Audio Interface)" },
+      { id: "{0.0.0.00000000}.{speaker-realtek}", name: "スピーカー (Realtek Audio)" },
+    ],
+    // 返送は出演者が出力デバイスを選んだときだけ鳴らす。
+    selected_output_id: null,
+    output_missing: false,
   };
 }
 
@@ -65,6 +74,20 @@ export class FakeClientEngine extends FakeEngineBase {
     // 入力の欠落は観測値なので revision を進めない（その最中の送信ミュートを衝突させないため）。
     this.update({ input_missing: true }, false);
     this.emit({ type: "notice", severity: "warning", code: "input_missing", params: {} });
+  }
+
+  /** 選択中の返送の出力デバイスの抜去を再現する。選択は残し、別のデバイスへは切り替えない。 */
+  simulateOutputMissing(): void {
+    if (this.state.selected_output_id === null) return;
+    const lost = this.state.selected_output_id;
+    this.update(
+      {
+        output_missing: true,
+        output_devices: this.state.output_devices.filter((device) => device.id !== lost),
+      },
+      false,
+    );
+    this.emit({ type: "notice", severity: "warning", code: "return_output_lost", params: {} });
   }
 
   /** 回線の途絶と再接続を再現する。 */
@@ -100,6 +123,8 @@ export class FakeClientEngine extends FakeEngineBase {
       case "set_send_mute":
       case "set_input_channels":
       case "set_app_audio":
+      case "select_output":
+      case "set_return_mute":
       case "create_session":
       case "end_session":
       case "set_channel_mute":
@@ -140,7 +165,12 @@ export class FakeClientEngine extends FakeEngineBase {
         this.attempt++;
         this.ack(
           command,
-          this.update({ client_state: "DISCONNECTED", failure_code: null, session_name: null }),
+          this.update({
+            client_state: "DISCONNECTED",
+            failure_code: null,
+            session_name: null,
+            return_muted: true,
+          }),
         );
         return;
       case "select_input":
@@ -159,6 +189,13 @@ export class FakeClientEngine extends FakeEngineBase {
       case "set_app_audio":
         this.ack(command, this.update({ app_audio: command.enabled }));
         return;
+      case "select_output":
+        // 出力を選んでも返送の ON と OFF は変わらない（親機が決める）。
+        this.ack(
+          command,
+          this.update({ selected_output_id: command.device_id, output_missing: false }),
+        );
+        return;
       case "create_session":
       case "end_session":
       case "set_channel_mute":
@@ -168,6 +205,7 @@ export class FakeClientEngine extends FakeEngineBase {
       case "discard_routing":
       case "set_route_mute":
       case "set_latency_target":
+      case "set_return_mute":
       case "approve_participant":
       case "reject_participant":
       case "remove_strip":
@@ -217,6 +255,12 @@ export class FakeClientEngine extends FakeEngineBase {
           },
           false,
         );
+        if (step.state === "CONNECTED") {
+          // 返送の ON と OFF は親機が決める観測値なので、revision を進めない。
+          this.later(() => {
+            if (attempt === this.attempt) this.update({ return_muted: false }, false);
+          }, kApprovalDelayMs);
+        }
         run(index + 1);
       }, step.delayMs);
     };

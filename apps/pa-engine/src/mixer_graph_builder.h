@@ -10,6 +10,8 @@
 //   バス、遅延ノード、追加の出力（それぞれ安全リミッターを通す）と、センドの結線
 //   子機への返送（Minus-Me）: Master へ入る信号のうち、その子機の声を含まないもの → 安全リミッター
 //   → 返送タップ（docs/adr/0036-return-monitor.md）
+//   SRTP 外部出力: 送り出すバス（Master かバス）のポストフェーダー → 安全リミッター
+//   → ストリームタップ（docs/adr/0040-srtp-external-output.md）
 // ストリップから Master と、Master からメインの出力は暗黙の結線として必ず加える。
 // フェーダーとメーターの識別子は EngineMixer が entity ごとに割り当て、ここでは使うだけにする。
 #pragma once
@@ -17,6 +19,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,6 +27,7 @@
 #include "vocroz/audio_core/graph_description.h"
 #include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
+#include "vocroz/audio_core/ports/audio_stream_sink.h"
 #include "vocroz/audio_core/ports/midi_source.h"
 #include "vocroz/control_protocol/entities.h"
 
@@ -72,6 +76,14 @@ struct MidiSourceAssignment {
 /// @param device_id MIDI 入力ポートの ID（MidiDeviceInfo::id）
 [[nodiscard]] std::string device_midi_key(std::string_view device_id);
 
+/// SRTP 外部出力のストリームタップの割り当て（docs/adr/0040-srtp-external-output.md）。
+struct ExternalStreamAssignment {
+    /// 送り出すバスの entity_id（Master か、構成のバス）。見つからなければタップを置かない。
+    std::string source_id;
+    /// 送り出す音の渡し先（null にしない）。
+    std::shared_ptr<audio_core::AudioStreamSink> sink;
+};
+
 /// グラフを組み立てるのに使う、フェーダーとメーターの割り当て。
 struct MixerAssignments {
     audio_core::FaderId master_fader;
@@ -83,6 +95,8 @@ struct MixerAssignments {
     std::vector<ReturnAssignment> returns;
     /// MIDI ソース。
     std::vector<MidiSourceAssignment> midi_sources;
+    /// SRTP 外部出力。送っていなければ std::nullopt。
+    std::optional<ExternalStreamAssignment> external_stream;
     /// バスとセンドの entity_id ごとのフェーダー。
     std::map<std::string, audio_core::FaderId, std::less<>> route_faders;
     /// バスの entity_id ごとのポストフェーダーのメーター。

@@ -116,6 +116,7 @@ VOCROZ は AGPL-3.0-only で配布します。依存するライブラリは、�
 | [libopus](https://opus-codec.org/) | 1.5.2 | BSD-3-Clause | 可 | 音声のエンコードとデコード |
 | [libsodium](https://libsodium.org/) | 1.0.20 | ISC | 可 | AEAD、鍵交換などの暗号プリミティブ |
 | [libsodium-cmake](https://github.com/robinlinden/libsodium-cmake) | コミット `9b2848d` | ISC | 可 | libsodium の CMake ビルド |
+| [libsrtp](https://github.com/cisco/libsrtp) | 2.7.0（コミット `ee1a77c`） | BSD-3-Clause | 可 | SRTP 外部出力の暗号化（内蔵の暗号の実装を使い、OpenSSL には依存しない） |
 | [noise-c](https://github.com/rweather/noise-c) | コミット `cfe2541` | MIT | 可 | Noise プロトコル（Noise_IK）の実装 |
 | [nlohmann/json](https://github.com/nlohmann/json) | 3.12.0 | MIT | 可 | UI とエンジン間のメッセージ、設定ファイル、VST3 のスキャン結果、ランデブーサーバーの招待 API の JSON |
 | [WebView2 SDK](https://www.nuget.org/packages/Microsoft.Web.WebView2)（`Microsoft.Web.WebView2`） | 1.0.3912.50 | BSD-3-Clause | 可 | Windows の WebView2 の読み込み（`WebView2LoaderStatic.lib` を静的にリンク） |

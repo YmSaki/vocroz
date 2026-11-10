@@ -2,8 +2,8 @@
 // 親機のミキサー画面（Container）。
 // ストアを購読して描画し、操作をコマンドにしてエンジンへ送る。
 //
-// レイアウト: 上部のステータス帯、ルーティング画面と開発中の機能のツールバー、中央のチャンネル領域（横スクロール）、
-// 必要に応じて承認パネルと通知履歴、右端に固定した Master。
+// レイアウト: 上部のステータス帯、ルーティング画面と外部出力と開発中の機能のツールバー、
+// 中央のチャンネル領域（横スクロール）、必要に応じて承認パネルと外部出力のパネルと通知履歴、右端に固定した Master。
 
 import { useState } from "preact/hooks";
 import { ConfirmDialog } from "../../components/confirm-dialog/ConfirmDialog";
@@ -27,6 +27,7 @@ import { useCommand } from "../shared/use-command";
 import { useContinuousGain } from "../shared/use-continuous-gain";
 import { ApprovalPanel, kApprovalPanelWidthPx } from "./ApprovalPanel";
 import { ChannelStripView } from "./ChannelStripView";
+import { ExternalOutputPanel, kExternalOutputPanelWidthPx } from "./ExternalOutputPanel";
 import { MasterStripView, kMasterStripWidthPx } from "./MasterStripView";
 import { StatusBar } from "./StatusBar";
 import { isStripWarning } from "./strip-status";
@@ -75,6 +76,7 @@ export function MixerScreen({
   const command = useCommand(client, toasts);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [externalOpen, setExternalOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   // 選択は表示上の強調だけで、エンジンの状態ではない。
   const [selected, setSelected] = useState<string | null>(null);
@@ -83,7 +85,7 @@ export function MixerScreen({
     return <div class="screen-loading">{t("common.connecting_engine")}</div>;
   }
 
-  const { session, channels, master, pending } = state;
+  const { session, channels, master, pending, external_output: externalOutput } = state;
   const readMeter = (entityId: string) => (): MeterSample | undefined => {
     const reading = meters.read(entityId);
     return reading === undefined
@@ -144,6 +146,14 @@ export function MixerScreen({
         <button type="button" class="mixer-toolbar__button" onClick={onOpenRouting}>
           {t("feature.routing")}
         </button>
+        <button
+          type="button"
+          class="mixer-toolbar__button"
+          aria-pressed={externalOpen}
+          onClick={() => setExternalOpen((open) => !open)}
+        >
+          {t("feature.external_output")}
+        </button>
         {kMixerPlannedFeatures.map((feature) => (
           <PlannedButton
             key={feature}
@@ -175,6 +185,12 @@ export function MixerScreen({
                     muted: !channel.channel_muted,
                   })
                 }
+                onToggleReturn={() =>
+                  command.send(channel.entity_id, channel.revision, {
+                    type: "set_return_mute",
+                    muted: !channel.return_muted,
+                  })
+                }
                 onSelect={() =>
                   setSelected((current) =>
                     current === channel.entity_id ? null : channel.entity_id,
@@ -197,6 +213,43 @@ export function MixerScreen({
             }
             onReject={(p) => command.send(p.entity_id, p.revision, { type: "reject_participant" })}
             onClose={() => setApprovalOpen(false)}
+          />
+        ) : null}
+        {externalOpen ? (
+          <ExternalOutputPanel
+            output={externalOutput}
+            buses={state.routing.applied.buses}
+            pending={command.isPending(externalOutput.entity_id)}
+            onSaveConfig={(config) =>
+              command.send(externalOutput.entity_id, externalOutput.revision, {
+                type: "set_external_output_config",
+                config,
+              })
+            }
+            onSetKey={(key) =>
+              command.send(externalOutput.entity_id, externalOutput.revision, {
+                type: "set_external_output_key",
+                key,
+              })
+            }
+            onSetRunning={(running) =>
+              command.send(externalOutput.entity_id, externalOutput.revision, {
+                type: "set_external_output_running",
+                running,
+              })
+            }
+            onTest={() =>
+              command.send(externalOutput.entity_id, externalOutput.revision, {
+                type: "test_external_output",
+              })
+            }
+            onCopyKey={(key) =>
+              writeClipboard(key).then(
+                () => toasts.push("info", t("external_output.key_copied")),
+                () => toasts.push("error", t("external_output.key_copy_failed")),
+              )
+            }
+            onClose={() => setExternalOpen(false)}
           />
         ) : null}
         {historyOpen ? (
@@ -222,6 +275,7 @@ export function MixerScreen({
         rightInset={
           kMasterStripWidthPx +
           (approvalOpen ? kApprovalPanelWidthPx : 0) +
+          (externalOpen ? kExternalOutputPanelWidthPx : 0) +
           (historyOpen ? kNotificationHistoryWidthPx : 0)
         }
       />

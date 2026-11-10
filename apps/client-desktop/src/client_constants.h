@@ -26,9 +26,27 @@ inline constexpr std::size_t kEncodedFrameQueueCapacity = 32;
 /// 溢れた平文は失われたものとして信頼制御層が再送する。
 inline constexpr std::size_t kControlPlaintextQueueCapacity = 64;
 
-/// ネットワーク受信スレッドからコントロールスレッドへ渡す、相手のパケットの数の上限。
-/// 子機が親機から受け取るのは制御パケットだけ（下りの音声は Beta）で、毎秒数個しか届かない。
+/// ネットワーク受信スレッドからコントロールスレッドへ渡す、ハンドシェイクの応答の数の上限。
+/// 応答は接続の試行ごとに候補の経路の数（数個）しか届かない。
 inline constexpr std::size_t kPeerInboxCapacity = 64;
+
+/// ネットワーク受信スレッドからコントロールスレッドへ渡す、復号した制御パケットと送信元の変化の
+/// 数の上限。制御パケットは毎秒数個しか届かず、コントロールスレッドは 10ms ごとに取り出すので、
+/// 通常は溢れない。溢れた制御パケットは信頼制御層が再送する。
+inline constexpr std::size_t kHostPacketEventCapacity = 64;
+
+/// コントロールスレッドからネットワーク受信スレッドへの指示（接続の付け替え、返送のミュート）の
+/// 数の上限。指示は接続と操作のたびに 1 つで、受信スレッドはパケットが届くたびに取り出す。
+inline constexpr std::size_t kHostReceiveCommandCapacity = 16;
+
+/// 受信方向の復号器を受信スレッドへ渡すための置き場の数。使っている 1 つ、渡す途中の 1 つ、
+/// 受信スレッドが手放したことをまだコントロールスレッドが知らない 1 つに、余裕を 1 つ足す。
+inline constexpr std::size_t kHostOpenerSlots = 4;
+
+/// 返送を描画するときに、1 回の PlayoutStream::render() で書く最大のフレーム数。
+/// デバイスのコールバックがこれより長ければ分けて描画する。WASAPI の共有モードの周期（10ms）の
+/// 倍より長くし、通常は 1 回で済むようにする。
+inline constexpr std::size_t kReturnRenderChunkFrames = 1024;
 
 /// 送信ゲインと送信ミュートのランプの長さ。仕様のゲインランプ（5〜20ms）の短い側にして、
 /// ミュートの効きを速くする。48kHz で 5ms。

@@ -18,6 +18,11 @@ namespace vocroz::transport {
 /// パケット全体が失われ、遅延と欠損が増えるため避ける。
 inline constexpr std::size_t kMaxPacketBytes = 1232;
 
+/// 親機から子機への返送（Minus-Me、下りストリーム）のストリーム ID。
+/// ストリーム ID は向きごとに別の名前空間で、上り（子機が入力ごとに 0 から振る）とは衝突しない。
+/// 返送は子機 1 台に 1 本なので 0 だけを使う（docs/adr/0036-return-monitor.md）。
+inline constexpr std::uint16_t kReturnStreamId = 0;
+
 /// Curve25519 の公開鍵の長さ（バイト）。
 inline constexpr std::size_t kPublicKeyBytes = 32;
 

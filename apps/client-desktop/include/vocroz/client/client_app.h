@@ -41,7 +41,7 @@ struct ClientAppConfig {
 /// 子機モードの起動の失敗。
 enum class ClientAppError {
     kCryptoUnavailable,  ///< 暗号ライブラリを初期化できない（鍵と接続 ID を作れない）
-    kEncoderFailed,  ///< Opus のエンコーダーを作れない
+    kEncoderFailed,  ///< Opus のエンコーダーか、返送のデコーダーを作れない
     kSocketFailed,   ///< UDP のソケットを開けない
 };
 

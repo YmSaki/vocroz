@@ -16,6 +16,7 @@
 #include "vocroz/session/host_session.h"
 #include "vocroz/session/settings.h"
 
+#include "external_output_book.h"
 #include "invite_book.h"
 #include "participant_registry.h"
 #include "routing_book.h"
@@ -156,6 +157,13 @@ struct HostContext {
     /// 承認と再接続で接続を受け付けたとき（JoinApproved
     /// より前）と、ミュートを切り替えたときに呼ぶ。 接続がなければ何もしない。
     void sync_return(const Participant& participant);
+    /// 送り出すバスとして使える entity_id（Master か、適用中のルーティングのバス）なら true。
+    [[nodiscard]] bool is_external_output_source(const std::string& entity_id) const;
+    /// 保存した SRTP 外部出力の設定と鍵を戻す。送信は止めたまま。起動時に 1 回だけ呼ぶ。
+    void restore_external_output();
+    /// SRTP 外部出力の送り出すバスがルーティングから消えていたら、送信を止めて知らせる。
+    /// 適用中のルーティングが変わるたびに呼ぶ。
+    void stop_external_output_without_source();
     /// 子機へ制御メッセージを送る。
     void send(PeerHandle peer, const wire::HostToClientMessage& message);
 
@@ -167,6 +175,7 @@ struct HostContext {
     void publish_pending();
     void publish_routing();
     void publish_route_level(const control_protocol::RouteLevel& level);
+    void publish_external_output();
     void notice(control_protocol::NoticeSeverity severity, const char* code,
                 const std::string& name);
     void log(common::LogLevel level, const char* message);
@@ -185,6 +194,7 @@ struct HostContext {
     InviteBook invites;
     ParticipantRegistry registry;
     RoutingBook routing;
+    ExternalOutputBook external_output;
 };
 
 }  // namespace vocroz::session

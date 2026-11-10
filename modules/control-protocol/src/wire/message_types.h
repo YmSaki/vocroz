@@ -66,6 +66,16 @@ inline constexpr std::string_view kMessageType<SetAppAudio> = "set_app_audio";
 template <>
 inline constexpr std::string_view kMessageType<SetLatencyTarget> = "set_latency_target";
 
+template <>
+inline constexpr std::string_view kMessageType<SetExternalOutputConfig> =
+    "set_external_output_config";
+template <>
+inline constexpr std::string_view kMessageType<SetExternalOutputKey> = "set_external_output_key";
+template <>
+inline constexpr std::string_view kMessageType<SetExternalOutputRunning> =
+    "set_external_output_running";
+template <>
+inline constexpr std::string_view kMessageType<TestExternalOutput> = "test_external_output";
 // エンジンから UI へ。
 template <>
 inline constexpr std::string_view kMessageType<MixerSnapshotEvent> = "mixer_snapshot";
@@ -87,6 +97,8 @@ template <>
 inline constexpr std::string_view kMessageType<RoutingUpdated> = "routing_updated";
 template <>
 inline constexpr std::string_view kMessageType<RouteLevelUpdated> = "route_level_updated";
+template <>
+inline constexpr std::string_view kMessageType<ExternalOutputUpdated> = "external_output_updated";
 template <>
 inline constexpr std::string_view kMessageType<Ack> = "ack";
 template <>

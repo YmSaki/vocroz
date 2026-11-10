@@ -27,10 +27,12 @@
 #include "vocroz/transport/playout_stream.h"
 #include "vocroz/transport/static_key_pair.h"
 
+#include "fakes/fake_external_output_control.h"
 #include "fakes/fake_logger.h"
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_playout_control.h"
 #include "fakes/fake_rendezvous_client.h"
+#include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
 #include "fakes/fake_ui_event_sink.h"
@@ -146,6 +148,8 @@ private:
     session::FakePlayoutControl playout_control_;
     session::FakeRendezvousClient rendezvous_;
     session::FakeSettingsStore settings_;
+    session::FakeExternalOutputControl external_output_;
+    session::FakeSecretStore secrets_;
     session::FakeSecureRandom random_;
     common::FakeLogger logger_;
     std::unique_ptr<session::HostSession> session_;

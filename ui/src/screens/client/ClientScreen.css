@@ -163,8 +163,20 @@
     font-size: 16px;
 }
 
-.client-planned {
-    display: flex;
-    gap: 6px;
-    margin-top: 12px;
+.client-return {
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--color-border);
+}
+
+/* 返送が届いているときは、ヘッドホンから音が出ることがひと目でわかる色にする。 */
+.client-return--on {
+    color: #fff;
+    background: var(--color-live);
+    border-color: var(--color-live);
+}
+
+.client-return--off {
+    color: var(--color-text-dim);
 }

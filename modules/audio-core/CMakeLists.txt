@@ -22,6 +22,7 @@ add_library(vocroz_audio_core STATIC
   src/minus_me.cpp
   src/mixer.cpp
   src/playback_track.cpp
+  src/plugin_fault.cpp
   src/recording_track.cpp
   src/render_graph.cpp
   src/safety_limiter.cpp
@@ -59,11 +60,13 @@ if(VOCROZ_BUILD_TESTS)
     tests/minus_me_test.cpp
     tests/mixer_test.cpp
     tests/playback_track_test.cpp
+    tests/plugin_fault_test.cpp
     tests/realtime_sanitizer_test.cpp
     tests/recording_and_playback_test.cpp
     tests/recording_track_test.cpp
     tests/render_graph_test.cpp
     tests/safety_limiter_test.cpp
+    tests/stream_tap_test.cpp
     tests/sample_ring_buffer_test.cpp)
   # 内部クラス（src/ のヘッダー）も対象と同じモジュールのテストとして直接検証する。
   target_include_directories(audio_core_tests PRIVATE src)

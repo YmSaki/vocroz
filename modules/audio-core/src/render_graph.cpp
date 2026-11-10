@@ -79,9 +79,14 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
         node.input_channel_count = input_channels_of(spec);
         node.buffer_channel_count = std::max(node.channel_count, node.input_channel_count);
         node.plugin = spec.plugin;
+        node.plugin_fault = spec.plugin_fault;
+        // 差し替え前のグラフで失敗したプラグインは、新しいグラフでも最初から無音にする。
+        // 素通しや処理の再開で、失敗したプラグインの音が突然戻らないようにするため。
+        node.plugin_failed = spec.plugin_fault && spec.plugin_fault->raised();
         node.recording = spec.recording;
         node.playback = spec.playback;
         node.sink = spec.sink;
+        node.stream_sink = spec.stream_sink;
         assign_buffers(node.channels, node.buffer_channel_count, next_buffer);
         if (plan.has_pre_fader_send[spec_index]) {
             assign_buffers(node.pre_fader, node.channel_count, next_buffer);
@@ -187,6 +192,9 @@ void RenderGraph::process_plugin(Node& node, std::size_t frames,
         // NaN や無限大は、後段のバスとリミッターを通っても元に戻らない。
         // 出力全体を壊すので、失敗と同じに扱う。
         node.plugin_failed = !ok || !all_finite(node.channels, node.channel_count, frames);
+        if (node.plugin_failed && node.plugin_fault) {
+            node.plugin_fault->raise();
+        }
     }
     if (node.plugin_failed) {
         // フェイルセーフ: 処理できなかったプラグインは素通しにせず無音にする（AGENTS.md 1.2）。
@@ -257,6 +265,11 @@ void RenderGraph::process_node(std::size_t position, std::size_t frames, FaderBa
         case NodeKind::kReturnTap:
             mix_inputs(node, frames, faders);
             push_return(node, frames);
+            break;
+        case NodeKind::kStreamTap:
+            mix_inputs(node, frames, faders);
+            node.stream_sink->push_stereo(std::span<const float>(node.channels[0], frames),
+                                          std::span<const float>(node.channels[1], frames));
             break;
     }
 }

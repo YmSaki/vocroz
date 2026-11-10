@@ -46,6 +46,11 @@ struct HostSettings {
     std::vector<SavedRouteGain> route_gains;
     /// 全体の目標レイテンシー（ms）。回線の状態に合わせてオペレーターが選んだ値を次の起動でも使う。
     double latency_target_ms = kDefaultLatencyTargetMs;
+    /// SRTP 外部出力の設定（宛先、送り出すバス、プロファイル）。送信中かどうかは保存しない。
+    /// 起動時は必ず止めた状態から始め、送信はオペレーターの操作でだけ始める（初期ミュートの
+    /// 製品要件）。鍵は秘密情報なので SecretStore に分けて保存する
+    /// （docs/adr/0040-srtp-external-output.md）。
+    control_protocol::ExternalOutputConfig external_output;
 
     friend bool operator==(const HostSettings&, const HostSettings&) = default;
 };
@@ -62,6 +67,8 @@ struct ClientSettings {
     /// アプリ音声を送るかは保存しない。起動するたびに送らない状態から始め、出演者が選び直す
     /// （PC の通知音などを意図せず送らないため）。
     std::uint8_t input_channels = 1;
+    /// 最後に選んだ返送モニターの出力デバイスの永続 ID。std::nullopt は「出力なし」。
+    std::optional<std::string> output_device_id;
 
     friend bool operator==(const ClientSettings&, const ClientSettings&) = default;
 };

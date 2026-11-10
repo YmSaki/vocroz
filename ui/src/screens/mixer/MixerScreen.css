@@ -265,6 +265,7 @@
 }
 
 .strip__sel,
+.strip__return,
 .strip__remove {
     flex: 1;
     min-height: 24px;
@@ -280,6 +281,12 @@
 .strip__sel--on {
     color: #000;
     background: var(--color-focus);
+}
+
+/* 返送を送っている間は、送っていることがひと目でわかる色にする。 */
+.strip__return--on {
+    color: #fff;
+    background: var(--color-live);
 }
 
 .approval-panel {

@@ -4,6 +4,7 @@
 
 #include "mixer_graph_builder.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -197,6 +198,22 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         // センドには必ずセンドレベルを付ける。新しいセンドはミュートで始まり（初期ミュート）、
         // プリフェーダーのセンドは送り元のミュートでは止まらないため。
         writer.connect(*from, *to, to_graph_tap(send.tap), level->second);
+    }
+    if (const auto& external = assignments.external_stream; external && external->sink) {
+        // 送り出せるのは Master かバスだけ（session が検証する）。ストリップや遅延ノードは
+        // 外部へ送る音の単位ではないので、万一指していてもタップを置かない。
+        const auto is_bus = external->source_id == master_entity_id ||
+                            std::ranges::any_of(config.buses, [&](const cp::RoutingBus& bus) {
+                                return bus.entity_id == external->source_id;
+                            });
+        if (const auto source = find(sources_of_sends, external->source_id); source && is_bus) {
+            // 外部の放送機器へも過大な音を送らないよう、メインの出力と同じく安全リミッターを通す。
+            const auto limiter = writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}));
+            const auto tap =
+                writer.add(ac::NodeSpec::make_stream_tap(ac::NodeId{}, external->sink));
+            writer.connect(*source, limiter);
+            writer.connect(limiter, tap);
+        }
     }
     built.graph = writer.take(feedback_approved);
     for (const auto& midi : assignments.midi_sources) {
