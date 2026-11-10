@@ -18,6 +18,7 @@ add_library(pa_engine_core STATIC
   src/engine_activity.cpp
   src/engine_mixer.cpp
   src/engine_output_devices.cpp
+  src/engine_plugin_rack.cpp
   src/external_output_driver.cpp
   src/external_stream_worker.cpp
   src/host_key_loader.cpp
@@ -31,6 +32,7 @@ add_library(pa_engine_core STATIC
   src/peer_receive_path.cpp
   src/peer_receive_relay.cpp
   src/playout_source.cpp
+  src/plugin_scan_worker.cpp
   src/rendezvous_id_tap.cpp
   src/session_peer_events.cpp
   src/stderr_logger.cpp
@@ -68,11 +70,13 @@ if(WIN32)
     shell32
     ole32)
   if(VOCROZ_WITH_JUCE)
-    # MIDI デバイスの入力のため、JUCE のメッセージスレッドを 1 本持つ
-    # （docs/adr/0039-pa-engine-juce-message-thread.md）。
+    # MIDI デバイスの入力と挿入のプラグインのため、JUCE のメッセージスレッドを 1 本持つ
+    # （docs/adr/0039-pa-engine-juce-message-thread.md、docs/adr/0042-plugin-insert.md）。
     target_sources(pa_engine PRIVATE src/juce/juce_message_thread.cpp)
-    target_compile_definitions(pa_engine PRIVATE VOCROZ_PA_ENGINE_HAS_MIDI)
-    target_link_libraries(pa_engine PRIVATE vocroz::juce)
+    target_compile_definitions(pa_engine PRIVATE VOCROZ_PA_ENGINE_HAS_JUCE)
+    target_link_libraries(pa_engine PRIVATE vocroz::plugin_host vocroz::juce)
+    # スキャン用ヘルパーは pa-engine.exe と同じフォルダから起動する。
+    add_dependencies(pa_engine pa_plugin_scanner)
   endif()
 endif()
 
@@ -86,6 +90,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/engine_activity_test.cpp
     tests/engine_mixer_test.cpp
     tests/engine_output_devices_test.cpp
+    tests/engine_plugin_rack_test.cpp
     tests/external_output_driver_test.cpp
     tests/host_key_loader_test.cpp
     tests/host_peer_links_test.cpp
@@ -96,6 +101,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/network_external_socket_opener_test.cpp
     tests/offline_rendezvous_client_test.cpp
     tests/peer_receive_relay_test.cpp
+    tests/plugin_scan_worker_test.cpp
     tests/rendezvous_id_tap_test.cpp
     tests/thread_peer_send_scheduler_test.cpp
     tests/ui_event_publisher_test.cpp

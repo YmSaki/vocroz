@@ -11,8 +11,11 @@
 // - パイプの受信スレッド: UI のメッセージのデコード。session へはループに積んで渡す
 // - ネットワーク受信スレッド: network の UDP ソケットのスレッド。子機のメディアの復号から
 //   ジッターバッファへの投入まで（PeerReceivePath）。鍵交換と制御はループに積んで渡す
-// - JUCE のメッセージスレッド（JUCE を使うビルドだけ）: MIDI デバイスの一覧、開閉、抜去の通知。
-//   グラフへの反映はループに積んで渡す（docs/adr/0039-pa-engine-juce-message-thread.md）
+// - JUCE のメッセージスレッド（JUCE を使うビルドだけ）: MIDI デバイスの一覧、開閉、抜去の通知と、
+//   挿入のプラグインの読み込みと破棄。グラフへの反映はループに積んで渡す
+//   （docs/adr/0039-pa-engine-juce-message-thread.md、docs/adr/0042-plugin-insert.md）
+// - プラグインのスキャンのスレッド（JUCE を使うビルドだけ）: ファイルごとにスキャン用ヘルパーを
+//   起動する。使えるプラグインの一覧はループに積んで渡す（docs/adr/0042-plugin-insert.md）
 // - SRTP 外部出力の送信スレッド（送信中と接続テスト中だけ）: RTP、SRTP、宛先への送信。
 //   接続テストの結果はループに積んで渡す（docs/adr/0040-srtp-external-output.md）
 // - JUCE の MIDI の受信スレッド: MIDI デバイスのメッセージをキューに積むだけ
@@ -36,6 +39,8 @@
 #include "vocroz/network/receive_router.h"
 #include "vocroz/session/host_session.h"
 #include "vocroz/session/peer_midi_inbox.h"
+#include "vocroz/session/ports/plugin_catalog_store.h"
+#include "vocroz/session/ports/plugin_scanner.h"
 #include "vocroz/session/ports/secret_store.h"
 #include "vocroz/session/ports/settings_store.h"
 #include "vocroz/transport/crypto_random_source.h"
@@ -49,6 +54,7 @@
 #include "engine_activity.h"
 #include "engine_mixer.h"
 #include "engine_output_devices.h"
+#include "engine_plugin_rack.h"
 #include "external_output_driver.h"
 #include "host_peer_links.h"
 #include "host_rendezvous_driver.h"
@@ -59,6 +65,7 @@
 #include "offline_rendezvous_client.h"
 #include "peer_receive_path.h"
 #include "peer_receive_relay.h"
+#include "plugin_scan_worker.h"
 #include "rendezvous_id_tap.h"
 #include "session_peer_events.h"
 #include "thread_peer_send_scheduler.h"
@@ -66,7 +73,7 @@
 #include "ui_message_receiver.h"
 #include "win/execution_state_sleep_inhibitor.h"
 #include "win/win32_named_mutex.h"
-#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
 #include "vocroz/audio_core/ports/midi_device_catalog.h"
 
 #include "juce/juce_message_thread.h"
@@ -104,8 +111,13 @@ private:
     // MIDI デバイスの一覧を読み直すよう、メッセージスレッドへ頼む。
     // JUCE を使わないビルドでは何もしない。
     void request_midi_refresh();
-    // MIDI デバイスを閉じ、メッセージスレッドを止める。
-    void stop_midi();
+    // JUCE のメッセージスレッドを動かし、挿入のプラグインの読み込み（メッセージスレッド）と
+    // スキャン（専用のスレッド）を用意する。JUCE を使わないビルドでは何もせず、挿入は
+    // 読み込まない（NoPluginRack）。
+    void start_juce();
+    // MIDI デバイスを閉じ、プラグインを破棄して、メッセージスレッドを止める。
+    // オーディオ出力を閉じてから呼ぶ（グラフが持つプラグインの処理をもう呼ばせないため）。
+    void stop_juce();
 
     LaunchOptions options_;
     // 絶対パスにそろえた --data-dir。決められなければ空（start() が終了コード 1 で終わる）。
@@ -116,6 +128,12 @@ private:
     std::unique_ptr<common::Logger> logger_;
     common::SteadyClock clock_;
     ControlLoop loop_;
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
+    // MIDI デバイスとプラグインが使う JUCE のメッセージスレッド。止めた後も post() は false を
+    // 返すだけなので、それを使うもの（plugin_rack_ と、グラフが持つプラグインの処理）より前に
+    // 宣言する（後に破棄する）。
+    JuceMessageThread juce_thread_;
+#endif
     std::optional<win::Win32NamedMutex> instance_lock_;
     std::optional<win::Win32NamedMutex> session_lock_;
     win::ExecutionStateSleepInhibitor sleep_inhibitor_;
@@ -125,8 +143,15 @@ private:
     // --- session のポートの実装 ---
     std::unique_ptr<session::SettingsStore> settings_;
     std::unique_ptr<session::SecretStore> secrets_;
-    // 挿入のプラグインの読み込み。メッセージスレッドでの読み込みをつなぐまでは読み込まない。
-    NoPluginRack plugin_rack_;
+    // 挿入のプラグインの読み込み。engine_plugin_rack_ があればそれを、なければ（JUCE を使わない
+    // ビルド）no_plugin_rack_ を session に渡す。グラフ（mixer_）が持つプラグインの処理は
+    // engine_plugin_rack_ に手放したことを知らせるので、mixer_ より前に宣言する（後に破棄する）。
+    NoPluginRack no_plugin_rack_;
+    std::unique_ptr<EnginePluginRack> engine_plugin_rack_;
+    session::PluginRack* plugin_rack_ = &no_plugin_rack_;
+    // スキャンの記録の保存先とスキャナー。スキャンのスレッド（plugin_scan_）より前に宣言する。
+    std::unique_ptr<session::PluginCatalogStore> plugin_catalog_store_;
+    std::unique_ptr<session::PluginScanner> plugin_scanner_;
     // ランデブーサーバーとの通信。https_rendezvous_ があればそれを、なければ offline_rendezvous_
     // を session に渡す。https_rendezvous_ は破棄時に残りの要求（失効）を送り終えるまで待つので、
     // それが使う https_transport_ と invite_relay_ より後に宣言する（先に破棄する）。
@@ -176,14 +201,16 @@ private:
     std::unique_ptr<UiEventPublisher> ui_publisher_;
     std::unique_ptr<session::HostSession> session_;
     std::unique_ptr<UiMessageReceiver> ui_receiver_;
+    // スキャンのスレッド。結果は loop_ に積んで session_ に渡すので、session_ より後に宣言する
+    // （先に破棄する）。shutdown() で先に止める。
+    std::unique_ptr<PluginScanWorker> plugin_scan_;
 
-#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
     // --- MIDI デバイス（docs/adr/0039-pa-engine-juce-message-thread.md） ---
     // midi_catalog_ と device_midi_ は JUCE の資源を持つので、メッセージスレッドの上で作り、
-    // stop_midi() でメッセージスレッドの上で破棄する。
+    // stop_juce() でメッセージスレッドの上で破棄する。
     std::unique_ptr<audio_core::MidiDeviceCatalog> midi_catalog_;
     std::unique_ptr<DeviceMidiInputs> device_midi_;
-    JuceMessageThread midi_thread_;
 #endif
 
     // --- 周期処理の状態 ---

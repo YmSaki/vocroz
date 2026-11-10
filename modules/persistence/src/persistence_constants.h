@@ -17,6 +17,13 @@ inline constexpr std::string_view kHostSettingsFileName = "host-settings.json";
 /// 子機の設定ファイルの名前。
 inline constexpr std::string_view kClientSettingsFileName = "client-settings.json";
 
+/// プラグインのスキャンの記録のファイルの名前。親機だけが使う。設定とは保存の頻度と壊れたときの
+/// 扱いが違うので、別のファイルにする（docs/adr/0032-plugin-catalog-and-loader.md）。
+inline constexpr std::string_view kPluginCatalogFileName = "plugin-catalog.json";
+
+/// スキャンの記録のファイルの形式のバージョン。
+inline constexpr std::int64_t kPluginCatalogSchemaVersion = 1;
+
 /// 秘密情報を置くサブフォルダの名前（--data-dir の下）。
 inline constexpr std::string_view kSecretsDirectoryName = "secrets";
 
