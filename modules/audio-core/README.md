@@ -10,7 +10,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 - ルーティング（Beta1、`docs/adr/0018-routing-graph.md`）: プリフェーダー / ポストフェーダーのセンドとセンドレベル、キュー / モニターバス、入力ごとの手動ディレイ、遅延ノードを通るフィードバック経路（承認があるときだけ）、1 台の出力デバイスの複数のチャンネルの組への出力
 - グラフのスワップ（オーディオスレッド外で構築し、アトミックなポインター交換で差し替え、古いグラフはオーディオスレッド外で破棄）
 - ミキサー（Alpha はモノラル 8 チャンネル以上 + Master の固定構成を、グラフの 1 構成として記述する）
-- プラグインノードとプラグイン遅延補正（PDC、Beta4、`docs/adr/0024-plugin-node-and-pdc.md`）: `PluginProcessor` ポートを呼ぶノード（入力 0〜2、出力 1〜2。入力 0 は VSTi）、合流する経路にだけ遅延を足す補正、処理の失敗や NaN でそのノードを無音にする扱い
+- プラグインノードとプラグイン遅延補正（PDC、Beta4、`docs/adr/0024-plugin-node-and-pdc.md`）: `PluginProcessor` ポートを呼ぶノード（入力 0〜2、出力 1〜2。入力 0 は VSTi）、合流する経路にだけ遅延を足す補正、処理の失敗や NaN でそのノードを無音にする扱い。失敗の印（`PluginFault`）を渡せば、グラフを差し替えても無音を保ち、コントロールスレッドから失敗を読める（`docs/adr/0041-plugin-editor-and-failure-notice.md`）
 - 録音タップと再生ノード（Beta2、`docs/adr/0031-recording-and-playback-nodes.md`）: オーディオスレッドはロックフリーのリングバッファを読み書きするだけで、ファイルへの書き出しと先読みはディスク I/O スレッドが行う。書き込みが遅れたら欠落として数えて無音で埋め、ライブ音声を止めない。音声ファイルの書き出しと読み込みのポート（`AudioFileWriter`、`AudioFileReader`）
 - MIDI（Beta5、`docs/adr/0029-midi-and-vsti.md`）: PCM とは独立した MIDI の経路（MIDI ソース → プラグインノード）、タイムスタンプからブロック内のサンプルオフセットへの変換、届いた順の保証、経路ごとの発音中のノートの追跡と Panic（子機の切断、キューのあふれ、経路を外したグラフの差し替えで Note Off とサステインのオフを送る）
 - 子機への返送モニター（Minus-Me、Beta1、`docs/adr/0036-return-monitor.md`）: 子機ごとに、その子機自身の入力と、そこから結線をたどって届くノード（自分の声を含むバス）を除いたミックスを、安全リミッターを通して返送タップ（`AudioSink` ポート）へ渡す
@@ -55,6 +55,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/ports/audio_sink.h` | `AudioSink`（返送タップの渡し先。`transport` の `MediaStreamEncoder` が実装） | 呼び出し可能 |
 | `vocroz/audio_core/ports/audio_stream_sink.h` | `AudioStreamSink`（ストリームタップの渡し先。`transport` の `MediaStreamEncoder` が実装） | 呼び出し可能 |
 | `vocroz/audio_core/ports/midi_source.h` | `MidiSource`、`MidiBlockClock`、`MidiPullResult`（`MidiInputQueue` が実装） | `pull()` だけ呼び出し可能 |
+| `vocroz/audio_core/plugin_fault.h` | `PluginFault`（プラグインノードの失敗の印。`NodeSpec::make_plugin()` に渡す） | `raise()` と `raised()` は呼び出し可能 |
 | `vocroz/audio_core/ports/plugin_processor.h` | `PluginProcessor`、`PluginBusLayout`、`PluginProcessContext`（`plugin-host` が実装） | `process()` だけ呼び出し可能 |
 | `vocroz/audio_core/recording_track.h` | `RecordingTrack`（録音タップの書き込み先。ディスク I/O スレッドが `drain()` と `finish()` で書き出す） | `push()` だけ呼び出し可能 |
 | `vocroz/audio_core/playback_track.h` | `PlaybackTrack`（再生ノードの読み込み元。ディスク I/O スレッドが `fill()` で先読みする） | `render()` だけ呼び出し可能 |

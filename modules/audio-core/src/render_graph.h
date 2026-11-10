@@ -100,6 +100,8 @@ private:
         std::shared_ptr<PlaybackTrack> playback;       // kPlayer のときだけ使う
         std::shared_ptr<AudioSink> sink;               // kReturnTap のときだけ使う
         std::shared_ptr<AudioStreamSink> stream_sink;  // kStreamTap のときだけ使う
+        // kPlugin の失敗の印（任意）。失敗したら plugin_failed と一緒に立てる。
+        std::shared_ptr<PluginFault> plugin_fault;
         // プラグインの処理が失敗したら立て、このグラフを破棄するまで出力を無音にする。
         // オーディオスレッドだけが読み書きする。
         bool plugin_failed = false;

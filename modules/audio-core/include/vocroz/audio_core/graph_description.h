@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "vocroz/audio_core/playback_track.h"
+#include "vocroz/audio_core/plugin_fault.h"
 #include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
 #include "vocroz/audio_core/ports/audio_stream_sink.h"
@@ -97,6 +98,9 @@ struct NodeSpec {
     /// kPlugin: 処理の遅延（0〜kMaxLatencyCompensationSamples）。make_plugin() が
     /// PluginProcessor::latency_samples() から写す。PDC はこの値で計算する。
     std::size_t latency_samples = 0;
+    /// kPlugin: 失敗の印（任意）。処理が失敗したらグラフが立てる。立っていれば、グラフを
+    /// 構築した時点からノードを無音にする。null なら、印はそのグラフの中だけで持つ。
+    std::shared_ptr<PluginFault> plugin_fault;
     /// kRecordTap のときの書き込み先。
     std::shared_ptr<RecordingTrack> recording;
     /// kPlayer のときの読み込み元。
@@ -150,8 +154,11 @@ struct NodeSpec {
     /// バスへの挿入は「バス → プラグイン → 後段」。
     /// @param id ノードの識別子
     /// @param plugin 処理の呼び出し先（null にしない）
+    /// @param fault 失敗の印。グラフを差し替えても失敗を引き継ぎ、コントロールスレッドから
+    /// 失敗を読むときに渡す。null なら、グラフを構築し直すと無音が解ける
     /// スレッド安全性: コントロールスレッドから呼ぶ（PluginProcessor の取得関数を呼ぶため）。
-    [[nodiscard]] static NodeSpec make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin);
+    [[nodiscard]] static NodeSpec make_plugin(NodeId id, std::shared_ptr<PluginProcessor> plugin,
+                                              std::shared_ptr<PluginFault> fault = nullptr);
 
     /// 録音タップを作る。録音したいストリップかバス（またはソース）からつなぐ。
     /// フェーダーの前を録るなら SendTap::kPreFader でつなぐ。録音タップへのプリフェーダーの結線は、

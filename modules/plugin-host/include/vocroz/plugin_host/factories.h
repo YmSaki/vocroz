@@ -2,7 +2,6 @@
 //
 // plugin-host のアダプターを作る関数。JUCE を使うので、VOCROZ_WITH_JUCE が ON のときだけある。
 // 具象クラスは公開せず、ここの関数だけを公開する（AGENTS.md 5.1）。
-// エディターのウィンドウ（session の PluginEditorHost）は、作るときにここへ加える。
 #pragma once
 
 #include <chrono>
@@ -12,6 +11,7 @@
 
 #include "vocroz/common/result.h"
 #include "vocroz/plugin_host/scan_messages.h"
+#include "vocroz/session/ports/plugin_editor_host.h"
 #include "vocroz/session/ports/plugin_loader.h"
 #include "vocroz/session/ports/plugin_scanner.h"
 
@@ -64,5 +64,13 @@ enum class HelperScanError {
 /// @return ローダー
 /// スレッド安全性: 返したローダーは JUCE のメッセージスレッドから使う。
 [[nodiscard]] std::unique_ptr<session::PluginLoader> make_vst3_plugin_loader();
+
+/// プラグインのエディターを、独立したネイティブウィンドウ（JUCE の DocumentWindow）で開く
+/// PluginEditorHost を作る。make_vst3_plugin_loader() で読み込んだインスタンスを扱う。
+/// 独自の画面を持たないプラグインは、パラメーターの一覧の画面で代える。
+/// ウィンドウを閉じても、プラグインの処理は続く（docs/adr/0041-plugin-editor-and-failure-notice.md）。
+/// @return エディターのホスト
+/// スレッド安全性: 返したホストは JUCE のメッセージスレッドで作り、使い、破棄する。
+[[nodiscard]] std::unique_ptr<session::PluginEditorHost> make_juce_plugin_editor_host();
 
 }  // namespace vocroz::plugin_host
