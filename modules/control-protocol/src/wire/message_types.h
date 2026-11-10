@@ -76,6 +76,10 @@ inline constexpr std::string_view kMessageType<SetExternalOutputRunning> =
     "set_external_output_running";
 template <>
 inline constexpr std::string_view kMessageType<TestExternalOutput> = "test_external_output";
+template <>
+inline constexpr std::string_view kMessageType<RescanPlugins> = "rescan_plugins";
+template <>
+inline constexpr std::string_view kMessageType<OpenPluginEditor> = "open_plugin_editor";
 // エンジンから UI へ。
 template <>
 inline constexpr std::string_view kMessageType<MixerSnapshotEvent> = "mixer_snapshot";
@@ -99,6 +103,10 @@ template <>
 inline constexpr std::string_view kMessageType<RouteLevelUpdated> = "route_level_updated";
 template <>
 inline constexpr std::string_view kMessageType<ExternalOutputUpdated> = "external_output_updated";
+template <>
+inline constexpr std::string_view kMessageType<PluginsUpdated> = "plugins_updated";
+template <>
+inline constexpr std::string_view kMessageType<PluginCatalogPage> = "plugin_catalog_page";
 template <>
 inline constexpr std::string_view kMessageType<Ack> = "ack";
 template <>

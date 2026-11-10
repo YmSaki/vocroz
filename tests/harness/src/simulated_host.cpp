@@ -149,7 +149,7 @@ SimulatedHost::SimulatedHost(const common::Clock& clock, netsim::SimulatedNetwor
         std::move(config),
         session::HostSession::Ports{ui_, mixer_, outputs_, *this, rendezvous_, settings_, random_,
                                     clock_, logger_, playout_control_, external_output_, secrets_,
-                                    plugins_});
+                                    plugins_, plugin_scan_});
     session_->start();
     network_.attach(
         address_, [this](const netsim::NodeAddress& from, std::span<const std::uint8_t> datagram) {

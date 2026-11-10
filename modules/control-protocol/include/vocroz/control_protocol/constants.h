@@ -59,6 +59,27 @@ inline constexpr std::size_t kMaxExternalOutputHostBytes = 253;
 /// 長さに、前後の空白の余裕を足す。形式の検証は session が行う。
 inline constexpr std::size_t kMaxSrtpKeyBytes = 64;
 
+/// プラグインの識別子の上限（バイト）。JUCE の識別子は「形式-名前-ファイルのハッシュ-ID」で、
+/// 名前の長さで変わる（多くは 60 バイト前後）。長い製品名でも収まり、挿入の上限（32）まで並べても
+/// スナップショットが kMaxMessageBytes
+/// に収まる値にする。この長さを超えるプラグインは一覧に載せない。
+inline constexpr std::size_t kMaxPluginIdBytes = 256;
+
+/// 参加者名、セッション名、デバイス名、短い識別 ID、バージョン、プラグインの名前とファイルの
+/// パスなど、表示用の文字列の最大バイト数。
+inline constexpr std::size_t kMaxTextBytes = 512;
+
+/// プラグインの一覧のページ（plugin_catalog_page）1 つに載せる項目の上限。
+/// 1 項目は識別子（256 バイト）と名前、製造元、バージョン（512 バイトずつ）で最大 2 KiB
+/// 程度なので、 すべての項目が上限の長さでも kMaxMessageBytes
+/// に収まる数にする。プラグインの一覧は数百件に
+/// なるので、スナップショットには入れず、ページに分けて送る（docs/adr/0042-plugin-insert.md）。
+inline constexpr std::size_t kMaxPluginCatalogPageEntries = 24;
+
+/// プラグインの状態（plugins）に載せる、読み込み不可のファイルの上限。パスは kMaxTextBytes まで
+/// なので、挿入の状態（32 件）と合わせても 1 メッセージに収まる数にする。
+inline constexpr std::size_t kMaxBlockedPluginFiles = 32;
+
 /// revision とシーケンス番号の最大値。UI（JavaScript）の数値で正確に表せる最大の整数（2^53 - 1）。
 inline constexpr std::uint64_t kMaxCounter = (std::uint64_t{1} << 53) - 1;
 

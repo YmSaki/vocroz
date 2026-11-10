@@ -121,6 +121,7 @@
   "notice.packet_loss": "Packet loss is increasing for {name}.",
   "notice.input_missing": "The microphone is missing. Check the connection or choose another input.",
   "notice.return_output_lost": "The return monitor output device is missing. Reconnect it or choose another device.",
+  "notice.plugin_editor_failed": "Could not open the editor of {name}.",
   "client.title": "VOCROZ (performer)",
   "client.connection": "Connection",
   "client.invite_label": "Invite code or URL",

@@ -20,6 +20,7 @@
 #include "invite_book.h"
 #include "participant_registry.h"
 #include "plugin_insert_book.h"
+#include "plugin_status_book.h"
 #include "routing_book.h"
 #include "session_constants.h"
 #include "state/connection_state_machine.h"
@@ -144,8 +145,8 @@ struct HostContext {
     /// @param context 失敗したときにログに残す場面
     void reapply_routing(const char* context);
 
-    /// 適用中のルーティングの挿入に合わせて、プラグインの読み込みと破棄を依頼する。
-    /// 適用中の構成を変えてミキサーへ適用したあとに呼ぶ。
+    /// 適用中のルーティングの挿入に合わせて、プラグインの読み込みと破棄を依頼し、挿入の状態を
+    /// UI に知らせる。適用中の構成を変えてミキサーへ適用したあとに呼ぶ。
     void reconcile_inserts();
 
     /// 保存したルーティングの構成を起動時に戻す。問題のない構成はそのまま適用し、バスとセンドは
@@ -157,6 +158,9 @@ struct HostContext {
     /// UI への通知と保存は呼び出し側が行う。
     /// @param target_ms 目標（ms）。範囲は検証済みであること
     void apply_latency_target(double target_ms);
+
+    /// プラグインの表示名。一覧になければ識別子を返す。
+    [[nodiscard]] std::string plugin_name(const std::string& plugin_id) const;
 
     /// 今あるチャンネルストリップの entity_id。ルーティングの検証に使う。
     [[nodiscard]] std::vector<std::string> strip_ids() const;
@@ -186,6 +190,10 @@ struct HostContext {
     void publish_routing();
     void publish_route_level(const control_protocol::RouteLevel& level);
     void publish_external_output();
+    /// プラグインのスキャンと挿入の状態を送る（plugins_updated）。
+    void publish_plugins();
+    /// プラグインの一覧のページを、今の世代で先頭から順に送る（plugin_catalog_page）。
+    void publish_plugin_catalog();
     void notice(control_protocol::NoticeSeverity severity, const char* code,
                 const std::string& name);
     void log(common::LogLevel level, const char* message);
@@ -205,6 +213,7 @@ struct HostContext {
     ParticipantRegistry registry;
     RoutingBook routing;
     PluginInsertBook inserts;
+    PluginStatusBook plugin_status;
     ExternalOutputBook external_output;
 };
 
