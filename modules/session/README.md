@@ -18,6 +18,7 @@
 - 子機の MIDI: MIDI レーンのメッセージのデコード（`src/wire/midi_message_codec`）、子機の時刻から親機の時刻への写し方（`src/midi_timeline`）、承認済みの接続だけを受け付けてストリップごとのキューに積む受け口と、途絶、切断、ストリップの削除での Panic（`PeerMidiInbox`）
 - SRTP 外部出力: 設定（宛先、送り出すバス、プロファイル、ペイロードタイプ、暗号スイート）と鍵の検証と保存、開始と停止と接続テストの状態（`src/external_output_book`）。起動時は停止から始め、鍵と宛先がなければ始めない。送り出すバスがルーティングの適用でなくなったら止める
 - プラグインの一覧: スキャンの記録のキャッシュ、読み込み不可のファイルの記録、スキャンの進行（`PluginCatalog`、`docs/adr/0032-plugin-catalog-and-loader.md`）
+- プラグインの挿入: ルーティングの構成の挿入の検証、挿入ごとの読み込みの状態（読み込み中、使える、失敗）と、読み込みと破棄の依頼、処理中の失敗の検知（`src/plugin_insert_book`、`docs/adr/0042-plugin-insert.md`）
 
 ワイヤーフォーマットの外枠と暗号化（`transport`）、DSP（`audio-core`）、ソケットと HTTP（`network`）、設定ファイルの形式（`persistence`）は持ちません。
 
@@ -31,7 +32,7 @@
 | `vocroz/session/identifiers.h` | `HostPublicKey`、`InviteToken`、`ReconnectToken`、`RendezvousId`、`RevokeKey`、`PeerHandle` |
 | `vocroz/session/routing_delay.h` | `delay_samples()`（ルーティングの遅延の ms からサンプル数への換算） |
 | `vocroz/session/settings.h` | `HostSettings`、`ClientSettings`、`SettingsError` |
-| `vocroz/session/ports/mixer_control.h` | `MixerControl`（親機のミキサーへの反映。ルーティングの適用を含む） |
+| `vocroz/session/ports/mixer_control.h` | `MixerControl`、`InsertedPlugin`（親機のミキサーへの反映。ルーティングと読み込み済みの挿入の適用を含む） |
 | `vocroz/session/ports/output_device_control.h` | `OutputDeviceControl`（出力デバイスの一覧、開く、閉じる。親機は Master の出力、子機は返送モニターの出力） |
 | `vocroz/session/ports/peer_link.h` | `PeerLink`（親機から子機との接続の操作。返送のミュートの反映を含む） |
 | `vocroz/session/ports/host_link.h` | `HostLink`、`HostEndpoint`（子機から親機への接続の操作。返送のミュートの受信側への反映を含む） |
@@ -51,6 +52,7 @@
 | `vocroz/session/ports/plugin_catalog_store.h` | `PluginCatalogStore`（スキャンの記録の保存） |
 | `vocroz/session/ports/plugin_loader.h` | `PluginLoader`、`PluginInstance`（プラグインの読み込みと状態の保存と復元） |
 | `vocroz/session/ports/plugin_editor_host.h` | `PluginEditorHost`、`PluginEditorError`（プラグインのエディターのウィンドウ。`docs/adr/0041-plugin-editor-and-failure-notice.md`） |
+| `vocroz/session/ports/plugin_rack.h` | `PluginRack`、`PluginLoadTicket`（挿入のプラグインの読み込みと破棄の依頼。結果は `HostSession::on_plugin_loaded()` に届く。`docs/adr/0042-plugin-insert.md`） |
 
 テストでは `vocroz::session_fakes` をリンクすると、`fakes/fake_<役割名>.h` で各ポートのフェイクを使えます。
 

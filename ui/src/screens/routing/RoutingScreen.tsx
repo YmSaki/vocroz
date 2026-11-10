@@ -45,6 +45,8 @@ const kIssueKey: Record<RoutingIssue, MessageKey> = {
   OUTPUT_CHANNEL_OUT_OF_RANGE: "routing.issue.OUTPUT_CHANNEL_OUT_OF_RANGE",
   OVERLAPPING_OUTPUTS: "routing.issue.OVERLAPPING_OUTPUTS",
   UNDELAYED_LOOP: "routing.issue.UNDELAYED_LOOP",
+  UNKNOWN_PLUGIN: "routing.issue.UNKNOWN_PLUGIN",
+  UNSUPPORTED_PLUGIN: "routing.issue.UNSUPPORTED_PLUGIN",
 };
 
 /** ノードの表示名を引く関数を作る。名前のないバスや出力は entity_id で示す。 */

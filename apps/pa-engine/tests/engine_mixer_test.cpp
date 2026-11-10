@@ -130,7 +130,7 @@ TEST_F(EngineMixerTest, NewSendStartsMutedAndUnmutesOnRequest) {
     // ストリップはミュートのまま、プリフェーダーのセンドでバスに送り、バスから Master に返す。
     // ストリップから Master への結線は暗黙にあるので、センドには書けない。
     const auto config = prefader_send_through_bus();
-    ASSERT_TRUE(engine_.apply_routing(config, false));
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
     EXPECT_EQ(render_last_left(), 0.0F);
 
     engine_.set_route_muted("send-1", false);
@@ -146,7 +146,7 @@ TEST_F(EngineMixerTest, ReappliedSendKeepsItsFaderState) {
     ASSERT_TRUE(engine_.attach_source("ch-1", constant_source()));
     engine_.set_master_muted(false);
     auto config = prefader_send_through_bus();
-    ASSERT_TRUE(engine_.apply_routing(config, false));
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
     for (const char* id : {"send-1", "send-2", "bus-1"}) {
         engine_.set_route_muted(id, false);
     }
@@ -154,13 +154,13 @@ TEST_F(EngineMixerTest, ReappliedSendKeepsItsFaderState) {
 
     // 同じ entity_id のバスとセンドを残したままバスを足しても、ミュート解除は引き継ぐ。
     config.buses.push_back(cp::RoutingBus{"bus-2", "B"});
-    ASSERT_TRUE(engine_.apply_routing(config, false));
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
     EXPECT_GT(render_last_left(), 0.0F);
 }
 
 TEST_F(EngineMixerTest, RemovingStripMutesItsSendsBeforeRoutingIsReapplied) {
     add_audible_strip("ch-1");
-    ASSERT_TRUE(engine_.apply_routing(prefader_send_through_bus(), false));
+    ASSERT_TRUE(engine_.apply_routing(prefader_send_through_bus(), false, {}));
     for (const char* id : {"send-1", "send-2", "bus-1"}) {
         engine_.set_route_muted(id, false);
     }
@@ -186,7 +186,7 @@ TEST_F(EngineMixerTest, RejectsRoutingWithLoopWithoutDelay) {
     config.buses.push_back(cp::RoutingBus{"bus-2", "B"});
     config.sends.push_back(cp::RoutingSend{"send-1", "bus-1", "bus-2", cp::SendTap::kPostFader});
     config.sends.push_back(cp::RoutingSend{"send-2", "bus-2", "bus-1", cp::SendTap::kPostFader});
-    EXPECT_FALSE(engine_.apply_routing(config, true));
+    EXPECT_FALSE(engine_.apply_routing(config, true, {}));
 }
 
 TEST_F(EngineMixerTest, ReadMetersReportsStripsAndMasterSortedById) {

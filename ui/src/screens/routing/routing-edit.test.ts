@@ -4,7 +4,7 @@ import type { RoutingConfig, RoutingInfo } from "../../ipc/messages";
 import { addOutput, nextRoutingId, removeNode } from "./routing-edit";
 
 function empty(): RoutingConfig {
-  return { buses: [], outputs: [], sends: [], delays: [], input_delays: [] };
+  return { buses: [], outputs: [], sends: [], delays: [], input_delays: [], inserts: [] };
 }
 
 function info(applied: RoutingConfig): RoutingInfo {

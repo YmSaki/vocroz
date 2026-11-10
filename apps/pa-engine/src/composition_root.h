@@ -55,6 +55,7 @@
 #include "invite_result_relay.h"
 #include "launch_options.h"
 #include "network_external_socket_opener.h"
+#include "no_plugin_rack.h"
 #include "offline_rendezvous_client.h"
 #include "peer_receive_path.h"
 #include "peer_receive_relay.h"
@@ -124,6 +125,8 @@ private:
     // --- session のポートの実装 ---
     std::unique_ptr<session::SettingsStore> settings_;
     std::unique_ptr<session::SecretStore> secrets_;
+    // 挿入のプラグインの読み込み。メッセージスレッドでの読み込みをつなぐまでは読み込まない。
+    NoPluginRack plugin_rack_;
     // ランデブーサーバーとの通信。https_rendezvous_ があればそれを、なければ offline_rendezvous_
     // を session に渡す。https_rendezvous_ は破棄時に残りの要求（失効）を送り終えるまで待つので、
     // それが使う https_transport_ と invite_relay_ より後に宣言する（先に破棄する）。

@@ -78,6 +78,18 @@ inline constexpr const char* kBusIdPrefix = "bus-";
 inline constexpr const char* kOutputIdPrefix = "out-";
 inline constexpr const char* kSendIdPrefix = "send-";
 inline constexpr const char* kDelayIdPrefix = "delay-";
+inline constexpr const char* kInsertIdPrefix = "fx-";
+
+/// 1 つの挿す先（ストリップ、Master、バス）に直列につなぐ挿入の上限。
+/// 1 本のチャンネルに EQ、コンプ、ディエッサー、リバーブなどを重ねても足りる数。
+/// プラグインごとにブロックの処理時間が増えるので、際限なく重ねさせない。
+inline constexpr std::size_t kMaxInsertsPerTarget = 8;
+
+/// 挿入の総数の上限。プラグインのインスタンスはそれぞれメモリとオーディオスレッドの時間を使う。
+/// スナップショットは適用中とステージング中の構成を両方含むので、挿入 1 つを 100 バイトとして
+/// 2 つの構成で約 6 KiB に抑え、センドとストリップと合わせても kMaxMessageBytes（64 KiB）に
+/// 収まる数にする（docs/adr/0042-plugin-insert.md）。
+inline constexpr std::size_t kMaxInserts = 32;
 
 /// 子機の MIDI の時刻を写すときに、「受信時刻 − 子機の時刻」の最小値を取り直す窓の長さ。
 /// 1 つ前の窓と合わせて 2〜4 秒の最小値を使う。演奏中のネットワークの揺れ（数十 ms 程度の山）を

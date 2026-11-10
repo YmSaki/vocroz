@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // build_mixer_graph() の単体テスト。暗黙の経路（ストリップ → Master → リミッター → 出力）、
-// センドの結線、参照先のないセンドの除外を確かめる。組み立てたグラフは Mixer の検証も通す。
+// センドの結線、参照先のないセンドの除外、挿入の置き場所と読み込み前の経路の切断を確かめる。組み立てたグラフは
+// Mixer の検証も通す。
 
 #include "mixer_graph_builder.h"
 
@@ -18,6 +19,7 @@
 #include "fakes/fake_audio_source.h"
 #include "fakes/fake_audio_stream_sink.h"
 #include "fakes/fake_midi_source.h"
+#include "fakes/fake_plugin_processor.h"
 
 namespace vocroz::engine {
 namespace {
@@ -60,7 +62,7 @@ bool is_valid(const ac::GraphDescription& g) {
 }
 
 TEST(MixerGraphBuilderTest, BuildsImplicitPathFromStripsThroughMasterAndLimiter) {
-    const auto built = build_mixer_graph(two_strips(), kMaster, cp::RoutingConfig{}, false);
+    const auto built = build_mixer_graph(two_strips(), kMaster, cp::RoutingConfig{}, false, {});
     const auto& g = built.graph;
 
     EXPECT_TRUE(built.dropped_sends.empty());
@@ -92,7 +94,7 @@ TEST(MixerGraphBuilderTest, MakesStripStereoWhenItsSourceIsStereo) {
     MixerAssignments a = two_strips();
     a.strips[1].source =
         std::make_shared<ac::FakeAudioSource>(ac::FakeAudioSource::stereo(0.1F, 0.2F));
-    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
 
     EXPECT_EQ(node_with_fader(built.graph, ac::FaderId{1})->channels, 1U);
     EXPECT_EQ(node_with_fader(built.graph, ac::FaderId{2})->channels, 2U);
@@ -104,7 +106,7 @@ TEST(MixerGraphBuilderTest, AppliesInputDelayOnlyToMatchingStrip) {
     config.input_delays.push_back(cp::InputDelay{"ch-2", 10.0});
     config.input_delays.push_back(cp::InputDelay{"missing", 5.0});
 
-    const auto built = build_mixer_graph(two_strips(), kMaster, config, false);
+    const auto built = build_mixer_graph(two_strips(), kMaster, config, false, {});
 
     EXPECT_EQ(node_with_fader(built.graph, ac::FaderId{1})->delay_samples, 0U);
     EXPECT_EQ(node_with_fader(built.graph, ac::FaderId{2})->delay_samples,
@@ -124,7 +126,7 @@ TEST(MixerGraphBuilderTest, ConnectsSendsWithLevelAndPutsLimiterBeforeExtraOutpu
     config.sends.push_back(cp::RoutingSend{"send-1", "ch-1", "bus-1", cp::SendTap::kPreFader});
     config.sends.push_back(cp::RoutingSend{"send-2", "bus-1", "out-1", cp::SendTap::kPostFader});
 
-    const auto built = build_mixer_graph(assignments, kMaster, config, false);
+    const auto built = build_mixer_graph(assignments, kMaster, config, false, {});
     const auto& g = built.graph;
 
     EXPECT_TRUE(built.dropped_sends.empty());
@@ -159,7 +161,7 @@ TEST(MixerGraphBuilderTest, DropsSendsWithMissingEndpointsOrFader) {
     config.sends.push_back(
         cp::RoutingSend{"send-nofader", "ch-1", kMaster, cp::SendTap::kPreFader});
 
-    const auto built = build_mixer_graph(assignments, kMaster, config, false);
+    const auto built = build_mixer_graph(assignments, kMaster, config, false, {});
 
     EXPECT_EQ(built.dropped_sends, (std::vector<std::string>{"send-gone", "send-nofader"}));
     EXPECT_TRUE(std::none_of(built.graph.connections.begin(), built.graph.connections.end(),
@@ -171,7 +173,7 @@ TEST(MixerGraphBuilderTest, SkipsBusWithoutFaderAndCarriesFeedbackApproval) {
     cp::RoutingConfig config;
     config.buses.push_back(cp::RoutingBus{"bus-unassigned"});
 
-    const auto built = build_mixer_graph(two_strips(), kMaster, config, true);
+    const auto built = build_mixer_graph(two_strips(), kMaster, config, true, {});
 
     // Master だけがバス。
     EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kBus), 1U);
@@ -205,7 +207,7 @@ std::vector<ac::NodeId> return_inputs(const ac::GraphDescription& g, ac::NodeId 
 }
 
 TEST(MixerGraphBuilderTest, BuildsNoReturnWithoutReturnSinks) {
-    const auto built = build_mixer_graph(two_strips(), kMaster, cp::RoutingConfig{}, false);
+    const auto built = build_mixer_graph(two_strips(), kMaster, cp::RoutingConfig{}, false, {});
     EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kReturnTap), 0U);
 }
 
@@ -215,7 +217,7 @@ TEST(MixerGraphBuilderTest, ReturnCarriesTheMainMixWithoutTheOwnStrip) {
     auto sink2 = std::make_shared<ac::FakeAudioSink>();
     a.returns.push_back({1, {"ch-1"}, sink1});
     a.returns.push_back({2, {"ch-2"}, sink2});
-    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
     const auto& g = built.graph;
     const auto* ch1 = node_with_fader(g, ac::FaderId{1});
     const auto* ch2 = node_with_fader(g, ac::FaderId{2});
@@ -244,7 +246,7 @@ TEST(MixerGraphBuilderTest, ReturnExcludesBusesThatCarryTheOwnVoice) {
     config.buses.push_back(cp::RoutingBus{"bus-1", "Rev"});
     config.sends.push_back(cp::RoutingSend{"send-1", "ch-1", "bus-1", cp::SendTap::kPostFader});
     config.sends.push_back(cp::RoutingSend{"send-2", "bus-1", "master", cp::SendTap::kPostFader});
-    const auto built = build_mixer_graph(a, kMaster, config, false);
+    const auto built = build_mixer_graph(a, kMaster, config, false, {});
     const auto& g = built.graph;
     const auto* ch1 = node_with_fader(g, ac::FaderId{1});
     const auto* ch2 = node_with_fader(g, ac::FaderId{2});
@@ -266,7 +268,7 @@ TEST(MixerGraphBuilderTest, ReturnOfAClientWithSeveralInputsExcludesAllOfItsStri
     auto a = two_strips();
     auto own = std::make_shared<ac::FakeAudioSink>();
     a.returns.push_back({1, {"ch-1", "ch-2"}, own});
-    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
     const auto& g = built.graph;
     EXPECT_TRUE(return_inputs(g, return_tap_to(g, own)->id).empty());
     EXPECT_TRUE(is_valid(g));
@@ -276,7 +278,7 @@ TEST(MixerGraphBuilderTest, ReturnIgnoresOwnStripsThatNoLongerExist) {
     auto a = two_strips();
     auto sink = std::make_shared<ac::FakeAudioSink>();
     a.returns.push_back({1, {"ch-1", "ch-gone"}, sink});
-    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
     const auto& g = built.graph;
     const auto* ch2 = node_with_fader(g, ac::FaderId{2});
     EXPECT_EQ(return_inputs(g, return_tap_to(g, sink)->id), (std::vector<ac::NodeId>{ch2->id}));
@@ -288,7 +290,7 @@ TEST(MixerGraphBuilderTest, MidiSourcesKeepTheirIdsAndHaveNoConnectionsYet) {
     auto client = std::make_shared<ac::FakeMidiSource>();
     a.midi_sources.push_back({"device:a", ac::MidiSourceId{7}, device});
     a.midi_sources.push_back({"strip:ch-1", ac::MidiSourceId{3}, client});
-    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
     const auto& sources = built.graph.midi_sources;
     ASSERT_EQ(sources.size(), 2U);
     EXPECT_EQ(sources[0].id, ac::MidiSourceId{7});
@@ -323,7 +325,7 @@ TEST(MixerGraphBuilderTest, ExternalStreamTapsTheMasterThroughALimiter) {
     auto a = two_strips();
     const auto sink = std::make_shared<ac::FakeAudioStreamSink>();
     a.external_stream = ExternalStreamAssignment{kMaster, sink};
-    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
     const auto path = stream_tap_path(built.graph);
     ASSERT_NE(path.tap, nullptr);
     EXPECT_EQ(path.tap->stream_sink, sink);
@@ -340,7 +342,7 @@ TEST(MixerGraphBuilderTest, ExternalStreamTapsABusPostFader) {
         ExternalStreamAssignment{"bus-1", std::make_shared<ac::FakeAudioStreamSink>()};
     cp::RoutingConfig config;
     config.buses.push_back(cp::RoutingBus{"bus-1", "配信"});
-    const auto built = build_mixer_graph(a, kMaster, config, false);
+    const auto built = build_mixer_graph(a, kMaster, config, false, {});
     const auto path = stream_tap_path(built.graph);
     ASSERT_NE(path.tap, nullptr);
     const auto* bus = node_with_fader(built.graph, ac::FaderId{3});
@@ -354,9 +356,130 @@ TEST(MixerGraphBuilderTest, ExternalStreamIsNotTappedFromMissingBusesOrStrips) {
         auto a = two_strips();
         a.external_stream =
             ExternalStreamAssignment{source, std::make_shared<ac::FakeAudioStreamSink>()};
-        const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false);
+        const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
         EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kStreamTap), 0U) << source;
     }
+}
+
+session::InsertedPlugin inserted(const std::string& id, ac::PluginBusLayout layout = {}) {
+    return session::InsertedPlugin{id, std::make_shared<ac::FakePluginProcessor>(layout),
+                                   std::make_shared<ac::PluginFault>()};
+}
+
+const ac::NodeSpec* node_with_plugin(const ac::GraphDescription& g,
+                                     const session::InsertedPlugin& plugin) {
+    const auto it = std::find_if(g.nodes.begin(), g.nodes.end(), [&](const ac::NodeSpec& n) {
+        return n.kind == ac::NodeKind::kPlugin && n.plugin == plugin.processor;
+    });
+    return it == g.nodes.end() ? nullptr : &*it;
+}
+
+std::vector<ac::NodeId> inputs_of(const ac::GraphDescription& g, ac::NodeId node) {
+    std::vector<ac::NodeId> inputs;
+    for (const auto& c : g.connections) {
+        if (c.to == node) {
+            inputs.push_back(c.from);
+        }
+    }
+    return inputs;
+}
+
+TEST(MixerGraphBuilderTest, StripInsertsSitBetweenTheSourceAndTheStripInOrder) {
+    cp::RoutingConfig config;
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "ch-1", "eq"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-2", "ch-1", "comp"});
+    // 構成の順と、渡す順は関係ない。
+    const std::vector<session::InsertedPlugin> plugins{inserted("fx-2"), inserted("fx-1")};
+    const auto built = build_mixer_graph(two_strips(), kMaster, config, false, plugins);
+
+    const auto* first = node_with_plugin(built.graph, plugins[1]);
+    const auto* second = node_with_plugin(built.graph, plugins[0]);
+    const auto* strip = node_with_fader(built.graph, ac::FaderId{1});
+    ASSERT_NE(first, nullptr);
+    ASSERT_NE(second, nullptr);
+    ASSERT_NE(strip, nullptr);
+    EXPECT_EQ(first->plugin_fault, plugins[1].fault);
+    const auto source_inputs = inputs_of(built.graph, first->id);
+    ASSERT_EQ(source_inputs.size(), 1U);
+    EXPECT_EQ(built.graph.nodes[source_inputs[0].value].kind, ac::NodeKind::kSource);
+    EXPECT_TRUE(connected(built.graph, first->id, second->id));
+    EXPECT_EQ(inputs_of(built.graph, strip->id), std::vector<ac::NodeId>{second->id});
+    // ステレオのプラグインの後ろのストリップはステレオにする。
+    EXPECT_EQ(strip->channels, 2U);
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, CutsTheStripWhileAnInsertIsNotLoaded) {
+    cp::RoutingConfig config;
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "ch-1", "eq"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-2", "ch-1", "comp"});
+    const std::vector<session::InsertedPlugin> plugins{inserted("fx-1")};
+    const auto built = build_mixer_graph(two_strips(), kMaster, config, false, plugins);
+
+    // 読み込み済みの挿入も置かず、ソースはストリップへつながない（プラグインを通らない音を
+    // 出さない）。ソースのノードは受信ストリームから取り出し続けるために残す。
+    EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kPlugin), 0U);
+    EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kSource), 1U);
+    const auto* strip = node_with_fader(built.graph, ac::FaderId{1});
+    ASSERT_NE(strip, nullptr);
+    EXPECT_TRUE(inputs_of(built.graph, strip->id).empty());
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, MasterInsertsFeedTheLimiterAndTheSendsFromMaster) {
+    auto a = two_strips();
+    a.route_faders.emplace("bus-1", ac::FaderId{3});
+    a.route_faders.emplace("send-1", ac::FaderId{4});
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-1", "録音"});
+    config.sends.push_back(cp::RoutingSend{"send-1", kMaster, "bus-1"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", kMaster, "comp"});
+    const std::vector<session::InsertedPlugin> plugins{inserted("fx-1")};
+    const auto built = build_mixer_graph(a, kMaster, config, false, plugins);
+
+    const auto* master = node_with_fader(built.graph, ac::FaderId{0});
+    const auto* plugin = node_with_plugin(built.graph, plugins[0]);
+    const auto* bus = node_with_fader(built.graph, ac::FaderId{3});
+    ASSERT_NE(master, nullptr);
+    ASSERT_NE(plugin, nullptr);
+    ASSERT_NE(bus, nullptr);
+    EXPECT_EQ(inputs_of(built.graph, plugin->id), std::vector<ac::NodeId>{master->id});
+    // Master から出る結線は、挿入の列への 1 本だけ。リミッターとセンドは挿入の後ろから取る。
+    for (const auto& c : built.graph.connections) {
+        if (c.from == master->id) {
+            EXPECT_EQ(c.to, plugin->id);
+        }
+    }
+    EXPECT_TRUE(connected(built.graph, plugin->id, bus->id));
+    EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kLimiter), 1U);
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, CutsWhatFollowsABusWhileItsInsertIsNotLoaded) {
+    auto a = two_strips();
+    a.route_faders.emplace("bus-1", ac::FaderId{3});
+    a.route_faders.emplace("send-1", ac::FaderId{4});
+    a.route_faders.emplace("send-2", ac::FaderId{5});
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-1", "FX"});
+    config.sends.push_back(cp::RoutingSend{"send-1", "ch-1", "bus-1"});
+    config.sends.push_back(cp::RoutingSend{"send-2", "bus-1", kMaster});
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "verb"});
+    const auto built = build_mixer_graph(a, kMaster, config, false, {});
+
+    // センドは外さない（外すとフェーダーをミュートし、session の状態とずれる）。
+    EXPECT_TRUE(built.dropped_sends.empty());
+    const auto* bus = node_with_fader(built.graph, ac::FaderId{3});
+    ASSERT_NE(bus, nullptr);
+    for (const auto& c : built.graph.connections) {
+        EXPECT_NE(c.from, bus->id);
+        if (c.level == ac::FaderId{5}) {
+            // バスの後段のセンドは、入力のない無音の段から取る。
+            EXPECT_EQ(built.graph.nodes[c.from.value].kind, ac::NodeKind::kLimiter);
+            EXPECT_TRUE(inputs_of(built.graph, c.from).empty());
+        }
+    }
+    EXPECT_TRUE(is_valid(built.graph));
 }
 
 }  // namespace

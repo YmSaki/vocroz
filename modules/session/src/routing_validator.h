@@ -10,17 +10,21 @@
 #include <string>
 
 #include "vocroz/control_protocol/entities.h"
+#include "vocroz/session/plugin_description.h"
 
 namespace vocroz::session {
 
 /// 構成を検証する。
 /// ノードはストリップ（strip_ids）、Master、構成のバス、出力、遅延ノードと、暗黙のメインの出力。
 /// ストリップから Master と、Master からメインの出力への結線は暗黙にあるものとして扱う。
+/// 挿入は挿す先のノードの直後に置くだけでグラフの向きを変えないので、ループの検出には関わらない。
 /// @param config    検証する構成
 /// @param strip_ids 今あるチャンネルストリップの entity_id
+/// @param plugins   挿入に使えるプラグインの一覧。空なら、挿入はすべて UNKNOWN_PLUGIN になる
 /// @return 検証の結果。問題があれば最初に見つかった 1 つを返す
 /// スレッド安全性: 純粋関数。コントロールスレッドから呼ぶ。
 [[nodiscard]] control_protocol::RoutingCheck check_routing(
-    const control_protocol::RoutingConfig& config, std::span<const std::string> strip_ids);
+    const control_protocol::RoutingConfig& config, std::span<const std::string> strip_ids,
+    std::span<const PluginDescription> plugins = {});
 
 }  // namespace vocroz::session

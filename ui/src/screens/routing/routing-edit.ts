@@ -110,6 +110,8 @@ export function removeNode(config: RoutingConfig, entityId: string): RoutingConf
     outputs: config.outputs.filter((o) => o.entity_id !== entityId),
     delays: config.delays.filter((d) => d.entity_id !== entityId),
     sends: config.sends.filter((s) => s.from !== entityId && s.to !== entityId),
+    // 挿す先がなくなった挿入は、エンジンの検証で UNKNOWN_NODE になるので一緒に取り除く。
+    inserts: config.inserts.filter((i) => i.target !== entityId),
   };
 }
 

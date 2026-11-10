@@ -18,6 +18,7 @@ add_library(vocroz_session STATIC
   src/peer_midi_inbox.cpp
   src/plugin_catalog.cpp
   src/request_deduplicator.cpp
+  src/plugin_insert_book.cpp
   src/routing_book.cpp
   src/routing_delay.cpp
   src/routing_validator.cpp
@@ -59,6 +60,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/plugin_catalog_test.cpp
     tests/peer_message_codec_test.cpp
     tests/request_deduplicator_test.cpp
+    tests/plugin_insert_book_test.cpp
     tests/routing_book_test.cpp
     tests/routing_validator_test.cpp
     tests/session_state_machine_test.cpp
@@ -68,5 +70,6 @@ if(VOCROZ_BUILD_TESTS)
   target_link_libraries(session_tests PRIVATE
     vocroz::session
     vocroz::session_fakes
+    vocroz::audio_core_fakes
     vocroz::common_fakes)
 endif()

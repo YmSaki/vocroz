@@ -135,7 +135,7 @@ struct EnumNames<SendTap> {
 
 template <>
 struct EnumNames<RoutingIssue> {
-    static constexpr std::array<EnumName<RoutingIssue>, 10> kTable{{
+    static constexpr std::array<EnumName<RoutingIssue>, 12> kTable{{
         {RoutingIssue::kInvalidId, "INVALID_ID"},
         {RoutingIssue::kDuplicateId, "DUPLICATE_ID"},
         {RoutingIssue::kTooManyItems, "TOO_MANY_ITEMS"},
@@ -146,6 +146,8 @@ struct EnumNames<RoutingIssue> {
         {RoutingIssue::kOutputChannelOutOfRange, "OUTPUT_CHANNEL_OUT_OF_RANGE"},
         {RoutingIssue::kOverlappingOutputs, "OVERLAPPING_OUTPUTS"},
         {RoutingIssue::kUndelayedLoop, "UNDELAYED_LOOP"},
+        {RoutingIssue::kUnknownPlugin, "UNKNOWN_PLUGIN"},
+        {RoutingIssue::kUnsupportedPlugin, "UNSUPPORTED_PLUGIN"},
     }};
 };
 

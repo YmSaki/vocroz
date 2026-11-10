@@ -81,7 +81,9 @@ export type RoutingIssue =
   | "DELAY_OUT_OF_RANGE"
   | "OUTPUT_CHANNEL_OUT_OF_RANGE"
   | "OVERLAPPING_OUTPUTS"
-  | "UNDELAYED_LOOP";
+  | "UNDELAYED_LOOP"
+  | "UNKNOWN_PLUGIN"
+  | "UNSUPPORTED_PLUGIN";
 
 /** SRTP 外部出力の状態。起動時は STOPPED（docs/adr/0040-srtp-external-output.md）。 */
 export type ExternalOutputState = "STOPPED" | "RUNNING" | "TESTING";
@@ -212,6 +214,16 @@ export interface InputDelay {
   delay_ms: number;
 }
 
+/**
+ * プラグインの挿入。entity_id は "fx-" で始める。同じ挿す先の挿入は、一覧の順に直列につなぐ。
+ * target はストリップ、"master"、バスの entity_id、plugin_id はプラグインの一覧の識別子。
+ */
+export interface RoutingInsert {
+  entity_id: string;
+  target: string;
+  plugin_id: string;
+}
+
 /** ルーティングの構成。UI がステージングし、エンジンが検証して適用する。 */
 export interface RoutingConfig {
   buses: RoutingBus[];
@@ -219,6 +231,7 @@ export interface RoutingConfig {
   sends: RoutingSend[];
   delays: RoutingDelay[];
   input_delays: InputDelay[];
+  inserts: RoutingInsert[];
 }
 
 /** ステージングした構成の検証の結果。 */

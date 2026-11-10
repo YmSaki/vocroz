@@ -118,6 +118,9 @@ enum class RoutingIssue {
     kOutputChannelOutOfRange,  ///< OUTPUT_CHANNEL_OUT_OF_RANGE: 出力のチャンネルが範囲外
     kOverlappingOutputs,  ///< OVERLAPPING_OUTPUTS: 複数の出力が同じデバイスのチャンネルに書く
     kUndelayedLoop,  ///< UNDELAYED_LOOP: 遅延ノードを通らないループがある。承認しても適用できない
+    kUnknownPlugin,  ///< UNKNOWN_PLUGIN: 挿入のプラグインがプラグインの一覧にない
+    /// UNSUPPORTED_PLUGIN: 挿入にできないプラグイン（音声入力を持たない VSTi）
+    kUnsupportedPlugin,
 };
 
 /// 子機の入力の種類。ストリップの表示（マイク、アプリ音声）に使う。

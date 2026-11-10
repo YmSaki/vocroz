@@ -21,6 +21,8 @@
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_playout_control.h"
+#include "fakes/fake_plugin_processor.h"
+#include "fakes/fake_plugin_rack.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
@@ -47,9 +49,10 @@ protected:
 
     HostSession& session() {
         if (!session_) {
-            session_.emplace(config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_,
-                                                         settings_, random_, clock_, logger_,
-                                                         playout_, external_output_, secrets_});
+            session_.emplace(
+                config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_,
+                                            random_, clock_, logger_, playout_, external_output_,
+                                            secrets_, plugins_});
             session_->start();
         }
         return *session_;
@@ -194,6 +197,7 @@ protected:
     FakeSecureRandom random_;
     FakeExternalOutputControl external_output_;
     FakeSecretStore secrets_;
+    FakePluginRack plugins_;
     common::FakeClock clock_;
     common::FakeLogger logger_;
     std::optional<HostSession> session_;
@@ -1083,6 +1087,170 @@ TEST_F(HostSessionTest, DoesNotRestoreARoutingTheMixerRefuses) {
     const auto routing = session().snapshot().routing;
     EXPECT_EQ(routing.applied, cp::RoutingConfig{});
     EXPECT_FALSE(routing.staged);
+}
+
+// --- プラグインの挿入 ---
+
+std::vector<PluginDescription> insert_plugins() {
+    PluginDescription eq;
+    eq.name = "EQ";
+    eq.identifier = "VST3-EQ-1";
+    eq.input_channels = 2;
+    eq.output_channels = 2;
+    PluginDescription verb = eq;
+    verb.name = "Verb";
+    verb.identifier = "VST3-Verb-2";
+    return {eq, verb};
+}
+
+std::shared_ptr<audio_core::PluginProcessor> fake_processor() {
+    return std::make_shared<audio_core::FakePluginProcessor>();
+}
+
+/// ストリップに EQ を、FX バスにリバーブを挿す構成。
+cp::RoutingConfig insert_routing(const std::string& strip_id) {
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-fx", "FX", cp::BusKind::kUser});
+    config.sends.push_back(cp::RoutingSend{"send-1", strip_id, "bus-fx", cp::SendTap::kPostFader});
+    config.inserts.push_back(cp::RoutingInsert{"fx-eq", strip_id, "VST3-EQ-1"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-verb", "bus-fx", "VST3-Verb-2"});
+    return config;
+}
+
+TEST_F(HostSessionTest, InsertsNeedAPluginFromTheList) {
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    EXPECT_EQ(session().snapshot().routing.staged->check.issue, cp::RoutingIssue::kUnknownPlugin);
+    EXPECT_FALSE(command("routing", cp::CommitRouting{false}));
+
+    // 一覧が届くと、ステージング中の構成を検証し直して知らせる。
+    const auto revision = revision_of("routing");
+    session().set_available_plugins(insert_plugins());
+    const auto routing = session().snapshot().routing;
+    EXPECT_FALSE(routing.staged->check.issue);
+    EXPECT_EQ(routing.revision, revision);
+    EXPECT_TRUE(std::holds_alternative<cp::RoutingUpdated>(ui_.messages().back()));
+}
+
+TEST_F(HostSessionTest, CommitAppliesInsertsSilentlyAndConnectsThemAsTheyLoad) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+
+    // 読み込みの前に適用し、挿入の経路は切ったまま（ミキサーに挿入を渡さない）。
+    EXPECT_EQ(mixer_.routing(), insert_routing(a));
+    EXPECT_TRUE(mixer_.plugins().empty());
+    ASSERT_EQ(plugins_.loads().size(), 2U);
+    EXPECT_EQ(plugins_.loads()[0].insert_id, "fx-eq");
+    EXPECT_EQ(plugins_.loads()[1].plugin_id, "VST3-Verb-2");
+
+    const auto revision = revision_of("routing");
+    const auto count = mixer_.apply_routing_count();
+    const auto eq = fake_processor();
+    session().on_plugin_loaded("fx-eq", plugins_.loads()[0].ticket, eq);
+    EXPECT_EQ(mixer_.apply_routing_count(), count + 1);
+    ASSERT_EQ(mixer_.plugins().size(), 1U);
+    EXPECT_EQ(mixer_.plugins()[0].entity_id, "fx-eq");
+    EXPECT_EQ(mixer_.plugins()[0].processor, eq);
+    // 読み込みは観測値の変化なので revision は進めない。
+    EXPECT_EQ(revision_of("routing"), revision);
+
+    // 読み込めなかった挿入はつながず、グラフも作り直さない。
+    session().on_plugin_loaded("fx-verb", plugins_.loads()[1].ticket,
+                               common::make_unexpected(PluginLoadError::kInstantiateFailed));
+    EXPECT_EQ(mixer_.apply_routing_count(), count + 1);
+    EXPECT_EQ(mixer_.plugins().size(), 1U);
+}
+
+TEST_F(HostSessionTest, RemovedInsertsAreReleasedAfterTheGraphNoLongerUsesThem) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    session().on_plugin_loaded("fx-eq", plugins_.loads()[0].ticket, fake_processor());
+
+    auto without_eq = insert_routing(a);
+    without_eq.inserts.erase(without_eq.inserts.begin());
+    ASSERT_TRUE(command("routing", cp::StageRouting{without_eq}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    EXPECT_TRUE(mixer_.plugins().empty());
+    EXPECT_EQ(plugins_.releases(), std::vector<std::string>{"fx-eq"});
+    // 外した挿入の遅れて届いた結果は使わない。
+    session().on_plugin_loaded("fx-eq", plugins_.loads()[0].ticket, fake_processor());
+    EXPECT_TRUE(mixer_.plugins().empty());
+}
+
+TEST_F(HostSessionTest, RemovingAStripReleasesItsInserts) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+
+    session().on_peer_closed(1);
+    ASSERT_TRUE(command(a, cp::RemoveStrip{}));
+    const auto& applied = session().snapshot().routing.applied;
+    ASSERT_EQ(applied.inserts.size(), 1U);
+    EXPECT_EQ(applied.inserts[0].entity_id, "fx-verb");
+    EXPECT_EQ(plugins_.releases(), std::vector<std::string>{"fx-eq"});
+}
+
+TEST_F(HostSessionTest, ProcessingFaultsAreLoggedOnce) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    session().on_plugin_loaded("fx-eq", plugins_.loads()[0].ticket, fake_processor());
+    const auto warnings = [this] {
+        const auto entries = logger_.entries();
+        return std::count_if(entries.begin(), entries.end(), [](const auto& entry) {
+            return entry.level == common::LogLevel::kWarning;
+        });
+    };
+    const auto before = warnings();
+
+    mixer_.plugins()[0].fault->raise();
+    session().tick();
+    session().tick();
+    EXPECT_EQ(warnings(), before + 1);
+}
+
+TEST_F(HostSessionTest, SavesAndRestoresInsertsOnMasterAndBusesOnly) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    ASSERT_TRUE(command("session", cp::EndSession{}));
+    const auto& saved = *settings_.host();
+    ASSERT_EQ(saved.routing.inserts.size(), 1U);
+    EXPECT_EQ(saved.routing.inserts[0].entity_id, "fx-verb");
+}
+
+TEST_F(HostSessionTest, RestoresSavedInsertsAndDropsThoseOfMissingPlugins) {
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-fx", "FX", cp::BusKind::kUser});
+    config.inserts.push_back(cp::RoutingInsert{"fx-verb", "bus-fx", "VST3-Verb-2"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-gone", "master", "VST3-Gone-3"});
+    HostSettings saved;
+    saved.routing = config;
+    settings_.host() = saved;
+    session_.emplace(config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_,
+                                                 settings_, random_, clock_, logger_, playout_,
+                                                 external_output_, secrets_, plugins_});
+    session_->set_available_plugins(insert_plugins());
+    session_->start();
+
+    const auto& applied = session().snapshot().routing.applied;
+    ASSERT_EQ(applied.inserts.size(), 1U);
+    EXPECT_EQ(applied.inserts[0].entity_id, "fx-verb");
+    ASSERT_EQ(plugins_.loads().size(), 1U);
+    EXPECT_EQ(plugins_.loads()[0].insert_id, "fx-verb");
 }
 
 // --- 子機の複数の入力（ステレオ、複数入力、アプリ音声） ---

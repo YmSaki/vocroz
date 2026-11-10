@@ -9,7 +9,10 @@
 #include "vocroz/session/host_session.h"
 
 #include <cmath>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "vocroz/control_protocol/constants.h"
 #include "vocroz/session/invite_code.h"
@@ -169,6 +172,11 @@ public:
                 ctx.publish_session();
             }
         }
+        if (!ctx.inserts.collect_faults().empty()) {
+            // ノードは失敗の印で既に無音にしている。経路は挿入を外して挿し直すまで戻さない。
+            ctx.log(common::LogLevel::kWarning,
+                    "挿入のプラグインが処理中に失敗したため、その経路を無音にしました");
+        }
         for (auto& p : ctx.registry.participants()) {
             if (p.strip.connection_state == ConnectionState::kReconnecting &&
                 p.reconnecting_since && now - *p.reconnecting_since >= kReconnectGrace) {
@@ -246,6 +254,35 @@ void HostSession::on_external_output_test_finished(control_protocol::ExternalOut
     if (ctx.external_output.finish_test(result)) {
         ctx.publish_external_output();
     }
+}
+
+void HostSession::set_available_plugins(std::vector<PluginDescription> plugins) {
+    auto& ctx = impl_->ctx;
+    const bool staged = ctx.routing.info().staged.has_value();
+    ctx.routing.set_plugins(std::move(plugins), ctx.strip_ids());
+    if (staged) {
+        // 一覧が変わると、ステージング中の挿入の検証の結果が変わることがある。
+        ctx.publish_routing();
+    }
+}
+
+void HostSession::on_plugin_loaded(
+    const std::string& insert_id, PluginLoadTicket ticket,
+    common::Result<std::shared_ptr<audio_core::PluginProcessor>, PluginLoadError> result) {
+    auto& ctx = impl_->ctx;
+    const bool ok = result.has_value();
+    if (!ctx.inserts.on_loaded(insert_id, ticket, std::move(result))) {
+        return;
+    }
+    if (!ok) {
+        // 経路は無音のまま（フェイルセーフ）。プラグインを通らない音は出さない。
+        ctx.log(common::LogLevel::kWarning,
+                "挿入のプラグインを読み込めなかったため、その経路を無音のままにします");
+        return;
+    }
+    // 構成は変えず、読み込みの済んだ挿入の経路をつないだグラフに差し替える。
+    // 観測値の変化なので revision は進めない。
+    ctx.reapply_routing("プラグインを読み込んだあとのルーティングをミキサーに適用できませんでした");
 }
 
 void HostSession::revoke_invite() {

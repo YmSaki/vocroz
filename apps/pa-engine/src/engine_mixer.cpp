@@ -55,7 +55,7 @@ EngineMixer::EngineMixer(ac::Mixer& mixer, common::Logger& logger)
     assignments_.master_meter = ac::MeterId{meters_.acquire().value_or(0)};
     // 何もない状態でも Master → リミッター → メインの出力の経路を置いておく。
     // Master はミュートで始まるので、ここで音は出ない。
-    (void)rebuild(assignments_, routing_, feedback_approved_);
+    (void)rebuild(assignments_, routing_, feedback_approved_, plugins_);
 }
 
 void EngineMixer::add_channel(const std::string& strip_id) {
@@ -81,7 +81,7 @@ void EngineMixer::add_channel(const std::string& strip_id) {
     submit(FaderOp{FaderOp::Kind::kReset, ac::FaderId{*fader}});
     assignments_.strips.push_back(
         StripAssignment{strip_id, ac::FaderId{*fader}, ac::MeterId{*meter}, nullptr});
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         logger_.log(common::LogLevel::kError, "ストリップを追加したグラフを適用できませんでした");
     }
 }
@@ -106,7 +106,7 @@ void EngineMixer::remove_channel(const std::string& strip_id) {
     assignments_.strips.erase(it);
     std::erase_if(assignments_.midi_sources,
                   [key = strip_midi_key(strip_id)](const auto& midi) { return midi.key == key; });
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         logger_.log(common::LogLevel::kError, "ストリップを外したグラフを適用できませんでした");
     }
     // 返す前にミュートに戻しておき、次に割り当てたストリップが前の値で鳴らないようにする。
@@ -142,7 +142,8 @@ void EngineMixer::set_master_gain(cp::GainDb gain_db) {
     submit(FaderOp{FaderOp::Kind::kGain, assignments_.master_fader, true, to_mixer_db(gain_db)});
 }
 
-bool EngineMixer::apply_routing(const cp::RoutingConfig& config, bool feedback_approved) {
+bool EngineMixer::apply_routing(const cp::RoutingConfig& config, bool feedback_approved,
+                                std::span<const session::InsertedPlugin> plugins) {
     MixerAssignments candidate = assignments_;
     IdPool faders = faders_;
     IdPool meters = meters_;
@@ -156,7 +157,7 @@ bool EngineMixer::apply_routing(const cp::RoutingConfig& config, bool feedback_a
     for (const auto fader : added) {
         submit(FaderOp{FaderOp::Kind::kReset, fader});
     }
-    if (!rebuild(candidate, config, feedback_approved)) {
+    if (!rebuild(candidate, config, feedback_approved, plugins)) {
         logger_.log(common::LogLevel::kWarning, "ルーティングのグラフをミキサーが受け付けません");
         return false;
     }
@@ -168,6 +169,7 @@ bool EngineMixer::apply_routing(const cp::RoutingConfig& config, bool feedback_a
     meters_ = std::move(meters);
     routing_ = config;
     feedback_approved_ = feedback_approved;
+    plugins_.assign(plugins.begin(), plugins.end());
     return true;
 }
 
@@ -192,7 +194,7 @@ bool EngineMixer::attach_source(const std::string& strip_id,
         return false;
     }
     auto previous = std::exchange(strip->source, std::move(source));
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         strip->source = std::move(previous);
         logger_.log(common::LogLevel::kError,
                     "受信ストリームをつないだグラフを適用できませんでした");
@@ -207,7 +209,7 @@ void EngineMixer::detach_source(const std::string& strip_id) {
         return;
     }
     strip->source.reset();
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         logger_.log(common::LogLevel::kError, "受信ストリームを外したグラフを適用できませんでした");
     }
 }
@@ -228,7 +230,7 @@ bool EngineMixer::attach_return(std::uint64_t key, std::vector<std::string> own_
     } else {
         *it = std::move(assignment);
     }
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         returns = previous;
         logger_.log(common::LogLevel::kError, "返送をつないだグラフを適用できませんでした");
         return false;
@@ -243,7 +245,7 @@ bool EngineMixer::attach_external_stream(std::string source_id,
     }
     const auto previous = assignments_.external_stream;
     assignments_.external_stream = ExternalStreamAssignment{std::move(source_id), std::move(sink)};
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         assignments_.external_stream = previous;
         logger_.log(common::LogLevel::kError, "外部出力をつないだグラフを適用できませんでした");
         return false;
@@ -256,7 +258,7 @@ void EngineMixer::detach_external_stream() {
         return;
     }
     assignments_.external_stream.reset();
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         logger_.log(common::LogLevel::kError, "外部出力を外したグラフを適用できませんでした");
     }
 }
@@ -268,7 +270,7 @@ void EngineMixer::detach_return(std::uint64_t key) {
         return;
     }
     returns.erase(it);
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         logger_.log(common::LogLevel::kError, "返送を外したグラフを適用できませんでした");
     }
 }
@@ -287,7 +289,7 @@ bool EngineMixer::attach_midi_source(const std::string& key,
     } else {
         it->source = std::move(source);
     }
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         sources = previous;
         logger_.log(common::LogLevel::kError, "MIDI ソースをつないだグラフを適用できませんでした");
         return false;
@@ -302,7 +304,7 @@ void EngineMixer::detach_midi_source(const std::string& key) {
         return;
     }
     sources.erase(it);
-    if (!rebuild(assignments_, routing_, feedback_approved_)) {
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
         logger_.log(common::LogLevel::kError, "MIDI ソースを外したグラフを適用できませんでした");
     }
 }
@@ -337,9 +339,10 @@ StripAssignment* EngineMixer::find_strip(std::string_view strip_id) {
 }
 
 bool EngineMixer::rebuild(const MixerAssignments& assignments, const cp::RoutingConfig& config,
-                          bool feedback_approved) {
-    auto built =
-        build_mixer_graph(assignments, session::kMasterEntityId, config, feedback_approved);
+                          bool feedback_approved,
+                          std::span<const session::InsertedPlugin> plugins) {
+    auto built = build_mixer_graph(assignments, session::kMasterEntityId, config, feedback_approved,
+                                   plugins);
     if (const auto applied = mixer_.apply_graph(built.graph); !applied) {
         return false;
     }

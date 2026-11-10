@@ -43,7 +43,7 @@ function delaySamples(delayMs: number): number {
 
 /** 空の構成。 */
 export function emptyRoutingConfig(): RoutingConfig {
-  return { buses: [], outputs: [], sends: [], delays: [], input_delays: [] };
+  return { buses: [], outputs: [], sends: [], delays: [], input_delays: [], inserts: [] };
 }
 
 function registerIds(
@@ -333,16 +333,22 @@ export class FakeRouting {
   }
 
   /**
-   * ストリップの削除を反映する。適用中の構成からそのストリップを参照するセンドと手動ディレイを取り除く。
+   * ストリップの削除を反映する。適用中の構成からそのストリップを参照するセンド、手動ディレイ、
+   * 挿入を取り除く。
    * @returns 状態が変わったら true（UI に知らせる）
    */
   forgetStrip(stripId: string, stripIds: readonly string[]): boolean {
     const { applied } = this.state;
     const sends = applied.sends.filter((s) => s.from !== stripId && s.to !== stripId);
     const inputDelays = applied.input_delays.filter((d) => d.strip_id !== stripId);
+    const inserts = applied.inserts.filter((i) => i.target !== stripId);
     const changed =
-      sends.length !== applied.sends.length || inputDelays.length !== applied.input_delays.length;
-    const nextApplied = changed ? { ...applied, sends, input_delays: inputDelays } : applied;
+      sends.length !== applied.sends.length ||
+      inputDelays.length !== applied.input_delays.length ||
+      inserts.length !== applied.inserts.length;
+    const nextApplied = changed
+      ? { ...applied, sends, input_delays: inputDelays, inserts }
+      : applied;
     const staged =
       this.state.staged === null
         ? null

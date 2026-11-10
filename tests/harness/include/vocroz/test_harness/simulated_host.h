@@ -31,6 +31,7 @@
 #include "fakes/fake_logger.h"
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_playout_control.h"
+#include "fakes/fake_plugin_rack.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
@@ -150,6 +151,8 @@ private:
     session::FakeSettingsStore settings_;
     session::FakeExternalOutputControl external_output_;
     session::FakeSecretStore secrets_;
+    // 結合テストではプラグインを挿さないので、依頼を記録するだけのフェイクで足りる。
+    session::FakePluginRack plugins_;
     session::FakeSecureRandom random_;
     common::FakeLogger logger_;
     std::unique_ptr<session::HostSession> session_;
