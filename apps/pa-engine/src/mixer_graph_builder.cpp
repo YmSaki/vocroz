@@ -78,6 +78,65 @@ using NodeTable = std::map<std::string, ac::NodeId, std::less<>>;
     return it->second;
 }
 
+/// 挿す先 1 つの挿入をつないだ列。
+struct InsertChain {
+    /// 列の先頭と末尾のプラグインノード。挿入がないか、経路を切ったなら std::nullopt。
+    std::optional<ac::NodeId> first;
+    std::optional<ac::NodeId> last;
+    /// 読み込みの済んでいない挿入があり、挿す先を通る経路を切る。
+    bool cut = false;
+    /// 末尾のプラグインの出力のチャンネル数。
+    std::size_t output_channels = 0;
+};
+
+// 挿す先の挿入を、構成の順にプラグインノードとして直列につなぐ。1 つでも読み込みが済んで
+// いなければノードを置かずに cut を返す。一部のプラグインだけを通した音も、オペレーターが
+// 意図した音ではないため。
+InsertChain add_insert_chain(GraphWriter& writer, const cp::RoutingConfig& config,
+                             std::string_view target,
+                             std::span<const session::InsertedPlugin> plugins) {
+    std::vector<const session::InsertedPlugin*> chain;
+    for (const auto& insert : config.inserts) {
+        if (insert.target != target) {
+            continue;
+        }
+        const auto it = std::ranges::find_if(plugins, [&](const session::InsertedPlugin& plugin) {
+            return plugin.entity_id == insert.entity_id;
+        });
+        if (it == plugins.end() || !it->processor) {
+            return InsertChain{std::nullopt, std::nullopt, true, 0};
+        }
+        chain.push_back(&*it);
+    }
+    InsertChain result;
+    for (const auto* plugin : chain) {
+        const auto node =
+            writer.add(ac::NodeSpec::make_plugin(ac::NodeId{}, plugin->processor, plugin->fault));
+        if (result.last) {
+            writer.connect(*result.last, node);
+        } else {
+            result.first = node;
+        }
+        result.last = node;
+        result.output_channels = plugin->processor->layout().output_channels;
+    }
+    return result;
+}
+
+// Master かバスの後段の送り元を返す。挿入があれば node → 挿入の列とつなぎ、列の末尾を返す。
+// 経路を切るなら、入力のない安全リミッター（常に無音）を代わりの送り元にする。センドを
+// グラフから外すと、センドのフェーダーをミュートすることになり、session の状態とずれるため。
+ac::NodeId downstream_of(GraphWriter& writer, ac::NodeId node, const InsertChain& chain) {
+    if (chain.cut) {
+        return writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}));
+    }
+    if (!chain.first) {
+        return node;
+    }
+    writer.connect(node, *chain.first);
+    return *chain.last;
+}
+
 // 子機への返送を足す。返送の候補は Master へ入る信号（ストリップ、Master へ送るバスと
 // 遅延ノード）で、親機のメインのミックスと同じバランスにする。Master のフェーダーとミュートは
 // 通さない。Master はハウスの出力の操作で、出演者のモニターまで止めるものではないため。
@@ -110,7 +169,8 @@ std::string device_midi_key(std::string_view device_id) {
 
 BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
                                   std::string_view master_entity_id,
-                                  const cp::RoutingConfig& config, bool feedback_approved) {
+                                  const cp::RoutingConfig& config, bool feedback_approved,
+                                  std::span<const session::InsertedPlugin> plugins) {
     GraphWriter writer;
     NodeTable sources_of_sends;
     NodeTable targets_of_sends;
@@ -118,12 +178,14 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     // Master と、メインの出力への暗黙の経路。安全リミッターを必ず通す。
     const auto master =
         writer.add(ac::NodeSpec::make_bus(ac::NodeId{}, assignments.master_fader, std::nullopt));
+    const auto master_out =
+        downstream_of(writer, master, add_insert_chain(writer, config, master_entity_id, plugins));
     const auto main_limiter = writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}));
     const auto main_output = writer.add(
         ac::NodeSpec::make_output(ac::NodeId{}, assignments.master_meter, kMainOutputChannel));
-    writer.connect(master, main_limiter);
+    writer.connect(master_out, main_limiter);
     writer.connect(main_limiter, main_output);
-    sources_of_sends.emplace(master_entity_id, master);
+    sources_of_sends.emplace(master_entity_id, master_out);
     targets_of_sends.emplace(master_entity_id, master);
 
     // ストリップと、ストリップから Master への暗黙の結線。
@@ -132,13 +194,24 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         // ストリップで左右を保ったまま Master
         // へ送るため（docs/adr/0035-client-input-expansion.md）。
         // ストリームがまだなければモノラルで置く（無音なので違いはない）。
-        const std::size_t channels = strip.source ? strip.source->channel_count() : 1;
+        // 挿入があれば、末尾のプラグインの出力に合わせる（モノラルの声にステレオのリバーブなど）。
+        const auto chain = add_insert_chain(writer, config, strip.strip_id, plugins);
+        const std::size_t channels = chain.last     ? chain.output_channels
+                                     : strip.source ? strip.source->channel_count()
+                                                    : 1;
         const auto node =
             writer.add(ac::NodeSpec::make_strip(ac::NodeId{}, strip.fader, strip.meter,
                                                 input_delay_of(config, strip.strip_id), channels));
+        if (chain.last) {
+            writer.connect(*chain.last, node);
+        }
         if (strip.source) {
+            // 経路を切るときもソースのノードは置く。グラフはどのノードもブロックごとに処理するので、
+            // 受信ストリームから取り出し続け、つないだときに古い音が溜まっていないようにする。
             const auto source = writer.add(ac::NodeSpec::make_source(ac::NodeId{}, strip.source));
-            writer.connect(source, node);
+            if (!chain.cut) {
+                writer.connect(source, chain.first ? *chain.first : node);
+            }
         }
         writer.connect(node, master);
         sources_of_sends.emplace(strip.strip_id, node);
@@ -154,7 +227,9 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
             ac::NodeId{}, fader->second,
             meter == assignments.bus_meters.end() ? std::nullopt
                                                   : std::optional<ac::MeterId>{meter->second}));
-        sources_of_sends.emplace(bus.entity_id, node);
+        sources_of_sends.emplace(
+            bus.entity_id,
+            downstream_of(writer, node, add_insert_chain(writer, config, bus.entity_id, plugins)));
         targets_of_sends.emplace(bus.entity_id, node);
     }
 

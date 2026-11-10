@@ -5,8 +5,10 @@
 #pragma once
 
 #include <map>
+#include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "vocroz/session/ports/mixer_control.h"
 
@@ -47,14 +49,15 @@ public:
         master_gain_db_ = gain_db;
     }
 
-    bool apply_routing(const control_protocol::RoutingConfig& config,
-                       bool feedback_approved) override {
+    bool apply_routing(const control_protocol::RoutingConfig& config, bool feedback_approved,
+                       std::span<const InsertedPlugin> plugins) override {
         ++apply_routing_count_;
         if (!accept_routing_) {
             return false;
         }
         routing_ = config;
         feedback_approved_ = feedback_approved;
+        plugins_.assign(plugins.begin(), plugins.end());
         // 新しいバスとセンドはミュートで 0 dB、残るものは値を引き継ぐ（ポートの契約）。
         std::map<std::string, Channel> routes;
         const auto keep = [&](const std::string& id) {
@@ -87,6 +90,11 @@ public:
     /// 最後に適用したルーティングの構成。
     [[nodiscard]] const control_protocol::RoutingConfig& routing() const noexcept {
         return routing_;
+    }
+
+    /// 最後の適用で渡された、読み込みの済んだ挿入。
+    [[nodiscard]] const std::vector<InsertedPlugin>& plugins() const noexcept {
+        return plugins_;
     }
 
     [[nodiscard]] bool feedback_approved() const noexcept {
@@ -123,6 +131,7 @@ private:
     std::map<std::string, Channel> channels_;
     std::map<std::string, Channel> routes_;
     control_protocol::RoutingConfig routing_;
+    std::vector<InsertedPlugin> plugins_;
     bool feedback_approved_ = false;
     bool accept_routing_ = true;
     int apply_routing_count_ = 0;

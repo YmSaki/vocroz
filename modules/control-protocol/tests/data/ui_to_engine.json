@@ -160,6 +160,13 @@
           "strip_id": "ch2",
           "delay_ms": 12.5
         }
+      ],
+      "inserts": [
+        {
+          "entity_id": "fx-eq",
+          "target": "ch1",
+          "plugin_id": "VST3-Pro EQ-1a2b3c4d-5e6f7a8b"
+        }
       ]
     }
   },

@@ -173,6 +173,19 @@ struct InputDelay {
     friend bool operator==(const InputDelay&, const InputDelay&) = default;
 };
 
+/// プラグインの挿入。entity_id は "fx-" で始める。同じ挿す先の挿入は、一覧の順に直列につなぐ
+/// （docs/adr/0042-plugin-insert.md）。
+struct RoutingInsert {
+    std::string entity_id;
+    /// 挿す先（ストリップ、"master"、バス）の entity_id。ストリップはフェーダーの前に、
+    /// Master とバスは後段のすべての前に挿す。
+    std::string target;
+    /// 挿すプラグインの識別子（プラグインの一覧の plugin_id）。
+    std::string plugin_id;
+
+    friend bool operator==(const RoutingInsert&, const RoutingInsert&) = default;
+};
+
 /// ルーティングの構成。UI がステージングし、エンジンが検証して適用する。
 struct RoutingConfig {
     std::vector<RoutingBus> buses;
@@ -180,6 +193,7 @@ struct RoutingConfig {
     std::vector<RoutingSend> sends;
     std::vector<RoutingDelay> delays;
     std::vector<InputDelay> input_delays;
+    std::vector<RoutingInsert> inserts;
 
     friend bool operator==(const RoutingConfig&, const RoutingConfig&) = default;
 };

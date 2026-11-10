@@ -104,6 +104,7 @@ describe("FakeMixerEngine", () => {
       ],
       delays: [],
       input_delays: [],
+      inserts: [],
     };
     engine.send({
       type: "stage_routing",

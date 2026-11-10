@@ -5,11 +5,26 @@
 // session はオーディオスレッドの受け渡し方を知らずに、適用すべき値だけを決める。
 #pragma once
 
+#include <memory>
+#include <span>
 #include <string>
 
+#include "vocroz/audio_core/plugin_fault.h"
+#include "vocroz/audio_core/ports/plugin_processor.h"
 #include "vocroz/control_protocol/entities.h"
 
 namespace vocroz::session {
+
+/// 読み込みの済んだ挿入 1 つ。グラフのプラグインノードに渡す。
+struct InsertedPlugin {
+    std::string entity_id;  ///< 挿入の entity_id（"fx-" で始まる）
+    /// プラグインの処理（null にならない）。グラフが持っている間は生き続ける。
+    std::shared_ptr<audio_core::PluginProcessor> processor;
+    /// 処理中の失敗の印（null にならない）。グラフを作り直しても失敗したノードを無音のままにし、
+    /// session が失敗に気づけるように、挿入ごとに 1 つを共有する
+    /// （docs/adr/0041-plugin-editor-and-failure-notice.md）。
+    std::shared_ptr<audio_core::PluginFault> fault;
+};
 
 /// 親機のミキサーの操作。
 /// スレッド安全性: コントロールスレッドから呼ぶ。実装はブロックせず、値をオーディオスレッドへ渡す。
@@ -49,11 +64,16 @@ public:
     /// メインの出力への結線は暗黙にあるものとして加える（docs/adr/0026-routing-staging.md）。
     /// 新しいバスとセンドはミュートで 0 dB とし（初期ミュート）、同じ entity_id のものは
     /// フェーダーとミュートの値を引き継ぐ。遅延は delay_samples() でサンプル数に換算する。
+    /// 構成の挿入は、挿す先ごとに一覧の順で直列につなぐ。plugins にない挿入（読み込み中か失敗）は、
+    /// その挿入を通る経路を切って無音にする。プラグインを通らない音を出さないため
+    /// （docs/adr/0042-plugin-insert.md）。
     /// @param config            適用する構成
     /// @param feedback_approved 遅延ノードを通るループをオペレーターが承認した
+    /// @param plugins           読み込みの済んだ挿入。構成にない entity_id のものは使わない
     /// @return 適用したら true。ミキサーが記述を受け付けなければ false で、今のグラフを使い続ける
     [[nodiscard]] virtual bool apply_routing(const control_protocol::RoutingConfig& config,
-                                             bool feedback_approved) = 0;
+                                             bool feedback_approved,
+                                             std::span<const InsertedPlugin> plugins) = 0;
 
     /// バスかセンドのミュートを反映する。
     /// @param entity_id バスかセンドの entity_id

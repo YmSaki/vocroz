@@ -43,7 +43,7 @@ bool has_route_level(const cp::RoutingConfig& config, const std::string& entity_
 }  // namespace
 
 HostContext::HostContext(HostSession::Config config_value, HostSession::Ports ports_value)
-    : config(std::move(config_value)), ports(ports_value) {
+    : config(std::move(config_value)), ports(ports_value), inserts(ports_value.plugins) {
     session.entity_id = kSessionEntityId;
     session.revision = 1;
     master.entity_id = kMasterEntityId;
@@ -75,14 +75,23 @@ std::vector<std::string> HostContext::strip_ids() const {
     return ids;
 }
 
+void HostContext::reapply_routing(const char* context) {
+    const auto& info = routing.info();
+    // 構成は変わらないか、参照を取り除いただけなのでループは増えず、承認の状態はそのまま引き継げる。
+    if (!ports.mixer.apply_routing(info.applied, info.feedback_approved,
+                                   inserts.ready_for(info.applied.inserts))) {
+        log(common::LogLevel::kWarning, context);
+    }
+}
+
+void HostContext::reconcile_inserts() {
+    inserts.reconcile(routing.info().applied.inserts, routing.plugins());
+}
+
 void HostContext::forget_strip_in_routing(const std::string& strip_id) {
     if (routing.forget_strip(strip_id, strip_ids())) {
-        const auto& info = routing.info();
-        // 参照を取り除いただけなのでループは増えず、承認の状態はそのまま引き継げる。
-        if (!ports.mixer.apply_routing(info.applied, info.feedback_approved)) {
-            log(common::LogLevel::kWarning,
-                "ストリップを削除したあとのルーティングをミキサーに適用できませんでした");
-        }
+        reapply_routing("ストリップを削除したあとのルーティングをミキサーに適用できませんでした");
+        reconcile_inserts();
     }
     publish_routing();
 }
@@ -92,12 +101,17 @@ common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_
         return prepared;
     }
     const auto& staged = *routing.info().staged;
-    if (!ports.mixer.apply_routing(staged.config, staged.check.needs_approval)) {
+    // 新しい挿入はまだ読み込んでいないので、その経路を切ったグラフで先に適用する。
+    // 読み込みが済むたびに reapply_routing() でつなぐ（docs/adr/0042-plugin-insert.md）。
+    if (!ports.mixer.apply_routing(staged.config, staged.check.needs_approval,
+                                   inserts.ready_for(staged.config.inserts))) {
         // ミキサーが受け付けなければ今のグラフのまま音を出し続け、ステージングも残す。
         log(common::LogLevel::kWarning, "ルーティングをミキサーに適用できませんでした");
         return common::make_unexpected(ErrorCode::kEngineError);
     }
     routing.commit();
+    // 外した挿入の破棄は、グラフを差し替えてから依頼する。
+    reconcile_inserts();
     stop_external_output_without_source();
     return {};
 }
@@ -152,6 +166,18 @@ void HostContext::apply_latency_target(double target_ms) {
 
 void HostContext::restore_routing() {
     auto restored = without_strip_references(settings.routing);
+    // 一覧から消えたプラグイン（アンインストールしたものなど）の挿入だけを外して戻す。
+    // 1 つのプラグインがないためにルーティング全体を既定の結線に戻さないため。
+    const auto& plugins = routing.plugins();
+    const auto missing = std::erase_if(restored.inserts, [&](const cp::RoutingInsert& insert) {
+        return std::none_of(plugins.begin(), plugins.end(), [&](const PluginDescription& d) {
+            return d.identifier == insert.plugin_id;
+        });
+    });
+    if (missing > 0) {
+        log(common::LogLevel::kWarning,
+            "保存した挿入のうち、見つからないプラグインのものを外して起動します");
+    }
     if (restored == cp::RoutingConfig{}) {
         return;
     }

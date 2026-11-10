@@ -25,6 +25,10 @@ inline constexpr TextRule kUrlRule{1, kMaxUrlBytes, Charset::kAny};
 /// 入力デバイスの永続 ID。
 inline constexpr TextRule kDeviceIdRule{1, kMaxDeviceIdBytes, Charset::kAny};
 
+/// プラグインの識別子（JUCE の PluginDescription::createIdentifierString()）。名前を含むので
+/// 文字の種類は制限しない。
+inline constexpr TextRule kPluginIdRule{1, kMaxPluginIdBytes, Charset::kAny};
+
 /// 表示用の文字列（名前、短い識別 ID、バージョン）。IDLE のセッション名のように空のこともある。
 inline constexpr TextRule kTextRule{0, kMaxTextBytes, Charset::kAny};
 

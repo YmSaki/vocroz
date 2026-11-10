@@ -183,7 +183,7 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
     EXPECT_TRUE(coverage.covers_all_up_to(NoticeSeverity::kWarning));
     EXPECT_TRUE(coverage.covers_all_up_to(BusKind::kCue));
     EXPECT_TRUE(coverage.covers_all_up_to(SendTap::kPreFader));
-    EXPECT_TRUE(coverage.covers_all_up_to(RoutingIssue::kUndelayedLoop));
+    EXPECT_TRUE(coverage.covers_all_up_to(RoutingIssue::kUnsupportedPlugin));
     EXPECT_TRUE(coverage.covers_all_up_to(ExternalOutputState::kTesting));
     EXPECT_TRUE(coverage.covers_all_up_to(ExternalOutputProfile::kOpusMono));
     EXPECT_TRUE(coverage.covers_all_up_to(SrtpSuite::kAesCm128HmacSha1_32));

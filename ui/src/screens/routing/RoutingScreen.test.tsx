@@ -42,6 +42,7 @@ function echoConfig(): RoutingConfig {
       { entity_id: "send-3", from: "bus-fx", to: "master", tap: "POST_FADER" },
     ],
     input_delays: [],
+    inserts: [],
   };
 }
 
@@ -97,6 +98,7 @@ describe("ステージングと適用", () => {
       sends: [],
       delays: [],
       input_delays: [],
+      inserts: [],
     });
     expect(screen.getByRole("status").textContent).toBe(
       "出力のチャンネルがメインの出力かほかの出力と重なっています（IEM）",

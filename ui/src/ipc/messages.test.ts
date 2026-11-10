@@ -236,6 +236,7 @@ const kRoutingConfigKeys = keysOf<RoutingConfig>({
   sends: true,
   delays: true,
   input_delays: true,
+  inserts: true,
 });
 const kRoutingBusKeys = keysOf<RoutingBus>({ entity_id: true, name: true, kind: true });
 const kRoutingOutputKeys = keysOf<RoutingOutput>({
@@ -344,6 +345,8 @@ const kRoutingIssues: Record<RoutingIssue, true> = {
   OUTPUT_CHANNEL_OUT_OF_RANGE: true,
   OVERLAPPING_OUTPUTS: true,
   UNDELAYED_LOOP: true,
+  UNKNOWN_PLUGIN: true,
+  UNSUPPORTED_PLUGIN: true,
 };
 const kExternalOutputStates: Record<ExternalOutputState, true> = {
   STOPPED: true,

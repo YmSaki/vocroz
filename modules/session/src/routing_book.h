@@ -8,10 +8,12 @@
 
 #include <span>
 #include <string>
+#include <vector>
 
 #include "vocroz/common/result.h"
 #include "vocroz/control_protocol/entities.h"
 #include "vocroz/control_protocol/states.h"
+#include "vocroz/session/plugin_description.h"
 
 namespace vocroz::session {
 
@@ -50,11 +52,23 @@ public:
     /// ミュートで 0 dB（初期ミュート）、同じ entity_id が残るものは値を引き継ぐ。
     void commit();
 
+    /// 挿入に使えるプラグインの一覧を置き換え、ステージング中の構成を検証し直す。
+    /// 適用中の構成は変えない（読み込み済みのプラグインはそのまま使い続ける）。
+    /// @param plugins   使えるプラグイン
+    /// @param strip_ids 今あるチャンネルストリップの entity_id
+    void set_plugins(std::vector<PluginDescription> plugins,
+                     std::span<const std::string> strip_ids);
+
+    /// 挿入に使えるプラグインの一覧。
+    [[nodiscard]] const std::vector<PluginDescription>& plugins() const noexcept {
+        return plugins_;
+    }
+
     /// バスかセンドのレベルを返す。なければ nullptr。
     [[nodiscard]] control_protocol::RouteLevel* find_level(const std::string& entity_id) noexcept;
 
-    /// ストリップの削除を反映する。適用中の構成からそのストリップを参照するセンドと手動ディレイを
-    /// 取り除き、ステージング中の構成は検証し直す（参照が切れたことを UI に示すため）。
+    /// ストリップの削除を反映する。適用中の構成からそのストリップを参照するセンド、手動ディレイ、
+    /// 挿入を取り除き、ステージング中の構成は検証し直す（参照が切れたことを UI に示すため）。
     /// @param strip_id  削除したストリップ
     /// @param strip_ids 削除後に残っているチャンネルストリップの entity_id
     /// @return 適用中の構成が変わり、ミキサーへ適用し直す必要があれば true
@@ -62,13 +76,14 @@ public:
 
 private:
     control_protocol::RoutingInfo info_;
+    std::vector<PluginDescription> plugins_;
 };
 
-/// 構成から、チャンネルストリップを参照するセンドと手動ディレイを取り除く。
+/// 構成から、チャンネルストリップを参照するセンド、手動ディレイ、挿入を取り除く。
 /// ストリップの entity_id はセッションごとに振り直すので、保存して次の起動に持ち越せるのは
-/// Master、バス、追加の出力、遅延ノードの間の結線だけである。
+/// Master、バス、追加の出力、遅延ノードの間の結線と、Master とバスへの挿入だけである。
 /// @param config 適用中の構成
-/// @return バス、追加の出力、遅延ノードと、Master とそれらの間のセンドだけの構成
+/// @return バス、追加の出力、遅延ノードと、Master とそれらの間のセンドと挿入だけの構成
 [[nodiscard]] control_protocol::RoutingConfig without_strip_references(
     control_protocol::RoutingConfig config);
 

@@ -22,6 +22,7 @@
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_playout_control.h"
+#include "fakes/fake_plugin_rack.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
@@ -168,9 +169,10 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedFromBackup) {
     session::FakePlayoutControl playout;
     session::FakeExternalOutputControl external_output;
     session::FakeSecretStore secrets;
+    session::FakePluginRack plugins;
     session::HostSession host{{},
                               {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_,
-                               logger_, playout, external_output, secrets}};
+                               logger_, playout, external_output, secrets, plugins}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());
@@ -189,9 +191,10 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedAndDefaultsWhenNo
     session::FakePlayoutControl playout;
     session::FakeExternalOutputControl external_output;
     session::FakeSecretStore secrets;
+    session::FakePluginRack plugins;
     session::HostSession host{{},
                               {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_,
-                               logger_, playout, external_output, secrets}};
+                               logger_, playout, external_output, secrets, plugins}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());
