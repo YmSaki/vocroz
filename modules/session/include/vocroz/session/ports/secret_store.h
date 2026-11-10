@@ -20,6 +20,9 @@ enum class SecretSlot {
     kHostStaticKey,
     /// 子機の Noise の静的秘密鍵。
     kClientStaticKey,
+    /// SRTP 外部出力の鍵（SDES の inline: の形式の文字列）。受信機の鍵と同じ値を使い続けるため
+    /// 保存する（docs/adr/0040-srtp-external-output.md）。
+    kExternalOutputKey,
 };
 
 /// 秘密情報を読み書きできなかった理由。

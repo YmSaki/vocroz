@@ -97,4 +97,12 @@ NodeSpec NodeSpec::make_return_tap(NodeId id, std::shared_ptr<AudioSink> sink) {
     return spec;
 }
 
+NodeSpec NodeSpec::make_stream_tap(NodeId id, std::shared_ptr<AudioStreamSink> sink) {
+    NodeSpec spec;
+    spec.id = id;
+    spec.kind = NodeKind::kStreamTap;
+    spec.stream_sink = std::move(sink);
+    return spec;
+}
+
 }  // namespace vocroz::audio_core

@@ -14,6 +14,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 - 録音タップと再生ノード（Beta2、`docs/adr/0031-recording-and-playback-nodes.md`）: オーディオスレッドはロックフリーのリングバッファを読み書きするだけで、ファイルへの書き出しと先読みはディスク I/O スレッドが行う。書き込みが遅れたら欠落として数えて無音で埋め、ライブ音声を止めない。音声ファイルの書き出しと読み込みのポート（`AudioFileWriter`、`AudioFileReader`）
 - MIDI（Beta5、`docs/adr/0029-midi-and-vsti.md`）: PCM とは独立した MIDI の経路（MIDI ソース → プラグインノード）、タイムスタンプからブロック内のサンプルオフセットへの変換、届いた順の保証、経路ごとの発音中のノートの追跡と Panic（子機の切断、キューのあふれ、経路を外したグラフの差し替えで Note Off とサステインのオフを送る）
 - 子機への返送モニター（Minus-Me、Beta1、`docs/adr/0036-return-monitor.md`）: 子機ごとに、その子機自身の入力と、そこから結線をたどって届くノード（自分の声を含むバス）を除いたミックスを、安全リミッターを通して返送タップ（`AudioSink` ポート）へ渡す
+- SRTP 外部出力のストリームタップ（Beta2、`docs/adr/0040-srtp-external-output.md`）: 送り出すバスのポストフェーダーの音を、ステレオのまま `AudioStreamSink` ポートへ渡す。出力を持たないので、合奏の経路の音は変わらない
 - 5〜20ms のゲインランプ、安全リミッター、ピークと RMS のメーター算出
 - 初期ミュート（すべてのフェーダーはミュートで始まる）と、安全ミュート（SAFETY MUTE）の受け口
 - オーディオ入出力のポート（`AudioOutput`、`AudioInput`、デバイスの一覧の `AudioDeviceCatalog`）と、グラフのソースのポート（`AudioSource`）
@@ -52,6 +53,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/audio_device_info.h` | `AudioDeviceInfo`、`AudioDeviceDirection` | 対象外 |
 | `vocroz/audio_core/ports/audio_source.h` | `AudioSource`（`transport` のジッターバッファが実装。モノラルかステレオで、ストリップのチャンネル数はソースにそろえる。`docs/adr/0035-client-input-expansion.md`） | 呼び出し可能 |
 | `vocroz/audio_core/ports/audio_sink.h` | `AudioSink`（返送タップの渡し先。`transport` の `MediaStreamEncoder` が実装） | 呼び出し可能 |
+| `vocroz/audio_core/ports/audio_stream_sink.h` | `AudioStreamSink`（ストリームタップの渡し先。`transport` の `MediaStreamEncoder` が実装） | 呼び出し可能 |
 | `vocroz/audio_core/ports/midi_source.h` | `MidiSource`、`MidiBlockClock`、`MidiPullResult`（`MidiInputQueue` が実装） | `pull()` だけ呼び出し可能 |
 | `vocroz/audio_core/plugin_fault.h` | `PluginFault`（プラグインノードの失敗の印。`NodeSpec::make_plugin()` に渡す） | `raise()` と `raised()` は呼び出し可能 |
 | `vocroz/audio_core/ports/plugin_processor.h` | `PluginProcessor`、`PluginBusLayout`、`PluginProcessContext`（`plugin-host` が実装） | `process()` だけ呼び出し可能 |
@@ -215,6 +217,20 @@ if (auto added = add_minus_me_returns(graph, mix_inputs, returns); !added) { /* 
 ```
 
 返送はポストフェーダーで取るので、チャンネルミュートしたチャンネルは返送にも入りません。返送タップはステレオの入力を L と R の平均でモノラルにして、1 ブロックごとに `AudioSink::push()` を呼びます。
+
+### 使い方（SRTP 外部出力へのストリームタップ）
+
+```cpp
+using namespace vocroz::audio_core;
+
+// 送り出すバス（ここでは Master 20）のポストフェーダーから、ストリームタップ 30 へつなぐ。
+std::shared_ptr<AudioStreamSink> external = ...;  // transport の MediaStreamEncoder（ステレオ）
+graph.nodes.push_back(NodeSpec::make_stream_tap(NodeId{30}, external));
+graph.connections.emplace_back(NodeId{20}, NodeId{30});
+(void)mixer.apply_graph(graph);
+```
+
+ストリームタップは入力をステレオで受け、モノラルの経路は L と R に同じ音を入れます。1 ブロックごとに `AudioStreamSink::push_stereo()` を呼びます。出力を持たないので、ストリームタップから後段へはつなげません。
 
 ### グラフとフェーダーの関係
 

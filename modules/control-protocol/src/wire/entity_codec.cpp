@@ -4,6 +4,9 @@
 
 #include "wire/entity_codec.h"
 
+#include <cstdint>
+#include <limits>
+
 #include "vocroz/control_protocol/constants.h"
 
 #include "wire/field_rules.h"
@@ -386,11 +389,71 @@ common::Result<RoutingInfo, DecodeError> read_routing_info(const nlohmann::json&
     });
 }
 
+nlohmann::json write_json(const ExternalOutputConfig& config) {
+    return {
+        {"host", config.host},
+        {"port", config.port},
+        {"source_id", config.source_id},
+        {"profile", enum_json(config.profile)},
+        {"payload_type", config.payload_type},
+        {"crypto_suite", enum_json(config.crypto_suite)},
+    };
+}
+
+common::Result<ExternalOutputConfig, DecodeError> read_external_output_config(
+    const nlohmann::json& value) {
+    return read_object<ExternalOutputConfig>(value, [](ObjectReader& r) {
+        ExternalOutputConfig config;
+        config.host = r.text("host", kHostRule);
+        const std::uint64_t port = r.counter("port");
+        if (port < 1 || port > std::numeric_limits<std::uint16_t>::max()) {
+            r.fail(DecodeErrorCode::kOutOfRange, "port");
+        } else {
+            config.port = static_cast<std::uint16_t>(port);
+        }
+        config.source_id = r.text("source_id", kIdentifierRule);
+        config.profile = r.enumeration<ExternalOutputProfile>("profile");
+        const std::uint64_t payload_type = r.counter("payload_type");
+        if (payload_type < kMinExternalOutputPayloadType ||
+            payload_type > kMaxExternalOutputPayloadType) {
+            r.fail(DecodeErrorCode::kOutOfRange, "payload_type");
+        } else {
+            config.payload_type = static_cast<std::uint8_t>(payload_type);
+        }
+        config.crypto_suite = r.enumeration<SrtpSuite>("crypto_suite");
+        return config;
+    });
+}
+
+nlohmann::json write_json(const ExternalOutput& output) {
+    return {
+        {"entity_id", output.entity_id},       {"revision", output.revision},
+        {"config", write_json(output.config)}, {"key_configured", output.key_configured},
+        {"state", enum_json(output.state)},    {"last_result", enum_json(output.last_result)},
+    };
+}
+
+common::Result<ExternalOutput, DecodeError> read_external_output(const nlohmann::json& value) {
+    return read_object<ExternalOutput>(value, [](ObjectReader& r) {
+        ExternalOutput output;
+        output.entity_id = r.text("entity_id", kIdentifierRule);
+        output.revision = r.counter("revision");
+        output.config = r.nested<ExternalOutputConfig>("config", read_external_output_config);
+        output.key_configured = r.boolean("key_configured");
+        output.state = r.enumeration<ExternalOutputState>("state");
+        output.last_result = r.nullable_enumeration<ExternalOutputResult>("last_result");
+        return output;
+    });
+}
+
 nlohmann::json write_json(const MixerSnapshot& snapshot) {
     return {
-        {"session", write_json(snapshot.session)}, {"channels", write_array(snapshot.channels)},
-        {"master", write_json(snapshot.master)},   {"pending", write_array(snapshot.pending)},
+        {"session", write_json(snapshot.session)},
+        {"channels", write_array(snapshot.channels)},
+        {"master", write_json(snapshot.master)},
+        {"pending", write_array(snapshot.pending)},
         {"routing", write_json(snapshot.routing)},
+        {"external_output", write_json(snapshot.external_output)},
     };
 }
 
@@ -402,6 +465,8 @@ common::Result<MixerSnapshot, DecodeError> read_mixer_snapshot(const nlohmann::j
         snapshot.master = r.nested<MasterStrip>("master", read_master_strip);
         snapshot.pending = r.list<PendingParticipant>("pending", read_pending_participant);
         snapshot.routing = r.nested<RoutingInfo>("routing", read_routing_info);
+        snapshot.external_output =
+            r.nested<ExternalOutput>("external_output", read_external_output);
         return snapshot;
     });
 }

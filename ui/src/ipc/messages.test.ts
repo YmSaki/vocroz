@@ -18,6 +18,11 @@ import type {
   ConnectionState,
   EngineToUiMessage,
   ErrorCode,
+  ExternalOutput,
+  ExternalOutputConfig,
+  ExternalOutputProfile,
+  ExternalOutputResult,
+  ExternalOutputState,
   InputDelay,
   InputDevice,
   LinkStat,
@@ -43,6 +48,7 @@ import type {
   SessionInfo,
   SessionState,
   SignalState,
+  SrtpSuite,
   UiToEngineMessage,
 } from "./messages";
 
@@ -99,6 +105,19 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
     ...kDiscreteKeys,
     target_ms: true,
   }),
+  set_external_output_config: keysOf<UiMessageOf<"set_external_output_config">>({
+    ...kDiscreteKeys,
+    config: true,
+  }),
+  set_external_output_key: keysOf<UiMessageOf<"set_external_output_key">>({
+    ...kDiscreteKeys,
+    key: true,
+  }),
+  set_external_output_running: keysOf<UiMessageOf<"set_external_output_running">>({
+    ...kDiscreteKeys,
+    running: true,
+  }),
+  test_external_output: keysOf<UiMessageOf<"test_external_output">>(kDiscreteKeys),
 };
 
 /** エンジンから UI への種別ごとのフィールド。 */
@@ -113,6 +132,10 @@ const kEngineMessageKeys: { [K in EngineToUiMessage["type"]]: string[] } = {
   client_updated: keysOf<EngineMessageOf<"client_updated">>({ type: true, client: true }),
   routing_updated: keysOf<EngineMessageOf<"routing_updated">>({ type: true, routing: true }),
   route_level_updated: keysOf<EngineMessageOf<"route_level_updated">>({ type: true, level: true }),
+  external_output_updated: keysOf<EngineMessageOf<"external_output_updated">>({
+    type: true,
+    external_output: true,
+  }),
   ack: keysOf<EngineMessageOf<"ack">>({ type: true, request_id: true, applied_revision: true }),
   reject: keysOf<EngineMessageOf<"reject">>({ type: true, request_id: true, error_code: true }),
   gain_ack: keysOf<EngineMessageOf<"gain_ack">>({
@@ -181,6 +204,23 @@ const kMixerSnapshotKeys = keysOf<MixerSnapshot>({
   master: true,
   pending: true,
   routing: true,
+  external_output: true,
+});
+const kExternalOutputKeys = keysOf<ExternalOutput>({
+  entity_id: true,
+  revision: true,
+  config: true,
+  key_configured: true,
+  state: true,
+  last_result: true,
+});
+const kExternalOutputConfigKeys = keysOf<ExternalOutputConfig>({
+  host: true,
+  port: true,
+  source_id: true,
+  profile: true,
+  payload_type: true,
+  crypto_suite: true,
 });
 const kRoutingKeys = keysOf<RoutingInfo>({
   entity_id: true,
@@ -305,6 +345,24 @@ const kRoutingIssues: Record<RoutingIssue, true> = {
   OVERLAPPING_OUTPUTS: true,
   UNDELAYED_LOOP: true,
 };
+const kExternalOutputStates: Record<ExternalOutputState, true> = {
+  STOPPED: true,
+  RUNNING: true,
+  TESTING: true,
+};
+const kExternalOutputProfiles: Record<ExternalOutputProfile, true> = {
+  OPUS_STEREO: true,
+  OPUS_MONO: true,
+};
+const kSrtpSuites: Record<SrtpSuite, true> = {
+  AES_CM_128_HMAC_SHA1_80: true,
+  AES_CM_128_HMAC_SHA1_32: true,
+};
+const kExternalOutputResults: Record<ExternalOutputResult, true> = {
+  OK: true,
+  RESOLVE_FAILED: true,
+  SEND_FAILED: true,
+};
 
 /** JSON の例に現れた状態の値を集める。 */
 class Seen {
@@ -383,6 +441,19 @@ function checkRouting(routing: RoutingInfo, seen: Seen): void {
   for (const level of routing.levels) checkRouteLevel(level);
 }
 
+function checkExternalOutputConfig(config: ExternalOutputConfig, seen: Seen): void {
+  expectKeys(config, kExternalOutputConfigKeys);
+  seen.add(kExternalOutputProfiles, config.profile);
+  seen.add(kSrtpSuites, config.crypto_suite);
+}
+
+function checkExternalOutput(output: ExternalOutput, seen: Seen): void {
+  expectKeys(output, kExternalOutputKeys);
+  checkExternalOutputConfig(output.config, seen);
+  seen.add(kExternalOutputStates, output.state);
+  seen.add(kExternalOutputResults, output.last_result);
+}
+
 function checkClient(client: ClientSnapshot, seen: Seen): void {
   expectKeys(client, kClientKeys);
   for (const device of client.input_devices) expectKeys(device, kInputDeviceKeys);
@@ -401,6 +472,7 @@ function checkEngineMessage(message: EngineToUiMessage, seen: Seen): void {
       checkMaster(message.snapshot.master, seen);
       checkPending(message.snapshot.pending);
       checkRouting(message.snapshot.routing, seen);
+      checkExternalOutput(message.snapshot.external_output, seen);
       return;
     case "client_snapshot":
       checkClient(message.snapshot, seen);
@@ -425,6 +497,9 @@ function checkEngineMessage(message: EngineToUiMessage, seen: Seen): void {
       return;
     case "route_level_updated":
       checkRouteLevel(message.level);
+      return;
+    case "external_output_updated":
+      checkExternalOutput(message.external_output, seen);
       return;
     case "reject":
       seen.add(kErrorCodes, message.error_code);
@@ -477,6 +552,10 @@ describe("messages", () => {
       kSendTaps,
       kRoutingIssues,
       kInputSourceKinds,
+      kExternalOutputStates,
+      kExternalOutputProfiles,
+      kSrtpSuites,
+      kExternalOutputResults,
     ]) {
       expect(seen.coversAll(table)).toBe(true);
     }

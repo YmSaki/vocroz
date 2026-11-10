@@ -15,12 +15,14 @@
 #include <gtest/gtest.h>
 
 #include "fakes/fake_clock.h"
+#include "fakes/fake_external_output_control.h"
 #include "fakes/fake_logger.h"
 #include "fakes/fake_mixer_control.h"
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_playout_control.h"
 #include "fakes/fake_rendezvous_client.h"
+#include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
 #include "fakes/fake_settings_store.h"
 #include "fakes/fake_ui_event_sink.h"
@@ -45,9 +47,9 @@ protected:
 
     HostSession& session() {
         if (!session_) {
-            session_.emplace(
-                config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_,
-                                            random_, clock_, logger_, playout_});
+            session_.emplace(config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_,
+                                                         settings_, random_, clock_, logger_,
+                                                         playout_, external_output_, secrets_});
             session_->start();
         }
         return *session_;
@@ -190,6 +192,8 @@ protected:
     FakeRendezvousClient rendezvous_;
     FakeSettingsStore settings_;
     FakeSecureRandom random_;
+    FakeExternalOutputControl external_output_;
+    FakeSecretStore secrets_;
     common::FakeClock clock_;
     common::FakeLogger logger_;
     std::optional<HostSession> session_;

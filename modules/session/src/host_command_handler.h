@@ -50,6 +50,11 @@ private:
     CommandResult set_return_mute(const std::string& entity_id, bool muted);
     /// 全体の目標レイテンシーを変え、受信側へ反映して保存する。
     CommandResult set_latency_target(double target_ms);
+    // SRTP 外部出力（docs/adr/0040-srtp-external-output.md）。
+    CommandResult set_external_output_config(const control_protocol::ExternalOutputConfig& config);
+    CommandResult set_external_output_key(const std::string& text);
+    CommandResult set_external_output_running(bool running);
+    CommandResult test_external_output();
     void handle_gain(const control_protocol::SetGain& command);
     void handle_route_gain(control_protocol::RouteLevel& level,
                            const control_protocol::SetGain& command);

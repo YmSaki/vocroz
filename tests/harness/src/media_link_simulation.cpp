@@ -40,27 +40,39 @@ common::Result<std::unique_ptr<MediaLinkSimulation>, std::string> MediaLinkSimul
         return common::make_unexpected(std::string("handshake failed"));
     }
     auto simulation = std::make_unique<MediaLinkSimulation>(config, std::move(link).value());
-    auto sender = MediaSender::create(simulation->link_.client.sealer, simulation->client_socket_,
-                                      config.encoder, 0, kUnmutedEpoch);
-    if (!sender) {
-        return common::make_unexpected(std::string("failed to create the encoder"));
+    auto* const sim = simulation.get();
+    const bool uplink = config.direction == MediaDirection::kUplink;
+    if (uplink) {
+        auto sender = MediaSender::create(sim->link_.client.sealer, sim->client_socket_,
+                                          config.encoder, 0, kUnmutedEpoch);
+        if (!sender) {
+            return common::make_unexpected(std::string("failed to create the encoder"));
+        }
+        sim->sender_ = std::make_unique<MediaSender>(std::move(sender).value());
+    } else {
+        auto sender = ReturnSender::create(std::move(sim->link_.host.sealer), sim->host_socket_,
+                                           config.encoder, kUnmutedEpoch);
+        if (!sender) {
+            return common::make_unexpected(std::string("failed to create the encoder"));
+        }
+        sim->return_sender_ = std::move(sender).value();
     }
-    auto receiver = MediaReceiver::create(simulation->link_.host.opener, config.playout,
-                                          simulation->clock_.now());
+    auto receiver =
+        MediaReceiver::create(uplink ? sim->link_.host.opener : sim->link_.client.opener,
+                              config.playout, sim->clock_.now());
     if (!receiver) {
         return common::make_unexpected(std::string("invalid playout configuration"));
     }
-    simulation->sender_ = std::make_unique<MediaSender>(std::move(sender).value());
-    simulation->receiver_ = std::move(receiver).value();
-    simulation->receiver_->unmute(kUnmutedEpoch, simulation->clock_.now());
-    auto* const receiver_ptr = simulation->receiver_.get();
-    auto* const clock_ptr = &simulation->clock_;
-    simulation->network_.attach(kHostAddress,
-                                [receiver_ptr, clock_ptr](const netsim::NodeAddress&,
-                                                          std::span<const std::uint8_t> datagram) {
-                                    receiver_ptr->on_datagram(datagram, clock_ptr->now());
-                                });
-    simulation->network_.set_fault_profile(kClientAddress, kHostAddress, config.uplink);
+    sim->receiver_ = std::move(receiver).value();
+    sim->receiver_->unmute(kUnmutedEpoch, sim->clock_.now());
+    auto* const receiver_ptr = sim->receiver_.get();
+    auto* const clock_ptr = &sim->clock_;
+    sim->network_.attach(sim->receiver_address(),
+                         [receiver_ptr, clock_ptr](const netsim::NodeAddress&,
+                                                   std::span<const std::uint8_t> datagram) {
+                             receiver_ptr->on_datagram(datagram, clock_ptr->now());
+                         });
+    sim->network_.set_fault_profile(sim->sender_address(), sim->receiver_address(), config.faults);
     return simulation;
 }
 
@@ -81,7 +93,11 @@ void MediaLinkSimulation::run(std::uint64_t samples, const Source& source, const
         if (t % config_.capture_block == 0) {
             // キャプチャのコールバックは、ブロックを録り終えた時刻に呼ばれる。
             source(t - config_.capture_block, capture_buffer_);
-            sender_->capture(capture_buffer_);
+            if (sender_) {
+                sender_->capture(capture_buffer_);
+            } else {
+                return_sender_->push(capture_buffer_);
+            }
         }
         network_.deliver_due();
         receiver_->poll(clock_.now());
@@ -91,6 +107,18 @@ void MediaLinkSimulation::run(std::uint64_t samples, const Source& source, const
             sink(t, output_buffer_);
         }
     }
+}
+
+netsim::NodeAddress MediaLinkSimulation::sender_address() const noexcept {
+    return config_.direction == MediaDirection::kUplink ? kClientAddress : kHostAddress;
+}
+
+netsim::NodeAddress MediaLinkSimulation::receiver_address() const noexcept {
+    return config_.direction == MediaDirection::kUplink ? kHostAddress : kClientAddress;
+}
+
+std::size_t MediaLinkSimulation::codec_lookahead_samples() const noexcept {
+    return sender_ ? sender_->lookahead_samples() : return_sender_->lookahead_samples();
 }
 
 void MediaLinkSimulation::advance_clock_to(std::uint64_t samples) {

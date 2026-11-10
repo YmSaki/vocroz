@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 子機 1 台から親機への 1 ストリームを、仮想時刻の上で端から端まで動かす。
+// 子機 1 台と親機の間の 1 ストリーム（子機から親機への上りか、親機から子機への返送）を、
+// 仮想時刻の上で端から端まで動かす。
 // キャプチャのコールバック（送信側）、シミュレーションのネットワーク、オーディオ出力のコールバック
 // （受信側）を、サンプル単位の仮想時刻で順に進める。フェイクデバイスの代わりに、キャプチャの中身は
 // Source が作り、出力は Sink が受け取る。
@@ -19,6 +20,7 @@
 #include "vocroz/netsim/simulated_network.h"
 #include "vocroz/test_harness/media_receiver.h"
 #include "vocroz/test_harness/media_sender.h"
+#include "vocroz/test_harness/return_sender.h"
 #include "vocroz/test_harness/secure_link.h"
 #include "vocroz/test_harness/simulated_datagram_socket.h"
 #include "vocroz/transport/opus_frame_encoder.h"
@@ -28,17 +30,26 @@
 
 namespace vocroz::test_harness {
 
+/// ストリームの向き。
+enum class MediaDirection : std::uint8_t {
+    kUplink,  ///< 子機のキャプチャから親機の出力まで（子機の送信と親機の受信の部品）
+    kReturn,  ///< 親機のミックスから子機の出力まで（返送モニター。docs/adr/0036-return-monitor.md）
+};
+
 /// 1 ストリームの端から端までの構成。
 struct MediaLinkConfig {
-    /// 子機から親機への方向の障害。
-    netsim::FaultProfile uplink;
-    /// 子機のエンコーダーの設定。
+    /// ストリームの向き。
+    MediaDirection direction = MediaDirection::kUplink;
+    /// 送信側から受信側への方向の障害。
+    netsim::FaultProfile faults;
+    /// 送信側のエンコーダーの設定。
     transport::OpusEncoderConfig encoder;
-    /// 親機の再生の設定。
+    /// 受信側の再生の設定。
     transport::PlayoutConfig playout;
-    /// キャプチャのコールバックのブロック長（サンプル数）。
+    /// 送信側のオーディオコールバックのブロック長（サンプル数）。上りは子機のキャプチャ、
+    /// 返送は親機の出力（ミックスを作るコールバック）。
     std::size_t capture_block = 128;
-    /// 出力のコールバックのブロック長（サンプル数）。
+    /// 受信側の出力のコールバックのブロック長（サンプル数）。
     std::size_t output_block = 128;
 };
 
@@ -57,7 +68,8 @@ public:
     /// 親機のアドレス。
     static constexpr netsim::NodeAddress kHostAddress{.host = 1, .port = 40000};
 
-    /// 構成を検証し、接続を確立し、送信ミュートを解除した状態のシミュレーションを作る。
+    /// 構成を検証し、接続を確立し、送信ミュート（返送ならそのミュート）を解除した状態の
+    /// シミュレーションを作る。
     /// @param config 構成
     /// @return 作ったシミュレーション。失敗したら原因のメッセージ
     [[nodiscard]] static common::Result<std::unique_ptr<MediaLinkSimulation>, std::string> create(
@@ -82,12 +94,17 @@ public:
         return network_;
     }
 
-    /// 送信側。
-    [[nodiscard]] const MediaSender& sender() const noexcept {
-        return *sender_;
-    }
+    /// 送信側のアドレス。
+    [[nodiscard]] netsim::NodeAddress sender_address() const noexcept;
 
-    /// 受信側。
+    /// 受信側のアドレス。
+    [[nodiscard]] netsim::NodeAddress receiver_address() const noexcept;
+
+    /// 送信側のエンコーダーの先読みのサンプル数。遅延の見積もりに使う。
+    [[nodiscard]] std::size_t codec_lookahead_samples() const noexcept;
+
+    /// 受信側。返送では、子機の受信（HostReceivePath）と同じく、ミュートの世代番号で古いフレームを
+    /// 捨ててから PlayoutStream へ入れる部品として使う。
     [[nodiscard]] const MediaReceiver& receiver() const noexcept {
         return *receiver_;
     }
@@ -113,7 +130,10 @@ private:
     netsim::SimulatedNetwork network_{clock_};
     SecureLink link_;
     SimulatedDatagramSocket client_socket_{network_, kClientAddress, kHostAddress};
+    SimulatedDatagramSocket host_socket_{network_, kHostAddress, kClientAddress};
+    // 向きに応じて、どちらか一方だけを作る。
     std::unique_ptr<MediaSender> sender_;
+    std::unique_ptr<ReturnSender> return_sender_;
     std::unique_ptr<MediaReceiver> receiver_;
     std::uint64_t now_samples_ = 0;
     std::size_t step_samples_ = 1;

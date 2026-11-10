@@ -86,6 +86,7 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
         node.recording = spec.recording;
         node.playback = spec.playback;
         node.sink = spec.sink;
+        node.stream_sink = spec.stream_sink;
         assign_buffers(node.channels, node.buffer_channel_count, next_buffer);
         if (plan.has_pre_fader_send[spec_index]) {
             assign_buffers(node.pre_fader, node.channel_count, next_buffer);
@@ -264,6 +265,11 @@ void RenderGraph::process_node(std::size_t position, std::size_t frames, FaderBa
         case NodeKind::kReturnTap:
             mix_inputs(node, frames, faders);
             push_return(node, frames);
+            break;
+        case NodeKind::kStreamTap:
+            mix_inputs(node, frames, faders);
+            node.stream_sink->push_stereo(std::span<const float>(node.channels[0], frames),
+                                          std::span<const float>(node.channels[1], frames));
             break;
     }
 }

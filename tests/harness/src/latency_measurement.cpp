@@ -90,6 +90,16 @@ private:
 
 }  // namespace
 
+const char* direction_label(MediaDirection direction) noexcept {
+    switch (direction) {
+        case MediaDirection::kUplink:
+            return "uplink";
+        case MediaDirection::kReturn:
+            return "return";
+    }
+    return "uplink";
+}
+
 LatencyBudget compute_latency_budget(const LatencyScenario& scenario,
                                      std::size_t codec_lookahead_samples) {
     const auto& link = scenario.link;
@@ -99,8 +109,8 @@ LatencyBudget compute_latency_budget(const LatencyScenario& scenario,
     budget.frame_ms =
         samples_to_ms(static_cast<double>(transport::frame_samples(link.encoder.frame_duration)));
     budget.codec_lookahead_ms = samples_to_ms(static_cast<double>(codec_lookahead_samples));
-    budget.network_min_ms = to_ms(link.uplink.delay);
-    budget.network_max_ms = to_ms(link.uplink.delay + link.uplink.jitter);
+    budget.network_min_ms = to_ms(link.faults.delay);
+    budget.network_max_ms = to_ms(link.faults.delay + link.faults.jitter);
     budget.jitter_buffer_min_ms = to_ms(link.playout.min_delay);
     budget.jitter_buffer_max_ms = to_ms(link.playout.max_delay);
     budget.output_block_ms = samples_to_ms(static_cast<double>(link.output_block));
@@ -147,7 +157,7 @@ common::Result<LatencyReport, std::string> measure_latency(const LatencyScenario
     LatencyReport report;
     // 計測の終わりまでに出力へ届き得たバーストだけを数える。
     const double device_ms = to_ms(scenario.device_input_latency + scenario.device_output_latency);
-    report.budget = compute_latency_budget(scenario, simulation.sender().lookahead_samples());
+    report.budget = compute_latency_budget(scenario, simulation.codec_lookahead_samples());
     const auto max_latency_samples =
         static_cast<std::uint64_t>(report.budget.total_max_ms * transport::kSampleRate / 1'000.0);
     for (std::uint64_t burst = 0; burst_onset(burst) + max_latency_samples < total_samples;
@@ -178,8 +188,9 @@ common::Result<LatencyReport, std::string> measure_latency(const LatencyScenario
         report.p95_ms = percentile(sorted, 0.95);
     }
     report.playout = simulation.receiver().playout_stats();
-    report.uplink = simulation.network().stats(MediaLinkSimulation::kClientAddress,
-                                               MediaLinkSimulation::kHostAddress);
+    report.direction = scenario.link.direction;
+    report.path =
+        simulation.network().stats(simulation.sender_address(), simulation.receiver_address());
     return report;
 }
 
@@ -191,8 +202,8 @@ std::string format_latency_report(const LatencyReport& report) {
         std::snprintf(line, sizeof(line), "  %-28s %8.2f ms\n", label, value);
         out += line;
     };
-    std::snprintf(line, sizeof(line), "measured (%zu of %zu bursts)\n", report.bursts_detected,
-                  report.bursts_sent);
+    std::snprintf(line, sizeof(line), "measured %s (%zu of %zu bursts)\n",
+                  direction_label(report.direction), report.bursts_detected, report.bursts_sent);
     out += line;
     add("min", report.min_ms);
     add("median", report.median_ms);
@@ -222,12 +233,12 @@ std::string format_latency_report(const LatencyReport& report) {
                   static_cast<unsigned long long>(report.playout.underruns),
                   samples_to_ms(static_cast<double>(report.playout.target_delay_samples)));
     out += line;
-    std::snprintf(line, sizeof(line),
-                  "uplink\n  sent %llu, lost %llu, duplicated %llu, reordered %llu\n",
-                  static_cast<unsigned long long>(report.uplink.sent),
-                  static_cast<unsigned long long>(report.uplink.lost),
-                  static_cast<unsigned long long>(report.uplink.duplicated),
-                  static_cast<unsigned long long>(report.uplink.reordered));
+    std::snprintf(
+        line, sizeof(line), "%s\n  sent %llu, lost %llu, duplicated %llu, reordered %llu\n",
+        direction_label(report.direction), static_cast<unsigned long long>(report.path.sent),
+        static_cast<unsigned long long>(report.path.lost),
+        static_cast<unsigned long long>(report.path.duplicated),
+        static_cast<unsigned long long>(report.path.reordered));
     out += line;
     return out;
 }

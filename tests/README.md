@@ -29,7 +29,7 @@ ctest --test-dir build --output-on-failure -R 'Ensemble|MediaFaults|ControlFault
 | `MediaFaultsTest.DoesNotPlayStaleAudioReleasedAfterStall` | 経路が詰まってまとめて届いた古い音を、遅れて鳴らし続けない | AT-A06 |
 | `MediaFaultsTest.DropsTamperedPacketsAtDecryption` | 改ざんしたパケットをすべて復号の段階で捨て、音に影響しない | AT-A17 |
 | `ControlFaultsTest.DeliversEveryMessageOnceInOrderOverLossyLink` | 欠損 20% の回線でも、制御メッセージがすべて 1 回ずつ送った順に届く | AT-A02、A05 の前提 |
-| `LatencyTest.*` | 端から端までの遅延が、構成から計算した内訳の範囲に収まる | 合奏の低遅延 |
+| `LatencyTest.*` | 端から端までの片道の遅延が、上りと返送モニターの両方で、構成から計算した内訳の範囲に収まる | 合奏の低遅延 |
 | `EnsembleTest.BlocksAudioUntilApproved` | 承認前の子機の音は、子機が送信ミュートを無視して送ってきても出力に出ない。承認した子機の音だけがミックスに入る | AT-A02 |
 | `EnsembleTest.MixesThreeClientsAndAppliesChannelAndMasterMute` | 3 台の音（440、660、880Hz）がそれぞれのストリップを通って独立にミックスされ、チャンネルのミュートはその 1 台だけを、Master のミュートは全体を無音にする | AT-A03 |
 | `EnsembleTest.KeepsOthersPlayingThroughDisconnectAndRejoinsSameStrip` | 1 台の回線が 7 秒途絶えても残りの 2 台の音は途切れず、戻った子機は承認なしで同じストリップに戻る | AT-A05 |
@@ -57,7 +57,8 @@ ctest --test-dir build --output-on-failure -R 'Ensemble|MediaFaults|ControlFault
 
 ## 遅延の見積もり（vocroz-latency）
 
-実際の伝送の部品（Opus、暗号化、ジッターバッファ、ドリフト補正）を通した遅延を、指定した回線の条件で計り、構成から計算した内訳と並べて表示します。
+実際の伝送の部品（Opus、暗号化、ジッターバッファ、ドリフト補正）を通した片道の遅延を、指定した回線の条件で計り、構成から計算した内訳と並べて表示します。
+子機から親機への上り（既定）と、親機から子機への返送モニター（`--path return`）を計れます。返送は親機の返送の送信（`MediaStreamEncoder` と接続ごとの `PeerPacketSender`）を製品と同じ部品で通します。
 
 ```sh
 build/tests/tools/vocroz-latency --net delay=15ms,jitter=4ms,loss=0.01 \
@@ -67,11 +68,12 @@ build/tests/tools/vocroz-latency --net delay=15ms,jitter=4ms,loss=0.01 \
 
 | 引数 | 意味（既定値） |
 | --- | --- |
-| `--net` | 子機から親機への回線の障害（障害なし） |
+| `--path` | 計る向き。`uplink`（子機のキャプチャから親機の出力まで）か `return`（親機のミックスから子機のモニターの出力まで）（`uplink`） |
+| `--net` | 計る向きの回線の障害（障害なし） |
 | `--frame` | フレーム長 ms、`2.5` か `5`（5） |
 | `--min-delay`、`--max-delay` | ジッターバッファの目標の下限と上限 ms（10、20） |
-| `--capture-block`、`--output-block` | デバイスのコールバックのブロック長（サンプル数、128） |
-| `--device-in`、`--device-out` | デバイスの入出力の遅延 ms。シミュレーションの外なので足すだけ（0） |
+| `--capture-block`、`--output-block` | 送信側と受信側のデバイスのコールバックのブロック長（サンプル数、128）。返送では送信側が親機の出力のコールバック、受信側が子機のモニターの出力 |
+| `--device-in`、`--device-out` | 送信側の入力と受信側の出力のデバイスの遅延 ms。シミュレーションの外なので足すだけ（0）。返送はミックスから計るので `--device-in` は 0 のままにする |
 | `--seconds` | 計測の長さ（10） |
 
 無音の間に 1kHz のバーストを約 400ms ごとに送り、出力での立ち上がりと入力での立ち上がりの差を遅延とします。

@@ -10,6 +10,7 @@
 // - コマンドの適用（revision の競合の拒否、重複した request_id の無視）と認可
 // - 初期ミュートと、出力デバイスの抜去時の Master の SAFETY ミュート
 // - 出力デバイスの選択（保存したデバイスだけを開き、ほかのデバイスへフォールバックしない）
+// - SRTP 外部出力の設定と鍵の保存、送信の開始と停止、接続テスト（起動時は必ず止めて始める）
 // 副作用（ミキサー、接続、ランデブーサーバー、設定、UI への通知）はすべてポート経由で行う。
 #pragma once
 
@@ -25,11 +26,13 @@
 #include "vocroz/control_protocol/entities.h"
 #include "vocroz/control_protocol/states.h"
 #include "vocroz/session/identifiers.h"
+#include "vocroz/session/ports/external_output_control.h"
 #include "vocroz/session/ports/mixer_control.h"
 #include "vocroz/session/ports/output_device_control.h"
 #include "vocroz/session/ports/peer_link.h"
 #include "vocroz/session/ports/playout_control.h"
 #include "vocroz/session/ports/rendezvous_client.h"
+#include "vocroz/session/ports/secret_store.h"
 #include "vocroz/session/ports/secure_random.h"
 #include "vocroz/session/ports/settings_store.h"
 #include "vocroz/session/ports/ui_event_sink.h"
@@ -62,6 +65,10 @@ public:
         const common::Clock& clock;
         common::Logger& logger;
         PlayoutControl& playout;
+        /// SRTP 外部出力の送信（docs/adr/0040-srtp-external-output.md）。
+        ExternalOutputControl& external_output;
+        /// SRTP 外部出力の鍵の保存先。
+        SecretStore& secrets;
     };
 
     /// @param config 固定の設定
@@ -130,6 +137,11 @@ public:
     /// エンジンの致命的な異常を知らせる。セッションを ERROR にし、Master を SAFETY でミュートする。
     /// @param code 原因
     void on_engine_fault(control_protocol::ErrorCode code);
+
+    /// SRTP 外部出力の接続テストが終わった。接続テスト中でなければ（止めた後に届いた古い結果）
+    /// 無視する。
+    /// @param result 結果
+    void on_external_output_test_finished(control_protocol::ExternalOutputResult result);
 
     /// 現在の招待を失効させ、新しい招待を発行する（招待の手動の失効）。
     /// READY と ACTIVE のときだけ効く。

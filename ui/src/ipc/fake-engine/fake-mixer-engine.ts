@@ -18,6 +18,7 @@ import type {
   UiToEngineMessage,
 } from "../messages";
 import { FakeEngineBase, type FakeEngineOptions } from "./fake-engine-base";
+import { FakeExternalOutput, kFakeExternalOutputTestMs } from "./fake-external-output";
 import { FakeRouting } from "./fake-routing";
 
 /** フェイクエンジンの初期状態の種類。demo は画面を一通り確かめられる参加者をあらかじめ置く。 */
@@ -31,6 +32,7 @@ export interface FakeMixerEngineOptions extends FakeEngineOptions {
 const kSessionId = "session";
 const kMasterId = "master";
 const kRoutingId = "routing";
+const kExternalOutputId = "external_output";
 /** 招待 URL の例。HTTPS の /join#<コード> の形（docs/adr/0006-invite-url-scheme.md）。 */
 const kInviteUrl = "https://vocroz.example/join#7KQ2-M9XD";
 
@@ -83,7 +85,10 @@ const kOutputDevices: OutputDevice[] = [
   { id: "broken", name: "HDMI (開けないデバイス)" },
 ];
 
-function initialSnapshot(scenario: MixerScenario): Omit<MixerSnapshot, "routing"> {
+/** フェイクエンジンが自分で持つ部分。ルーティングと外部出力は別のクラスが持つ。 */
+type OwnState = Omit<MixerSnapshot, "routing" | "external_output">;
+
+function initialSnapshot(scenario: MixerScenario): OwnState {
   const master: MasterStrip = {
     entity_id: kMasterId,
     revision: 1,
@@ -139,9 +144,11 @@ function initialSnapshot(scenario: MixerScenario): Omit<MixerSnapshot, "routing"
 
 /** 親機モードのフェイクエンジン。 */
 export class FakeMixerEngine extends FakeEngineBase {
-  private state: Omit<MixerSnapshot, "routing">;
+  private state: OwnState;
   /** ルーティングは空（バスも追加の出力もない）から始める。 */
   private readonly routing = new FakeRouting(kRoutingId);
+  /** 外部出力は停止から始める。 */
+  private readonly externalOutput = new FakeExternalOutput(kExternalOutputId);
   private nextIndex: number;
   private sinceLinkStatsMs = 0;
 
@@ -153,7 +160,11 @@ export class FakeMixerEngine extends FakeEngineBase {
 
   /** 現在の状態（テストでの確認用）。 */
   snapshot(): MixerSnapshot {
-    return { ...this.state, routing: this.routing.info() };
+    return {
+      ...this.state,
+      routing: this.routing.info(),
+      external_output: this.externalOutput.info(),
+    };
   }
 
   /** 出力デバイスの抜去を再現する。エンジンは別のデバイスに切り替えず、Master を安全ミュートにする。 */
@@ -249,6 +260,10 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "set_route_mute":
       case "set_latency_target":
       case "set_return_mute":
+      case "set_external_output_config":
+      case "set_external_output_key":
+      case "set_external_output_running":
+      case "test_external_output":
         this.applyCommand(message);
         return;
       case "join":
@@ -419,6 +434,7 @@ export class FakeMixerEngine extends FakeEngineBase {
         }
         this.ack(command, result.revision);
         this.emitRouting();
+        this.stopExternalOutputWithoutSource();
         return;
       }
       case "set_route_mute": {
@@ -434,6 +450,12 @@ export class FakeMixerEngine extends FakeEngineBase {
           return this.reject(command, "INVALID_STATE");
         }
         this.ack(command, this.updateSession({ latency_target_ms: command.target_ms }));
+        return;
+      case "set_external_output_config":
+      case "set_external_output_key":
+      case "set_external_output_running":
+      case "test_external_output":
+        this.applyExternalOutput(command);
         return;
       case "join":
       case "leave":
@@ -495,11 +517,92 @@ export class FakeMixerEngine extends FakeEngineBase {
     if (entityId === kSessionId) return this.state.session.revision;
     if (entityId === kMasterId) return this.state.master.revision;
     if (entityId === kRoutingId) return this.routing.info().revision;
+    if (entityId === kExternalOutputId) return this.externalOutput.info().revision;
     return (
       this.state.channels.find((c) => c.entity_id === entityId)?.revision ??
       this.state.pending.find((p) => p.entity_id === entityId)?.revision ??
       this.routing.level(entityId)?.revision
     );
+  }
+
+  private applyExternalOutput(
+    command: Extract<
+      DiscreteCommand,
+      {
+        type:
+          | "set_external_output_config"
+          | "set_external_output_key"
+          | "set_external_output_running"
+          | "test_external_output";
+      }
+    >,
+  ): void {
+    if (command.entity_id !== kExternalOutputId) return this.reject(command, "INVALID_STATE");
+    const output = this.externalOutput;
+    const before = output.info();
+    const change = (() => {
+      switch (command.type) {
+        case "set_external_output_config":
+          return output.setConfig(
+            command.config,
+            this.isExternalOutputSource(command.config.source_id),
+          );
+        case "set_external_output_key":
+          return output.setKey(command.key);
+        case "set_external_output_running":
+          return output.setRunning(
+            command.running,
+            this.isExternalOutputSource(before.config.source_id),
+          );
+        case "test_external_output":
+          return output.startTest();
+      }
+    })();
+    if (!change.ok) return this.reject(command, change.error);
+    this.ack(command, change.revision);
+    const after = output.info();
+    if (after === before) return;
+    this.emitExternalOutput();
+    if (
+      command.type === "set_external_output_running" &&
+      after.state === "STOPPED" &&
+      command.running
+    ) {
+      this.emit({
+        type: "notice",
+        severity: "warning",
+        code: "external_output_failed",
+        params: {},
+      });
+    }
+    if (after.state === "TESTING") {
+      this.later(() => {
+        if (output.finishTest()) this.emitExternalOutput();
+      }, kFakeExternalOutputTestMs);
+    }
+  }
+
+  /** 外部出力で送り出せるか。Master か、適用中のルーティングのバス。 */
+  private isExternalOutputSource(sourceId: string): boolean {
+    if (sourceId === kMasterId) return true;
+    return this.routing.info().applied.buses.some((b) => b.entity_id === sourceId);
+  }
+
+  /** 送り出していたバスがルーティングの適用でなくなったら、外部出力を止めて知らせる。 */
+  private stopExternalOutputWithoutSource(): void {
+    if (this.isExternalOutputSource(this.externalOutput.info().config.source_id)) return;
+    if (!this.externalOutput.stopWithoutSource()) return;
+    this.emitExternalOutput();
+    this.emit({
+      type: "notice",
+      severity: "warning",
+      code: "external_output_source_removed",
+      params: {},
+    });
+  }
+
+  private emitExternalOutput(): void {
+    this.emit({ type: "external_output_updated", external_output: this.externalOutput.info() });
   }
 
   private stripIds(): string[] {

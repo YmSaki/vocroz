@@ -18,6 +18,7 @@
 #include "vocroz/audio_core/plugin_fault.h"
 #include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
+#include "vocroz/audio_core/ports/audio_stream_sink.h"
 #include "vocroz/audio_core/ports/midi_source.h"
 #include "vocroz/audio_core/ports/plugin_processor.h"
 #include "vocroz/audio_core/recording_track.h"
@@ -69,6 +70,9 @@ enum class NodeKind {
     /// AudioSink に渡す。出力を持たない（後段へつながない）。子機への返送（Minus-Me）に使う
     /// （minus_me.h、docs/adr/0036-return-monitor.md）
     kReturnTap,
+    /// ストリームタップ。ステレオの入力を加算して AudioStreamSink に渡す。出力を持たない
+    /// （後段へつながない）。SRTP 外部出力に使う（docs/adr/0040-srtp-external-output.md）
+    kStreamTap,
 };
 
 /// ノードの記述。各種類のファクトリー関数で作る。
@@ -103,6 +107,8 @@ struct NodeSpec {
     std::shared_ptr<PlaybackTrack> playback;
     /// kReturnTap のときのサンプルの渡し先。
     std::shared_ptr<AudioSink> sink;
+    /// kStreamTap のときのサンプルの渡し先。
+    std::shared_ptr<AudioStreamSink> stream_sink;
 
     /// ソースノードを作る。
     /// @param id ノードの識別子
@@ -171,6 +177,11 @@ struct NodeSpec {
     /// @param id ノードの識別子
     /// @param sink サンプルの渡し先（null にしない）
     [[nodiscard]] static NodeSpec make_return_tap(NodeId id, std::shared_ptr<AudioSink> sink);
+
+    /// ストリームタップを作る。送り出すバスのポストフェーダーの出力をつなぐ。
+    /// @param id ノードの識別子
+    /// @param sink サンプルの渡し先（null にしない）
+    [[nodiscard]] static NodeSpec make_stream_tap(NodeId id, std::shared_ptr<AudioStreamSink> sink);
 };
 
 /// 結線が送り元のどの位置から信号を取り出すか。
@@ -264,7 +275,7 @@ enum class GraphError {
     /// MIDI の経路が、存在しない MIDI
     /// ソースかノードを指しているか、送り先がプラグインノードでないか、 同じ経路が重複している
     kInvalidMidiConnection,
-    kMissingSink,  ///< 返送タップに AudioSink がない
+    kMissingSink,  ///< 返送タップに AudioSink が、ストリームタップに AudioStreamSink がない
 };
 
 }  // namespace vocroz::audio_core
