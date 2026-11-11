@@ -41,5 +41,6 @@
 | [0039](0039-pa-engine-juce-message-thread.md) | pa-engine に JUCE のメッセージスレッドを置く | 採用 |
 | [0040](0040-srtp-external-output.md) | SRTP 外部出力（libsrtp の採用、鍵、RTP の形式、平文の禁止） | 採用 |
 | [0041](0041-plugin-editor-and-failure-notice.md) | プラグインのエディターのウィンドウと、プラグインの失敗の知らせ方 | 採用 |
+| [0042](0042-plugin-insert.md) | プラグインの挿入 | 採用 |
 
 仕様書は RPC-SPEC-001（1.2-draft）。2026-11-07 にプロダクトオーナーが「UX を損なわない範囲で実装しやすい方法」を方針として承認した。
