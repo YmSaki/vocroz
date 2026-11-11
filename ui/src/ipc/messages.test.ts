@@ -29,6 +29,13 @@ import type {
   MasterMuteReason,
   MasterStrip,
   BusKind,
+  BlockedPluginFile,
+  BlockedPluginReason,
+  PluginEntry,
+  PluginInsertFailure,
+  PluginInsertState,
+  PluginInsertStatus,
+  PluginsInfo,
   InputSourceKind,
   MixerSnapshot,
   OutputDevice,
@@ -118,6 +125,11 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
     running: true,
   }),
   test_external_output: keysOf<UiMessageOf<"test_external_output">>(kDiscreteKeys),
+  rescan_plugins: keysOf<UiMessageOf<"rescan_plugins">>(kDiscreteKeys),
+  open_plugin_editor: keysOf<UiMessageOf<"open_plugin_editor">>({
+    ...kDiscreteKeys,
+    insert_id: true,
+  }),
 };
 
 /** エンジンから UI への種別ごとのフィールド。 */
@@ -135,6 +147,13 @@ const kEngineMessageKeys: { [K in EngineToUiMessage["type"]]: string[] } = {
   external_output_updated: keysOf<EngineMessageOf<"external_output_updated">>({
     type: true,
     external_output: true,
+  }),
+  plugins_updated: keysOf<EngineMessageOf<"plugins_updated">>({ type: true, plugins: true }),
+  plugin_catalog_page: keysOf<EngineMessageOf<"plugin_catalog_page">>({
+    type: true,
+    generation: true,
+    offset: true,
+    plugins: true,
   }),
   ack: keysOf<EngineMessageOf<"ack">>({ type: true, request_id: true, applied_revision: true }),
   reject: keysOf<EngineMessageOf<"reject">>({ type: true, request_id: true, error_code: true }),
@@ -221,6 +240,28 @@ const kExternalOutputConfigKeys = keysOf<ExternalOutputConfig>({
   profile: true,
   payload_type: true,
   crypto_suite: true,
+});
+const kPluginsKeys = keysOf<PluginsInfo>({
+  entity_id: true,
+  revision: true,
+  scanning: true,
+  catalog_generation: true,
+  catalog_size: true,
+  blocked: true,
+  inserts: true,
+});
+const kBlockedPluginFileKeys = keysOf<BlockedPluginFile>({ path: true, reason: true });
+const kPluginInsertStatusKeys = keysOf<PluginInsertStatus>({
+  entity_id: true,
+  state: true,
+  failure: true,
+});
+const kPluginEntryKeys = keysOf<PluginEntry>({
+  plugin_id: true,
+  name: true,
+  vendor: true,
+  version: true,
+  is_instrument: true,
 });
 const kRoutingKeys = keysOf<RoutingInfo>({
   entity_id: true,
@@ -366,6 +407,22 @@ const kExternalOutputResults: Record<ExternalOutputResult, true> = {
   RESOLVE_FAILED: true,
   SEND_FAILED: true,
 };
+const kBlockedPluginReasons: Record<BlockedPluginReason, true> = {
+  CRASHED: true,
+  TIMED_OUT: true,
+  INVALID_OUTPUT: true,
+};
+const kPluginInsertStates: Record<PluginInsertState, true> = {
+  LOADING: true,
+  READY: true,
+  FAILED: true,
+};
+const kPluginInsertFailures: Record<PluginInsertFailure, true> = {
+  NOT_FOUND: true,
+  INSTANTIATE_FAILED: true,
+  UNSUPPORTED_LAYOUT: true,
+  PROCESSING_FAILED: true,
+};
 
 /** JSON の例に現れた状態の値を集める。 */
 class Seen {
@@ -457,6 +514,19 @@ function checkExternalOutput(output: ExternalOutput, seen: Seen): void {
   seen.add(kExternalOutputResults, output.last_result);
 }
 
+function checkPlugins(plugins: PluginsInfo, seen: Seen): void {
+  expectKeys(plugins, kPluginsKeys);
+  for (const file of plugins.blocked) {
+    expectKeys(file, kBlockedPluginFileKeys);
+    seen.add(kBlockedPluginReasons, file.reason);
+  }
+  for (const insert of plugins.inserts) {
+    expectKeys(insert, kPluginInsertStatusKeys);
+    seen.add(kPluginInsertStates, insert.state);
+    seen.add(kPluginInsertFailures, insert.failure);
+  }
+}
+
 function checkClient(client: ClientSnapshot, seen: Seen): void {
   expectKeys(client, kClientKeys);
   for (const device of client.input_devices) expectKeys(device, kInputDeviceKeys);
@@ -503,6 +573,12 @@ function checkEngineMessage(message: EngineToUiMessage, seen: Seen): void {
       return;
     case "external_output_updated":
       checkExternalOutput(message.external_output, seen);
+      return;
+    case "plugins_updated":
+      checkPlugins(message.plugins, seen);
+      return;
+    case "plugin_catalog_page":
+      for (const entry of message.plugins) expectKeys(entry, kPluginEntryKeys);
       return;
     case "reject":
       seen.add(kErrorCodes, message.error_code);
@@ -559,6 +635,9 @@ describe("messages", () => {
       kExternalOutputProfiles,
       kSrtpSuites,
       kExternalOutputResults,
+      kBlockedPluginReasons,
+      kPluginInsertStates,
+      kPluginInsertFailures,
     ]) {
       expect(seen.coversAll(table)).toBe(true);
     }

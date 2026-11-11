@@ -55,6 +55,9 @@ private:
     CommandResult set_external_output_key(const std::string& text);
     CommandResult set_external_output_running(bool running);
     CommandResult test_external_output();
+    // プラグイン（docs/adr/0042-plugin-insert.md）。
+    CommandResult rescan_plugins();
+    CommandResult open_plugin_editor(const std::string& insert_id);
     void handle_gain(const control_protocol::SetGain& command);
     void handle_route_gain(control_protocol::RouteLevel& level,
                            const control_protocol::SetGain& command);

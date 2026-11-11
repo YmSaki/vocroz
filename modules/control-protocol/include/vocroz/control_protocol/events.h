@@ -6,6 +6,7 @@
 // コマンドへの応答（Ack、Reject、GainAck）、メーターの統計値、通知もここに含める。
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <string>
@@ -83,6 +84,24 @@ struct ExternalOutputUpdated {
     friend bool operator==(const ExternalOutputUpdated&, const ExternalOutputUpdated&) = default;
 };
 
+/// プラグインのスキャンか挿入の状態が変わった（plugins_updated）。スナップショットの直後にも送る。
+struct PluginsUpdated {
+    PluginsInfo plugins;
+    friend bool operator==(const PluginsUpdated&, const PluginsUpdated&) = default;
+};
+
+/// プラグインの一覧の 1 ページ（plugin_catalog_page）。一覧が変わったときと、スナップショットの
+/// 後に、PluginsUpdated に続けて先頭から順に送る。
+struct PluginCatalogPage {
+    /// 一覧の世代（PluginsInfo::catalog_generation）。
+    std::uint64_t generation = 0;
+    /// このページの先頭の項目の、一覧の中の位置（0 から）。
+    std::uint64_t offset = 0;
+    /// kMaxPluginCatalogPageEntries 件まで。
+    std::vector<PluginEntry> plugins;
+    friend bool operator==(const PluginCatalogPage&, const PluginCatalogPage&) = default;
+};
+
 /// 離散コマンドを適用した（ack）。
 struct Ack {
     std::string request_id;
@@ -154,7 +173,7 @@ struct Notice {
 using EngineToUiMessage =
     std::variant<MixerSnapshotEvent, ClientSnapshotEvent, SessionUpdated, ChannelUpdated,
                  ChannelRemoved, MasterUpdated, PendingUpdated, ClientUpdated, RoutingUpdated,
-                 RouteLevelUpdated, ExternalOutputUpdated, Ack, Reject, GainAck, Meters, LinkStats,
-                 Notice>;
+                 RouteLevelUpdated, ExternalOutputUpdated, PluginsUpdated, PluginCatalogPage, Ack,
+                 Reject, GainAck, Meters, LinkStats, Notice>;
 
 }  // namespace vocroz::control_protocol

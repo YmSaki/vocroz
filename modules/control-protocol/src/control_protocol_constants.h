@@ -21,13 +21,8 @@ inline constexpr std::size_t kMaxUrlBytes = kMaxInviteBytes;
 /// 入力デバイスの永続 ID の最大バイト数。WASAPI のエンドポイント ID は 60 字前後で、余裕を見る。
 inline constexpr std::size_t kMaxDeviceIdBytes = 512;
 
-/// プラグインの識別子の上限（バイト）。JUCE の識別子は「形式-名前-ファイルのハッシュ-ID」で、
-/// 名前の長さで変わる（多くは 60 バイト前後）。長い製品名でも収まり、挿入の上限（32）まで並べても
-/// スナップショットが kMaxMessageBytes に収まる値にする。
-inline constexpr std::size_t kMaxPluginIdBytes = 256;
-
-/// 参加者名、セッション名、デバイス名、短い識別 ID、バージョンなどの表示用の文字列の最大バイト数。
-inline constexpr std::size_t kMaxTextBytes = 512;
+// プラグインの識別子と表示用の文字列の上限（kMaxPluginIdBytes、kMaxTextBytes）は、session が
+// プラグインの一覧を送る前に確かめるので、公開ヘッダー（constants.h）に置いている。
 
 /// 通知の種別（notice の code）と、埋め込む値の名前の最大バイト数。
 inline constexpr std::size_t kMaxNoticeKeyBytes = 64;

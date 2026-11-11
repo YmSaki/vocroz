@@ -29,6 +29,7 @@
 #include "vocroz/control_protocol/states.h"
 #include "vocroz/session/identifiers.h"
 #include "vocroz/session/plugin_description.h"
+#include "vocroz/session/plugin_scan_record.h"
 #include "vocroz/session/ports/external_output_control.h"
 #include "vocroz/session/ports/mixer_control.h"
 #include "vocroz/session/ports/output_device_control.h"
@@ -36,6 +37,7 @@
 #include "vocroz/session/ports/playout_control.h"
 #include "vocroz/session/ports/plugin_loader.h"
 #include "vocroz/session/ports/plugin_rack.h"
+#include "vocroz/session/ports/plugin_scan_control.h"
 #include "vocroz/session/ports/rendezvous_client.h"
 #include "vocroz/session/ports/secret_store.h"
 #include "vocroz/session/ports/secure_random.h"
@@ -76,6 +78,8 @@ public:
         SecretStore& secrets;
         /// 挿入のプラグインの読み込みと破棄（docs/adr/0042-plugin-insert.md）。
         PluginRack& plugins;
+        /// プラグインのスキャンし直しの依頼（docs/adr/0042-plugin-insert.md）。
+        PluginScanControl& plugin_scan;
     };
 
     /// @param config 固定の設定
@@ -150,10 +154,23 @@ public:
     /// @param result 結果
     void on_external_output_test_finished(control_protocol::ExternalOutputResult result);
 
-    /// 挿入に使えるプラグインの一覧を置き換える。ステージング中の構成は検証し直す。
+    /// 挿入に使えるプラグインの一覧と、読み込み不可のファイルを置き換える。ステージング中の構成は
+    /// 検証し直す。一覧の世代を進め、UI へプラグインの状態と一覧のページを送る。
     /// 保存した挿入を戻すため、start() の前にも呼ぶ（保存したスキャンの記録から作った一覧で）。
+    /// 識別子か表示用の文字列が control-protocol の上限を超えるプラグインは、一覧に載せない。
     /// @param plugins 読み込めるプラグイン（PluginCatalog::available_plugins()）
-    void set_available_plugins(std::vector<PluginDescription> plugins);
+    /// @param blocked 読み込み不可のファイルの記録（status が kScanned でないもの）
+    void set_available_plugins(std::vector<PluginDescription> plugins,
+                               std::span<const PluginScanRecord> blocked = {});
+
+    /// プラグインのスキャン中かどうかを受け取り、変わったら UI に知らせる。
+    /// @param scanning スキャン中なら true
+    void set_plugin_scanning(bool scanning);
+
+    /// 挿入のプラグインのエディターを開けなかった。UI に通知（plugin_editor_failed）を送る。
+    /// PluginRack::open_editor() の結果。
+    /// @param insert_id 挿入の entity_id。もう外した挿入なら何もしない
+    void on_plugin_editor_failed(const std::string& insert_id);
 
     /// 挿入のプラグインの読み込みが済んだ。PluginRack::load() の結果。
     /// 成功したら、その挿入を通る経路をつないだグラフに差し替える。失敗したら経路を無音のままにする。

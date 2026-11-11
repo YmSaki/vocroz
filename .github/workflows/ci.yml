@@ -15,10 +15,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# 各ジョブの timeout-minutes: apt やパッケージの取得先が応答しないと、ジョブは既定の上限の
+# 6 時間まで待ち続ける。ふだんの所要時間（Windows は約 25 分、ほかは 10 分以内）に余裕を見た時間で打ち切る。
 jobs:
   windows:
     name: Windows (MSVC)
     runs-on: windows-2022
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       # remote-pa は画面（ui/dist）を実行ファイルに埋め込むので、configure の前に UI をビルドする
@@ -64,6 +67,7 @@ jobs:
     # audio-core / transport / common が OS に依存していないことの確認を兼ねる。
     name: Linux (Clang)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       # JUCE は GUI のライブラリ（GTK、WebKitGTK）を要求するので、Linux では外す。
@@ -83,6 +87,7 @@ jobs:
     # RealtimeSanitizer は Clang 20 以降にしかないので、LLVM の apt リポジトリから入れる。
     name: Linux (RealtimeSanitizer)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Install Clang 20
@@ -107,6 +112,7 @@ jobs:
   rendezvous:
     name: Rendezvous server (Go)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: infra/rendezvous
@@ -124,6 +130,7 @@ jobs:
     # 名前空間と iptables に root 権限が要るので、ほかのジョブと分けて sudo で動かす。
     name: NAT simulation (Linux)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -136,6 +143,7 @@ jobs:
   release-tools:
     name: Release tools (Go)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: tools/release
@@ -151,6 +159,7 @@ jobs:
     # 親機と子機の画面。jsdom とフェイクエンジンでテストするので、Windows も WebView2 も要らない。
     name: UI (TypeScript)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: ui

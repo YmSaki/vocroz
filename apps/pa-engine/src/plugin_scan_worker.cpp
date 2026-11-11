@@ -9,17 +9,28 @@
 namespace vocroz::engine {
 
 PluginScanWorker::PluginScanWorker(session::PluginScanner& scanner,
-                                   session::PluginCatalogStore& store, Publish publish,
+                                   session::PluginCatalogStore& store, Listener listener,
                                    common::Logger& logger)
-    : catalog_(scanner, store), publish_(std::move(publish)), logger_(logger) {}
+    : catalog_(scanner, store), listener_(std::move(listener)), logger_(logger) {}
 
 PluginScanWorker::~PluginScanWorker() {
     stop();
 }
 
-std::vector<session::PluginDescription> PluginScanWorker::load_saved() {
+PluginScanWorker::Catalog PluginScanWorker::load_saved() {
     catalog_.load();
-    return catalog_.available_plugins();
+    return catalog();
+}
+
+PluginScanWorker::Catalog PluginScanWorker::catalog() const {
+    Catalog result;
+    result.plugins = catalog_.available_plugins();
+    for (const auto& record : catalog_.records()) {
+        if (record.status != session::PluginScanStatus::kScanned) {
+            result.blocked.push_back(record);
+        }
+    }
+    return result;
 }
 
 void PluginScanWorker::start() {
@@ -69,6 +80,7 @@ void PluginScanWorker::run() {
 }
 
 void PluginScanWorker::scan_all() {
+    listener_.started();
     catalog_.begin_rescan();
     auto progress = session::PluginScanProgress::kMore;
     while (catalog_.scanning()) {
@@ -86,7 +98,7 @@ void PluginScanWorker::scan_all() {
             break;
         }
     }
-    publish_(catalog_.available_plugins());
+    listener_.finished(catalog());
 }
 
 }  // namespace vocroz::engine

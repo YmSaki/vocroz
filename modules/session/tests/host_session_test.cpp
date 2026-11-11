@@ -23,6 +23,7 @@
 #include "fakes/fake_playout_control.h"
 #include "fakes/fake_plugin_processor.h"
 #include "fakes/fake_plugin_rack.h"
+#include "fakes/fake_plugin_scan_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
@@ -52,7 +53,7 @@ protected:
             session_.emplace(
                 config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_,
                                             random_, clock_, logger_, playout_, external_output_,
-                                            secrets_, plugins_});
+                                            secrets_, plugins_, plugin_scan_});
             session_->start();
         }
         return *session_;
@@ -100,6 +101,11 @@ protected:
         }
         if (entity_id == "routing") {
             return s.routing.revision;
+        }
+        if (entity_id == "plugins") {
+            // プラグインの状態はスナップショットに入らないので、最後に届いたものから読む。
+            const auto plugins = ui_.last<cp::PluginsUpdated>();
+            return plugins ? plugins->plugins.revision : 0;
         }
         for (const auto& level : s.routing.levels) {
             if (level.entity_id == entity_id) {
@@ -198,6 +204,7 @@ protected:
     FakeExternalOutputControl external_output_;
     FakeSecretStore secrets_;
     FakePluginRack plugins_;
+    FakePluginScanControl plugin_scan_;
     common::FakeClock clock_;
     common::FakeLogger logger_;
     std::optional<HostSession> session_;
@@ -1126,11 +1133,12 @@ TEST_F(HostSessionTest, InsertsNeedAPluginFromTheList) {
 
     // 一覧が届くと、ステージング中の構成を検証し直して知らせる。
     const auto revision = revision_of("routing");
+    ui_.clear();
     session().set_available_plugins(insert_plugins());
     const auto routing = session().snapshot().routing;
     EXPECT_FALSE(routing.staged->check.issue);
     EXPECT_EQ(routing.revision, revision);
-    EXPECT_TRUE(std::holds_alternative<cp::RoutingUpdated>(ui_.messages().back()));
+    EXPECT_TRUE(ui_.last<cp::RoutingUpdated>());
 }
 
 TEST_F(HostSessionTest, CommitAppliesInsertsSilentlyAndConnectsThemAsTheyLoad) {
@@ -1240,9 +1248,10 @@ TEST_F(HostSessionTest, RestoresSavedInsertsAndDropsThoseOfMissingPlugins) {
     HostSettings saved;
     saved.routing = config;
     settings_.host() = saved;
-    session_.emplace(config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_,
-                                                 settings_, random_, clock_, logger_, playout_,
-                                                 external_output_, secrets_, plugins_});
+    session_.emplace(
+        config_,
+        HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_, random_, clock_,
+                           logger_, playout_, external_output_, secrets_, plugins_, plugin_scan_});
     session_->set_available_plugins(insert_plugins());
     session_->start();
 
@@ -1527,6 +1536,136 @@ TEST_F(HostSessionTest, ReturnStateIsRestoredOnTheNewConnectionAfterReconnect) {
     // 世代番号は接続をまたいで続く。
     EXPECT_EQ(peers_.return_mutes().at(20).epoch, 2U);
     EXPECT_EQ(last_return_notice(peers_, 20), (wire::ReturnMuteNotice{false, 2}));
+}
+
+// --- プラグインの状態と一覧 ---
+
+TEST_F(HostSessionTest, HelloSendsThePluginStateAndCatalogPagesAfterTheSnapshot) {
+    std::vector<PluginDescription> many;
+    for (int i = 0; i < 30; ++i) {
+        PluginDescription d;
+        d.name = "P" + std::to_string(i);
+        d.identifier = "VST3-P-" + std::to_string(i);
+        many.push_back(d);
+    }
+    session().set_available_plugins(many);
+    ui_.clear();
+
+    session().handle_ui_message(cp::Hello{});
+
+    const auto& messages = ui_.messages();
+    ASSERT_EQ(messages.size(), 4U);
+    EXPECT_TRUE(std::holds_alternative<cp::MixerSnapshotEvent>(messages[0]));
+    const auto& plugins = std::get<cp::PluginsUpdated>(messages[1]).plugins;
+    EXPECT_EQ(plugins.entity_id, "plugins");
+    EXPECT_EQ(plugins.catalog_size, 30U);
+    const auto& first = std::get<cp::PluginCatalogPage>(messages[2]);
+    const auto& second = std::get<cp::PluginCatalogPage>(messages[3]);
+    EXPECT_EQ(first.generation, plugins.catalog_generation);
+    EXPECT_EQ(first.offset, 0U);
+    EXPECT_EQ(first.plugins.size(), cp::kMaxPluginCatalogPageEntries);
+    EXPECT_EQ(second.offset, cp::kMaxPluginCatalogPageEntries);
+    EXPECT_EQ(second.plugins.size(), 30U - cp::kMaxPluginCatalogPageEntries);
+    EXPECT_EQ(second.plugins.back().plugin_id, "VST3-P-29");
+}
+
+TEST_F(HostSessionTest, NewCatalogsAdvanceTheGenerationAndLeaveOutOversizedPlugins) {
+    session().set_available_plugins(insert_plugins());
+    const auto generation = ui_.last<cp::PluginsUpdated>()->plugins.catalog_generation;
+    auto plugins = insert_plugins();
+    plugins[1].identifier = std::string(cp::kMaxPluginIdBytes + 1, 'x');
+
+    session().set_available_plugins(plugins);
+
+    const auto info = ui_.last<cp::PluginsUpdated>()->plugins;
+    EXPECT_EQ(info.catalog_generation, generation + 1);
+    EXPECT_EQ(info.catalog_size, 1U);
+    const auto page = ui_.last<cp::PluginCatalogPage>();
+    ASSERT_TRUE(page);
+    ASSERT_EQ(page->plugins.size(), 1U);
+    EXPECT_EQ(page->plugins[0].plugin_id, "VST3-EQ-1");
+}
+
+TEST_F(HostSessionTest, ReportsBlockedPluginFilesWithShortenedLongPaths) {
+    const std::string long_dir(cp::kMaxTextBytes, 'd');
+    std::vector<PluginScanRecord> blocked{
+        {{"C:/VST3/Broken.vst3", 1, 1}, PluginScanStatus::kCrashed, {}},
+        {{"C:/" + long_dir + "/Slow.vst3", 1, 1}, PluginScanStatus::kTimedOut, {}},
+        {{"C:/VST3/Fine.vst3", 1, 1}, PluginScanStatus::kScanned, {}},
+    };
+
+    session().set_available_plugins({}, blocked);
+
+    const auto info = ui_.last<cp::PluginsUpdated>()->plugins;
+    ASSERT_EQ(info.blocked.size(), 2U);
+    EXPECT_EQ(info.blocked[0],
+              (cp::BlockedPluginFile{"C:/VST3/Broken.vst3", cp::BlockedPluginReason::kCrashed}));
+    EXPECT_EQ(info.blocked[1],
+              (cp::BlockedPluginFile{"Slow.vst3", cp::BlockedPluginReason::kTimedOut}));
+}
+
+TEST_F(HostSessionTest, ReportsTheStateOfEachInsert) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    auto inserts = ui_.last<cp::PluginsUpdated>()->plugins.inserts;
+    ASSERT_EQ(inserts.size(), 2U);
+    EXPECT_EQ(inserts[0], (cp::PluginInsertStatus{"fx-eq", cp::PluginInsertState::kLoading, {}}));
+
+    session().on_plugin_loaded("fx-eq", plugins_.loads()[0].ticket, fake_processor());
+    session().on_plugin_loaded("fx-verb", plugins_.loads()[1].ticket,
+                               common::make_unexpected(PluginLoadError::kInstantiateFailed));
+    inserts = ui_.last<cp::PluginsUpdated>()->plugins.inserts;
+    EXPECT_EQ(inserts[0], (cp::PluginInsertStatus{"fx-eq", cp::PluginInsertState::kReady, {}}));
+    EXPECT_EQ(inserts[1], (cp::PluginInsertStatus{"fx-verb", cp::PluginInsertState::kFailed,
+                                                  cp::PluginInsertFailure::kInstantiateFailed}));
+
+    mixer_.plugins()[0].fault->raise();
+    session().tick();
+    inserts = ui_.last<cp::PluginsUpdated>()->plugins.inserts;
+    EXPECT_EQ(inserts[0], (cp::PluginInsertStatus{"fx-eq", cp::PluginInsertState::kFailed,
+                                                  cp::PluginInsertFailure::kProcessingFailed}));
+}
+
+TEST_F(HostSessionTest, RescanAsksForAScanAndShowsScanningAtOnce) {
+    session().handle_ui_message(cp::Hello{});
+
+    EXPECT_EQ(command("plugins", cp::RescanPlugins{}), cp::Revision{1});
+    EXPECT_EQ(plugin_scan_.rescans(), 1);
+    EXPECT_TRUE(ui_.last<cp::PluginsUpdated>()->plugins.scanning);
+
+    session().set_plugin_scanning(false);
+    EXPECT_FALSE(ui_.last<cp::PluginsUpdated>()->plugins.scanning);
+    EXPECT_FALSE(command("routing", cp::RescanPlugins{}));
+    EXPECT_EQ(last_reject_, cp::ErrorCode::kInvalidState);
+}
+
+TEST_F(HostSessionTest, OpensTheEditorOnlyForALoadedInsert) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+
+    EXPECT_FALSE(command("plugins", cp::OpenPluginEditor{"fx-none"}));
+    EXPECT_EQ(last_reject_, cp::ErrorCode::kNotFound);
+    // 読み込み中は開けない。
+    EXPECT_FALSE(command("plugins", cp::OpenPluginEditor{"fx-eq"}));
+    EXPECT_EQ(last_reject_, cp::ErrorCode::kInvalidState);
+
+    session().on_plugin_loaded("fx-eq", plugins_.loads()[0].ticket, fake_processor());
+    EXPECT_TRUE(command("plugins", cp::OpenPluginEditor{"fx-eq"}));
+    ASSERT_EQ(plugins_.editors().size(), 1U);
+    EXPECT_EQ(plugins_.editors()[0].insert_id, "fx-eq");
+    EXPECT_EQ(plugins_.editors()[0].title, "EQ");
+
+    session().on_plugin_editor_failed("fx-eq");
+    const auto notice = ui_.last<cp::Notice>();
+    ASSERT_TRUE(notice);
+    EXPECT_EQ(notice->code, "plugin_editor_failed");
+    EXPECT_EQ(notice->params.at("name"), "EQ");
 }
 
 }  // namespace

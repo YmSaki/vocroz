@@ -23,4 +23,7 @@ inline constexpr const char* kRoutingEntityId = "routing";
 /// SRTP 外部出力の entity_id。
 inline constexpr const char* kExternalOutputEntityId = "external_output";
 
+/// プラグインのスキャンと挿入の状態の entity_id（docs/adr/0042-plugin-insert.md）。
+inline constexpr const char* kPluginsEntityId = "plugins";
+
 }  // namespace vocroz::session

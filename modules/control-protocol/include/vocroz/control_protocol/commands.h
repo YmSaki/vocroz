@@ -181,12 +181,31 @@ struct TestExternalOutput {
     friend bool operator==(const TestExternalOutput&, const TestExternalOutput&) = default;
 };
 
+/// プラグインをスキャンし直す（親機）。対象は "plugins"。
+/// スキャン中なら、今のスキャンが済んでからもう一度スキャンする。変更のないファイルは
+/// スキャンしない（docs/adr/0032-plugin-catalog-and-loader.md）。
+struct RescanPlugins {
+    friend bool operator==(const RescanPlugins&, const RescanPlugins&) = default;
+};
+
+/// 挿入のプラグインのエディターを開く（親機）。対象は "plugins"。
+/// 開いていれば前面に出す。挿入がなければ NOT_FOUND、読み込みが済んでいなければ（読み込み中か
+/// 失敗）INVALID_STATE で拒否する。ウィンドウを開けなかったことは、後で通知
+/// （plugin_editor_failed）で知らせる（docs/adr/0041-plugin-editor-and-failure-notice.md）。
+struct OpenPluginEditor {
+    /// 適用中のルーティングの挿入の entity_id。
+    std::string insert_id;
+    friend bool operator==(const OpenPluginEditor&, const OpenPluginEditor&) = default;
+};
+
 /// 離散コマンドの種類ごとの本体。
-using DiscreteCommandBody = std::variant<
-    CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant, RejectParticipant,
-    RemoveStrip, Join, Leave, SelectInput, SetSendMute, StageRouting, CommitRouting, DiscardRouting,
-    SetRouteMute, SelectOutput, SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget,
-    SetExternalOutputConfig, SetExternalOutputKey, SetExternalOutputRunning, TestExternalOutput>;
+using DiscreteCommandBody =
+    std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
+                 RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
+                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput,
+                 SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget,
+                 SetExternalOutputConfig, SetExternalOutputKey, SetExternalOutputRunning,
+                 TestExternalOutput, RescanPlugins, OpenPluginEditor>;
 
 /// 離散コマンド。
 struct DiscreteCommand {

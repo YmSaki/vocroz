@@ -121,6 +121,7 @@
   "notice.packet_loss": "{name} さんの音声でパケットの欠損が増えています。",
   "notice.input_missing": "マイクが見つかりません。接続を確かめるか、別の入力を選んでください。",
   "notice.return_output_lost": "返送モニターの出力デバイスが見つかりません。つなぎ直すか、別のデバイスを選んでください。",
+  "notice.plugin_editor_failed": "{name} のエディターを開けませんでした。",
   "client.title": "VOCROZ（子機）",
   "client.connection": "接続",
   "client.invite_label": "招待コードまたは招待 URL",

@@ -267,6 +267,19 @@
     "expected_revision": 3
   },
   {
+    "type": "rescan_plugins",
+    "request_id": "r-34",
+    "entity_id": "plugins",
+    "expected_revision": 1
+  },
+  {
+    "type": "open_plugin_editor",
+    "request_id": "r-35",
+    "entity_id": "plugins",
+    "expected_revision": 1,
+    "insert_id": "fx-1"
+  },
+  {
     "type": "set_gain",
     "entity_id": "send-1",
     "seq": 7,

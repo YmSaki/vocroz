@@ -6,6 +6,7 @@
 
 #include "host_command_handler.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <type_traits>
@@ -41,6 +42,9 @@ void HostCommandHandler::handle_ui_message(const cp::UiToEngineMessage& message)
                 // 前の接続から抜き差しされたデバイスがあるかもしれないので、列挙し直してから送る。
                 ctx_.refresh_output_devices();
                 ctx_.ports.ui.publish(cp::MixerSnapshotEvent{ctx_.snapshot()});
+                // プラグインの状態と一覧はスナップショットに入りきらないので、続けて送る。
+                ctx_.publish_plugins();
+                ctx_.publish_plugin_catalog();
             } else if constexpr (std::is_same_v<M, cp::DiscreteCommand>) {
                 handle_discrete(m);
             } else {
@@ -84,6 +88,9 @@ std::optional<cp::Revision> HostCommandHandler::revision_of(const std::string& e
     }
     if (entity_id == kExternalOutputEntityId) {
         return ctx_.external_output.info().revision;
+    }
+    if (entity_id == kPluginsEntityId) {
+        return kPluginsRevision;
     }
     if (const auto* level = ctx_.routing.find_level(entity_id)) {
         return level->revision;
@@ -146,6 +153,11 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
                                                      : invalid_state();
             } else if constexpr (std::is_same_v<B, cp::TestExternalOutput>) {
                 return id == kExternalOutputEntityId ? test_external_output() : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::RescanPlugins>) {
+                return id == kPluginsEntityId ? rescan_plugins() : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::OpenPluginEditor>) {
+                return id == kPluginsEntityId ? open_plugin_editor(body.insert_id)
+                                              : invalid_state();
             } else {
                 static_assert(
                     std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
@@ -496,6 +508,33 @@ HostCommandHandler::CommandResult HostCommandHandler::test_external_output() {
     book.record_test_start(ctx_.ports.external_output.start_test(plan.value(), *book.key()));
     ctx_.publish_external_output();
     return book.info().revision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::rescan_plugins() {
+    ctx_.ports.plugin_scan.request_rescan();
+    // スキャンのスレッドが始めたと知らせる前に、すぐ「スキャン中」を見せる。
+    if (ctx_.plugin_status.set_scanning(true)) {
+        ctx_.publish_plugins();
+    }
+    return kPluginsRevision;
+}
+
+HostCommandHandler::CommandResult HostCommandHandler::open_plugin_editor(
+    const std::string& insert_id) {
+    const auto& inserts = ctx_.routing.info().applied.inserts;
+    const auto insert =
+        std::find_if(inserts.begin(), inserts.end(),
+                     [&](const cp::RoutingInsert& i) { return i.entity_id == insert_id; });
+    if (insert == inserts.end()) {
+        return common::make_unexpected(ErrorCode::kNotFound);
+    }
+    // エディターはインスタンスがあるときだけ開ける。読み込み中と失敗した挿入は開かない。
+    const InsertSlot* slot = ctx_.inserts.find(insert_id);
+    if (slot == nullptr || slot->state != InsertLoadState::kReady) {
+        return invalid_state();
+    }
+    ctx_.ports.plugins.open_editor(insert_id, ctx_.plugin_name(insert->plugin_id));
+    return kPluginsRevision;
 }
 
 // --- 連続値のコマンド ---
