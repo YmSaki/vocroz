@@ -25,6 +25,18 @@
     border-radius: 4px;
     box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
     pointer-events: auto;
+    transition:
+        opacity var(--duration-enter) var(--ease-out),
+        transform var(--duration-enter) var(--ease-out);
+}
+
+/* トーストは画面の下に積むので、下からわずかに浮き上がって現れる。
+   keyframes ではなく transition にするのは、続けて届いたときに動きが途中から自然につながるため。 */
+@starting-style {
+    .toast {
+        opacity: 0;
+        transform: translateY(var(--enter-shift));
+    }
 }
 
 .toast--warning {
@@ -37,9 +49,13 @@
 
 .toast__text {
     flex: 1;
+    /* 長いアドレスやパスでも枠からはみ出さず、閉じるボタンを押せるようにする。 */
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .toast__close {
+    flex-shrink: 0;
     font: inherit;
     color: var(--color-text-dim);
     background: none;
@@ -54,6 +70,17 @@
     min-height: 0;
     background: var(--color-panel);
     border-left: 1px solid var(--color-border);
+    transition:
+        opacity var(--duration-enter) var(--ease-out),
+        transform var(--duration-enter) var(--ease-out);
+}
+
+/* 右端から開くパネルなので、右からわずかに寄ってきて現れる。 */
+@starting-style {
+    .notification-history {
+        opacity: 0;
+        transform: translateX(var(--enter-shift));
+    }
 }
 
 .notification-history__header {
@@ -101,6 +128,12 @@
 }
 
 .notification-history__item time {
+    flex-shrink: 0;
     color: var(--color-text-dim);
     font-variant-numeric: tabular-nums;
+}
+
+.notification-history__item span {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
