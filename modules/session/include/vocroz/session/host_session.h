@@ -11,6 +11,7 @@
 // - 初期ミュートと、出力デバイスの抜去時の Master の SAFETY ミュート
 // - 出力デバイスの選択（保存したデバイスだけを開き、ほかのデバイスへフォールバックしない）
 // - SRTP 外部出力の設定と鍵の保存、送信の開始と停止、接続テスト（起動時は必ず止めて始める）
+// - プラグインの挿入の読み込みと破棄の依頼、読み込みの済んだ挿入のグラフへの反映
 // 副作用（ミキサー、接続、ランデブーサーバー、設定、UI への通知）はすべてポート経由で行う。
 #pragma once
 
@@ -18,6 +19,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "vocroz/common/ports/clock.h"
 #include "vocroz/common/ports/logger.h"
@@ -26,11 +28,14 @@
 #include "vocroz/control_protocol/entities.h"
 #include "vocroz/control_protocol/states.h"
 #include "vocroz/session/identifiers.h"
+#include "vocroz/session/plugin_description.h"
 #include "vocroz/session/ports/external_output_control.h"
 #include "vocroz/session/ports/mixer_control.h"
 #include "vocroz/session/ports/output_device_control.h"
 #include "vocroz/session/ports/peer_link.h"
 #include "vocroz/session/ports/playout_control.h"
+#include "vocroz/session/ports/plugin_loader.h"
+#include "vocroz/session/ports/plugin_rack.h"
 #include "vocroz/session/ports/rendezvous_client.h"
 #include "vocroz/session/ports/secret_store.h"
 #include "vocroz/session/ports/secure_random.h"
@@ -69,6 +74,8 @@ public:
         ExternalOutputControl& external_output;
         /// SRTP 外部出力の鍵の保存先。
         SecretStore& secrets;
+        /// 挿入のプラグインの読み込みと破棄（docs/adr/0042-plugin-insert.md）。
+        PluginRack& plugins;
     };
 
     /// @param config 固定の設定
@@ -143,11 +150,27 @@ public:
     /// @param result 結果
     void on_external_output_test_finished(control_protocol::ExternalOutputResult result);
 
+    /// 挿入に使えるプラグインの一覧を置き換える。ステージング中の構成は検証し直す。
+    /// 保存した挿入を戻すため、start() の前にも呼ぶ（保存したスキャンの記録から作った一覧で）。
+    /// @param plugins 読み込めるプラグイン（PluginCatalog::available_plugins()）
+    void set_available_plugins(std::vector<PluginDescription> plugins);
+
+    /// 挿入のプラグインの読み込みが済んだ。PluginRack::load() の結果。
+    /// 成功したら、その挿入を通る経路をつないだグラフに差し替える。失敗したら経路を無音のままにする。
+    /// 外したか挿し直した挿入の、遅れて届いた結果は捨てる。
+    /// @param insert_id 挿入の entity_id
+    /// @param ticket    PluginRack::load() に渡した番号
+    /// @param result    グラフに渡す処理（null にならない）。失敗なら理由
+    void on_plugin_loaded(
+        const std::string& insert_id, PluginLoadTicket ticket,
+        common::Result<std::shared_ptr<audio_core::PluginProcessor>, PluginLoadError> result);
+
     /// 現在の招待を失効させ、新しい招待を発行する（招待の手動の失効）。
     /// READY と ACTIVE のときだけ効く。
     void revoke_invite();
 
-    /// 時刻で決まる処理（招待の期限、再接続の猶予）を進める。100 ms〜1 s の間隔で呼ぶ。
+    /// 時刻で決まる処理（招待の期限、再接続の猶予）を進め、処理中に失敗したプラグインを拾う。
+    /// 100 ms〜1 s の間隔で呼ぶ。
     void tick();
 
     /// 親機モードの全状態を返す（UI の接続時のスナップショットと同じ内容）。

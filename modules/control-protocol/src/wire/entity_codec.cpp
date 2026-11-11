@@ -120,6 +120,24 @@ common::Result<InputDelay, DecodeError> read_input_delay(const nlohmann::json& v
     });
 }
 
+nlohmann::json write_json(const RoutingInsert& insert) {
+    return {
+        {"entity_id", insert.entity_id},
+        {"target", insert.target},
+        {"plugin_id", insert.plugin_id},
+    };
+}
+
+common::Result<RoutingInsert, DecodeError> read_routing_insert(const nlohmann::json& value) {
+    return read_object<RoutingInsert>(value, [](ObjectReader& r) {
+        RoutingInsert insert;
+        insert.entity_id = r.text("entity_id", kIdentifierRule);
+        insert.target = r.text("target", kIdentifierRule);
+        insert.plugin_id = r.text("plugin_id", kPluginIdRule);
+        return insert;
+    });
+}
+
 /// entity_id の文字列を 1 つ読む（配列の要素）。
 common::Result<std::string, DecodeError> read_identifier(const nlohmann::json& value) {
     if (!value.is_string()) {
@@ -330,6 +348,7 @@ nlohmann::json write_json(const RoutingConfig& config) {
         {"sends", write_array(config.sends)},
         {"delays", write_array(config.delays)},
         {"input_delays", write_array(config.input_delays)},
+        {"inserts", write_array(config.inserts)},
     };
 }
 
@@ -341,6 +360,7 @@ common::Result<RoutingConfig, DecodeError> read_routing_config(const nlohmann::j
         config.sends = r.list<RoutingSend>("sends", read_routing_send);
         config.delays = r.list<RoutingDelay>("delays", read_routing_delay);
         config.input_delays = r.list<InputDelay>("input_delays", read_input_delay);
+        config.inserts = r.list<RoutingInsert>("inserts", read_routing_insert);
         return config;
     });
 }

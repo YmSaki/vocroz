@@ -23,6 +23,7 @@ session::HostSettings sample_host() {
     s.routing.sends.push_back(cp::RoutingSend{"send-2", "bus-2", "bus-1", cp::SendTap::kPreFader});
     s.routing.delays.push_back(cp::RoutingDelay{"delay-1", 12.5});
     s.routing.input_delays.push_back(cp::InputDelay{"ch1", 3.0});
+    s.routing.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-2", "VST3-Room-1a2b"});
     s.route_gains = {{"bus-1", -3.0}, {"send-1", std::nullopt}};
     s.latency_target_ms = 40.0;
     s.external_output.host = "encoder.example";
@@ -197,6 +198,19 @@ TEST(SettingsCodecTest, RejectsMalformedRouting) {
     EXPECT_FALSE(decode_host_settings(
         head +
         R"("routing":{"buses":[],"outputs":[{"entity_id":"out-1","name":"","device_channel":-2}],"sends":[],"delays":[],"input_delays":[]},"route_gains":[]})"));
+    // プラグインの識別子のない挿入
+    EXPECT_FALSE(decode_host_settings(
+        head + R"("routing":{"buses":[],)" + empty_lists +
+        R"(,"inserts":[{"entity_id":"fx-1","target":"master"}]},"route_gains":[]})"));
+}
+
+TEST(SettingsCodecTest, ReadsRoutingSavedBeforeInsertsWithoutInserts) {
+    const auto decoded = decode_host_settings(
+        R"({"schema_version":1,"session_name":"","output_device_id":null,"master_gain_db":0,)"
+        R"("routing":{"buses":[],"outputs":[],"sends":[],"delays":[],"input_delays":[]},)"
+        R"("route_gains":[]})");
+    ASSERT_TRUE(decoded);
+    EXPECT_TRUE(decoded->routing.inserts.empty());
 }
 
 }  // namespace

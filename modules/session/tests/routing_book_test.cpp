@@ -155,6 +155,9 @@ TEST(WithoutStripReferencesTest, KeepsOnlyRoutesBetweenMasterBusesOutputsAndDela
     config.sends.push_back(cp::RoutingSend{"send-3", "master", "delay-a", cp::SendTap::kPostFader});
     config.sends.push_back(cp::RoutingSend{"send-4", "delay-a", "ch2", cp::SendTap::kPostFader});
     config.input_delays.push_back(cp::InputDelay{"ch1", 5.0});
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "ch1", "eq"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-2", "master", "comp"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-3", "bus-a", "verb"});
 
     const auto kept = without_strip_references(config);
     EXPECT_EQ(kept.buses, config.buses);
@@ -164,6 +167,31 @@ TEST(WithoutStripReferencesTest, KeepsOnlyRoutesBetweenMasterBusesOutputsAndDela
     EXPECT_EQ(kept.sends[0].entity_id, "send-2");
     EXPECT_EQ(kept.sends[1].entity_id, "send-3");
     EXPECT_TRUE(kept.input_delays.empty());
+    ASSERT_EQ(kept.inserts.size(), 2U);
+    EXPECT_EQ(kept.inserts[0].entity_id, "fx-2");
+    EXPECT_EQ(kept.inserts[1].entity_id, "fx-3");
+}
+
+TEST(RoutingBookTest, RemovingAStripDropsItsInsertsAndRevalidatesWithThePluginList) {
+    PluginDescription eq;
+    eq.identifier = "eq";
+    RoutingBook book;
+    book.set_plugins({eq}, kStrips);
+    auto config = cue_config();
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "ch1", "eq"});
+    book.stage(config, kStrips);
+    ASSERT_TRUE(book.prepare_commit(false, kStrips));
+    book.commit();
+    EXPECT_TRUE(book.forget_strip("ch1", std::vector<std::string>{"ch2"}));
+    EXPECT_TRUE(book.info().applied.inserts.empty());
+
+    // 一覧からプラグインが消えると、ステージング中の挿入は適用できなくなる。
+    book.stage(config, kStrips);
+    EXPECT_FALSE(book.info().staged->check.issue);
+    const auto revision = book.info().revision;
+    book.set_plugins({}, kStrips);
+    EXPECT_EQ(book.info().staged->check.issue, cp::RoutingIssue::kUnknownPlugin);
+    EXPECT_EQ(book.info().revision, revision);
 }
 
 }  // namespace

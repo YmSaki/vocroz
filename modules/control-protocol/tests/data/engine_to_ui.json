@@ -253,6 +253,13 @@
               "strip_id": "ch2",
               "delay_ms": 12.5
             }
+          ],
+          "inserts": [
+            {
+              "entity_id": "fx-verb",
+              "target": "bus-fx",
+              "plugin_id": "VST3-Room Verb-0f1e2d3c-4b5a6978"
+            }
           ]
         },
         "feedback_approved": true,
@@ -353,7 +360,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "feedback_approved": false,
         "staged": null,
@@ -733,7 +741,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -800,7 +809,8 @@
               "strip_id": "ch2",
               "delay_ms": 12.5
             }
-          ]
+          ],
+          "inserts": []
         },
         "check": {
           "issue": null,
@@ -826,7 +836,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -835,7 +846,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "INVALID_ID",
@@ -857,7 +869,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -866,7 +879,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "DUPLICATE_ID",
@@ -888,7 +902,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -897,7 +912,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "TOO_MANY_ITEMS",
@@ -919,7 +935,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -928,7 +945,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "UNKNOWN_NODE",
@@ -950,7 +968,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -959,7 +978,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "INVALID_SEND",
@@ -981,7 +1001,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -990,7 +1011,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "INVALID_SEND_TAP",
@@ -1012,7 +1034,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -1021,7 +1044,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "DELAY_OUT_OF_RANGE",
@@ -1043,7 +1067,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -1052,7 +1077,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "OUTPUT_CHANNEL_OUT_OF_RANGE",
@@ -1074,7 +1100,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -1083,7 +1110,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "OVERLAPPING_OUTPUTS",
@@ -1105,7 +1133,8 @@
         "outputs": [],
         "sends": [],
         "delays": [],
-        "input_delays": []
+        "input_delays": [],
+        "inserts": []
       },
       "feedback_approved": false,
       "staged": {
@@ -1114,7 +1143,8 @@
           "outputs": [],
           "sends": [],
           "delays": [],
-          "input_delays": []
+          "input_delays": [],
+          "inserts": []
         },
         "check": {
           "issue": "UNDELAYED_LOOP",
@@ -1123,6 +1153,72 @@
             "bus-fx",
             "master"
           ],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 15,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": [],
+        "inserts": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": [],
+          "inserts": []
+        },
+        "check": {
+          "issue": "UNKNOWN_PLUGIN",
+          "issue_entity_id": "fx-missing",
+          "looped_entity_ids": [],
+          "needs_approval": false
+        }
+      },
+      "levels": []
+    }
+  },
+  {
+    "type": "routing_updated",
+    "routing": {
+      "entity_id": "routing",
+      "revision": 15,
+      "applied": {
+        "buses": [],
+        "outputs": [],
+        "sends": [],
+        "delays": [],
+        "input_delays": [],
+        "inserts": []
+      },
+      "feedback_approved": false,
+      "staged": {
+        "config": {
+          "buses": [],
+          "outputs": [],
+          "sends": [],
+          "delays": [],
+          "input_delays": [],
+          "inserts": []
+        },
+        "check": {
+          "issue": "UNSUPPORTED_PLUGIN",
+          "issue_entity_id": "fx-synth",
+          "looped_entity_ids": [],
           "needs_approval": false
         }
       },

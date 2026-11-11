@@ -40,7 +40,8 @@ public:
     /// （ストリップから Master への暗黙の経路だけで鳴らす）。
     /// @return 常に true
     [[nodiscard]] bool apply_routing(const control_protocol::RoutingConfig& config,
-                                     bool feedback_approved) override;
+                                     bool feedback_approved,
+                                     std::span<const session::InsertedPlugin> plugins) override;
     /// ルーティングを扱わないので何もしない。
     void set_route_muted(const std::string& entity_id, bool muted) override;
     /// ルーティングを扱わないので何もしない。

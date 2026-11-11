@@ -16,7 +16,7 @@ UI とエンジンの間でやり取りするメッセージを 1 か所で定�
 | ヘッダー | 内容 |
 | --- | --- |
 | `vocroz/control_protocol/states.h` | `SessionState`、`ConnectionState`、`SignalState`、`OutputDeviceState`、`MasterMuteReason`、`ClientState`、`ErrorCode`、`NoticeSeverity`、ルーティングの `BusKind`、`SendTap`、`RoutingIssue`、外部出力の `ExternalOutputState`、`ExternalOutputProfile`、`SrtpSuite`、`ExternalOutputResult` |
-| `vocroz/control_protocol/entities.h` | 状態の DTO（`SessionInfo`、`ChannelStrip`、`MasterStrip`、`PendingParticipant`、`MixerSnapshot`、`ClientSnapshot`、ルーティングの `RoutingConfig`、`RoutingInfo`、`RouteLevel`、外部出力の `ExternalOutputConfig`、`ExternalOutput` など）と `Revision`、`Sequence`、`GainDb` |
+| `vocroz/control_protocol/entities.h` | 状態の DTO（`SessionInfo`、`ChannelStrip`、`MasterStrip`、`PendingParticipant`、`MixerSnapshot`、`ClientSnapshot`、ルーティングの `RoutingConfig`、`RoutingInsert`、`RoutingInfo`、`RouteLevel`、外部出力の `ExternalOutputConfig`、`ExternalOutput` など）と `Revision`、`Sequence`、`GainDb` |
 | `vocroz/control_protocol/commands.h` | `UiToEngineMessage`（`Hello`、`DiscreteCommand`、`SetGain`） |
 | `vocroz/control_protocol/events.h` | `EngineToUiMessage`（スナップショット、差分イベント、`Ack`、`Reject`、`GainAck`、`Meters`、`Notice`） |
 | `vocroz/control_protocol/json_codec.h` | `decode_ui_to_engine()`、`encode_ui_to_engine()`、`decode_engine_to_ui()`、`encode_engine_to_ui()`、`DecodeError` |

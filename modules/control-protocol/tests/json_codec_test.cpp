@@ -343,7 +343,9 @@ nlohmann::json valid_stage_routing() {
           {"sends",
            {{{"entity_id", "send-1"}, {"from", "ch1"}, {"to", "bus-cue"}, {"tap", "PRE_FADER"}}}},
           {"delays", {{{"entity_id", "delay-1"}, {"delay_ms", 100.0}}}},
-          {"input_delays", {{{"strip_id", "ch1"}, {"delay_ms", 0}}}}}}};
+          {"input_delays", {{{"strip_id", "ch1"}, {"delay_ms", 0}}}},
+          {"inserts",
+           {{{"entity_id", "fx-1"}, {"target", "ch1"}, {"plugin_id", "VST3-EQ-1-2"}}}}}}};
 }
 
 TEST(JsonCodecTest, DecodesStageRouting) {
@@ -355,6 +357,8 @@ TEST(JsonCodecTest, DecodesStageRouting) {
     EXPECT_EQ(config.sends[0], (RoutingSend{"send-1", "ch1", "bus-cue", SendTap::kPreFader}));
     EXPECT_EQ(config.buses[0].kind, BusKind::kCue);
     EXPECT_EQ(config.delays[0].delay_ms, 100.0);
+    ASSERT_EQ(config.inserts.size(), 1U);
+    EXPECT_EQ(config.inserts[0], (RoutingInsert{"fx-1", "ch1", "VST3-EQ-1-2"}));
 }
 
 TEST(JsonCodecTest, RejectsInvalidRoutingConfig) {
@@ -367,6 +371,15 @@ TEST(JsonCodecTest, RejectsInvalidRoutingConfig) {
     message["config"]["input_delays"][0]["delay_ms"] = -1;
     EXPECT_EQ(ui_error(message),
               (DecodeError{DecodeErrorCode::kOutOfRange, "config.input_delays.delay_ms"}));
+
+    message = valid_stage_routing();
+    message["config"]["inserts"][0]["plugin_id"] = "";
+    EXPECT_EQ(ui_error(message),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "config.inserts.plugin_id"}));
+
+    message = valid_stage_routing();
+    message["config"].erase("inserts");
+    EXPECT_EQ(ui_error(message), (DecodeError{DecodeErrorCode::kMissingField, "config.inserts"}));
 
     message = valid_stage_routing();
     message["config"]["sends"][0]["tap"] = "pre";
@@ -416,7 +429,8 @@ TEST(JsonCodecTest, RejectsInvalidRoutingCheck) {
           {"outputs", nlohmann::json::array()},
           {"sends", nlohmann::json::array()},
           {"delays", nlohmann::json::array()},
-          {"input_delays", nlohmann::json::array()}}},
+          {"input_delays", nlohmann::json::array()},
+          {"inserts", nlohmann::json::array()}}},
         {"feedback_approved", false},
         {"levels", nlohmann::json::array()},
     };

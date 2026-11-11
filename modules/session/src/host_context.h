@@ -19,6 +19,7 @@
 #include "external_output_book.h"
 #include "invite_book.h"
 #include "participant_registry.h"
+#include "plugin_insert_book.h"
 #include "routing_book.h"
 #include "session_constants.h"
 #include "state/connection_state_machine.h"
@@ -138,6 +139,15 @@ struct HostContext {
     [[nodiscard]] common::Result<void, control_protocol::ErrorCode> commit_staged_routing(
         bool approve_feedback);
 
+    /// 適用中のルーティングを、今の読み込みの状態でミキサーへ適用し直す。
+    /// 構成が変わらずに、挿入の読み込みが済んだときや、参照を取り除いたときに使う。
+    /// @param context 失敗したときにログに残す場面
+    void reapply_routing(const char* context);
+
+    /// 適用中のルーティングの挿入に合わせて、プラグインの読み込みと破棄を依頼する。
+    /// 適用中の構成を変えてミキサーへ適用したあとに呼ぶ。
+    void reconcile_inserts();
+
     /// 保存したルーティングの構成を起動時に戻す。問題のない構成はそのまま適用し、バスとセンドは
     /// 保存したフェーダーの値とミュートで始める。承認の要るループがあればステージングに置いて
     /// オペレーターの承認を待ち、問題のある構成は戻さない（docs/adr/0033-routing-persistence.md）。
@@ -194,6 +204,7 @@ struct HostContext {
     InviteBook invites;
     ParticipantRegistry registry;
     RoutingBook routing;
+    PluginInsertBook inserts;
     ExternalOutputBook external_output;
 };
 

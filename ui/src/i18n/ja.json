@@ -174,6 +174,8 @@
   "routing.issue.OUTPUT_CHANNEL_OUT_OF_RANGE": "出力のチャンネルが範囲外です",
   "routing.issue.OVERLAPPING_OUTPUTS": "出力のチャンネルがメインの出力かほかの出力と重なっています",
   "routing.issue.UNDELAYED_LOOP": "遅延ノードを通らないループがあるため適用できません",
+  "routing.issue.UNKNOWN_PLUGIN": "見つからないプラグインが挿してあるため適用できません",
+  "routing.issue.UNSUPPORTED_PLUGIN": "音源のプラグイン（VSTi）は挿せません",
   "routing.buses": "バス",
   "routing.add_bus": "バスを追加",
   "routing.default_bus_name": "バス {n}",

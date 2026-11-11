@@ -174,11 +174,14 @@ json routing_to_json(const control_protocol::RoutingConfig& config) {
     for (const auto& delay : config.input_delays) {
         input_delays.push_back({{"strip_id", delay.strip_id}, {"delay_ms", delay.delay_ms}});
     }
-    return {{"buses", buses},
-            {"outputs", outputs},
-            {"sends", sends},
-            {"delays", delays},
-            {"input_delays", input_delays}};
+    json inserts = json::array();
+    for (const auto& insert : config.inserts) {
+        inserts.push_back({{"entity_id", insert.entity_id},
+                           {"target", insert.target},
+                           {"plugin_id", insert.plugin_id}});
+    }
+    return {{"buses", buses},   {"outputs", outputs},           {"sends", sends},
+            {"delays", delays}, {"input_delays", input_delays}, {"inserts", inserts}};
 }
 
 // 配列の要素を 1 つずつ読む。要素が 1 つでも読めなければ、配列全体を読めなかったものとする。
@@ -254,7 +257,20 @@ std::optional<control_protocol::RoutingConfig> read_routing(const json& object) 
                            return std::nullopt;
                        }
                        return cp::InputDelay{std::move(*id), *delay_ms};
-                   });
+                   }) &&
+        // 挿入を保存する前のバージョンのファイルには inserts がない。挿入なしとして読む。
+        (!object.contains("inserts") ||
+         read_array(object, "inserts", config.inserts,
+                    [](const json& e) -> std::optional<cp::RoutingInsert> {
+                        auto id = read_string(e, "entity_id");
+                        auto target = read_string(e, "target");
+                        auto plugin_id = read_string(e, "plugin_id");
+                        if (!id || !target || !plugin_id) {
+                            return std::nullopt;
+                        }
+                        return cp::RoutingInsert{std::move(*id), std::move(*target),
+                                                 std::move(*plugin_id)};
+                    }));
     if (!ok) {
         return std::nullopt;
     }

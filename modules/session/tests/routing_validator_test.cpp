@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// ルーティングの構成の検証のテスト。ID、参照、つなげる組み合わせ、値の範囲、ループの判定と、
+// ルーティングの構成の検証のテスト。ID、参照、つなげる組み合わせ、値の範囲、挿入、ループの判定と、
 // ルーティング画面に返す理由と entity_id を確かめる。
 
 #include "routing_validator.h"
@@ -190,6 +190,96 @@ TEST(RoutingValidatorTest, LoopsThroughADelayNodeNeedApproval) {
     EXPECT_TRUE(check.needs_approval);
     EXPECT_EQ(check.looped_entity_ids,
               (std::vector<std::string>{"bus-fx", "delay-echo", "master"}));
+}
+
+/// 挿入に使えるプラグインの一覧（エフェクト 1 つと VSTi 1 つ）。
+std::vector<PluginDescription> plugins() {
+    PluginDescription eq;
+    eq.name = "Pro EQ";
+    eq.identifier = "VST3-Pro EQ-1";
+    eq.input_channels = 2;
+    eq.output_channels = 2;
+    PluginDescription synth;
+    synth.name = "Synth";
+    synth.identifier = "VST3-Synth-2";
+    synth.is_instrument = true;
+    synth.output_channels = 2;
+    return {eq, synth};
+}
+
+/// ストリップ、Master、バスに EQ を 1 つずつ挿す構成。
+cp::RoutingConfig insert_config() {
+    auto config = monitor_config();
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "ch1", "VST3-Pro EQ-1"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-2", "master", "VST3-Pro EQ-1"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-3", "bus-cue", "VST3-Pro EQ-1"});
+    return config;
+}
+
+void expect_insert_issue(const cp::RoutingConfig& config, RoutingIssue issue,
+                         const std::optional<std::string>& entity_id) {
+    const auto list = plugins();
+    const auto check = check_routing(config, kStrips, list);
+    EXPECT_EQ(check.issue, issue);
+    EXPECT_EQ(check.issue_entity_id, entity_id);
+}
+
+TEST(RoutingValidatorTest, AcceptsInsertsOnStripsMasterAndBuses) {
+    const auto list = plugins();
+    EXPECT_EQ(check_routing(insert_config(), kStrips, list), cp::RoutingCheck{});
+}
+
+TEST(RoutingValidatorTest, RejectsInsertIdsWithoutThePrefixOrSharedWithOtherItems) {
+    auto config = insert_config();
+    config.inserts[0].entity_id = "eq";
+    expect_insert_issue(config, RoutingIssue::kInvalidId, "eq");
+
+    config = insert_config();
+    config.inserts[1].entity_id = "fx-1";
+    expect_insert_issue(config, RoutingIssue::kDuplicateId, "fx-1");
+}
+
+TEST(RoutingValidatorTest, RejectsInsertsIntoUnknownNodesOutputsAndDelays) {
+    auto config = insert_config();
+    config.inserts[0].target = "ch9";
+    expect_insert_issue(config, RoutingIssue::kUnknownNode, "fx-1");
+
+    config = insert_config();
+    config.inserts[0].target = "out-mon";
+    expect_insert_issue(config, RoutingIssue::kUnknownNode, "fx-1");
+}
+
+TEST(RoutingValidatorTest, RejectsInsertsOfPluginsMissingFromTheCatalog) {
+    auto config = insert_config();
+    config.inserts[2].plugin_id = "VST3-Gone-3";
+    expect_insert_issue(config, RoutingIssue::kUnknownPlugin, "fx-3");
+
+    // 一覧がまだないときは、どの挿入も適用できない。
+    const auto check = check_routing(insert_config(), kStrips);
+    EXPECT_EQ(check.issue, RoutingIssue::kUnknownPlugin);
+}
+
+TEST(RoutingValidatorTest, RejectsInstrumentsAsInserts) {
+    auto config = insert_config();
+    config.inserts[1].plugin_id = "VST3-Synth-2";
+    expect_insert_issue(config, RoutingIssue::kUnsupportedPlugin, "fx-2");
+}
+
+TEST(RoutingValidatorTest, RejectsMoreInsertsThanTheLimits) {
+    cp::RoutingConfig config;
+    for (std::size_t i = 0; i <= kMaxInsertsPerTarget; ++i) {
+        config.inserts.push_back(
+            cp::RoutingInsert{"fx-" + std::to_string(i), "ch1", "VST3-Pro EQ-1"});
+    }
+    expect_insert_issue(config, RoutingIssue::kTooManyItems,
+                        "fx-" + std::to_string(kMaxInsertsPerTarget));
+
+    config.inserts.clear();
+    for (std::size_t i = 0; i <= kMaxInserts; ++i) {
+        config.inserts.push_back(
+            cp::RoutingInsert{"fx-" + std::to_string(i), "master", "VST3-Pro EQ-1"});
+    }
+    expect_insert_issue(config, RoutingIssue::kTooManyItems, std::nullopt);
 }
 
 }  // namespace

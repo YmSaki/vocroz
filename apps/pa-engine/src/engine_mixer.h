@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,7 +60,8 @@ public:
     void set_master_muted(bool muted) override;
     void set_master_gain(control_protocol::GainDb gain_db) override;
     [[nodiscard]] bool apply_routing(const control_protocol::RoutingConfig& config,
-                                     bool feedback_approved) override;
+                                     bool feedback_approved,
+                                     std::span<const session::InsertedPlugin> plugins) override;
     void set_route_muted(const std::string& entity_id, bool muted) override;
     void set_route_gain(const std::string& entity_id, control_protocol::GainDb gain_db) override;
 
@@ -145,7 +147,8 @@ private:
     // 今の割り当てと構成でグラフを組み立てて差し替える。
     [[nodiscard]] bool rebuild(const MixerAssignments& assignments,
                                const control_protocol::RoutingConfig& config,
-                               bool feedback_approved);
+                               bool feedback_approved,
+                               std::span<const session::InsertedPlugin> plugins);
     void submit(const FaderOp& op);
     [[nodiscard]] bool try_submit(const FaderOp& op);
     void mute_dropped_sends(const std::vector<std::string>& dropped);
@@ -163,6 +166,8 @@ private:
     MixerAssignments assignments_;
     control_protocol::RoutingConfig routing_;
     bool feedback_approved_ = false;
+    // 読み込みの済んだ挿入。ストリップの追加などでグラフを組み立て直すときにも同じものを使う。
+    std::vector<session::InsertedPlugin> plugins_;
     std::deque<FaderOp> retry_;
     std::function<void(const std::string&)> on_strip_removal_;
     // 次に割り当てる MIDI ソースの識別子。使い回さないので、外したソースの経路の状態を

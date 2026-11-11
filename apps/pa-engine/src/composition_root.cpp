@@ -7,12 +7,17 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include "vocroz/device/factories.h"
 #include "vocroz/ipc/factories.h"
 #include "vocroz/network/factories.h"
 #include "vocroz/network/rendezvous_url.h"
 #include "vocroz/persistence/factories.h"
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
+#include "vocroz/plugin_host/constants.h"
+#include "vocroz/plugin_host/factories.h"
+#endif
 #include "vocroz/update/session_lock.h"
 
 #include "engine_config.h"
@@ -196,6 +201,9 @@ std::optional<int> CompositionRoot::start() {
         });
 
     ui_publisher_ = std::make_unique<UiEventPublisher>(*ui_channel_, *logger_);
+    // 保存した挿入のプラグインは session が start() で読み込みを頼むので、メッセージスレッドを
+    // 先に動かしておく。
+    start_juce();
     session::HostSession::Config config;
     config.host_public_key = host_keys_->public_key();
     config.invite_base_url = kInviteBaseUrl;
@@ -203,7 +211,7 @@ std::optional<int> CompositionRoot::start() {
         std::move(config),
         session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, *peer_links_,
                                     *rendezvous_tap_, *settings_, random_, clock_, *logger_,
-                                    *peer_links_, *external_output_, *secrets_});
+                                    *peer_links_, *external_output_, *secrets_, *plugin_rack_});
     peer_events_.bind(session_.get());
     const auto on_registered =
         [this](
@@ -213,8 +221,16 @@ std::optional<int> CompositionRoot::start() {
         };
     invite_relay_.set_registration_handler(on_registered);
     offline_rendezvous_.set_registration_handler(on_registered);
+    // 保存した挿入を戻すには、使えるプラグインの一覧が start() の前に要る。スキャンには時間が
+    // かかるので、前回のスキャンの記録から作った一覧を渡し、スキャンは start() の後に始める。
+    if (plugin_scan_) {
+        session_->set_available_plugins(plugin_scan_->load_saved());
+    }
     // 保存した出力デバイスは session が start() で開く。
     session_->start();
+    if (plugin_scan_) {
+        plugin_scan_->start();
+    }
 
     // UI の受け付けは、session が初期状態（全ミュート）になってから始める。
     ui_receiver_ = std::make_unique<UiMessageReceiver>(
@@ -226,9 +242,6 @@ std::optional<int> CompositionRoot::start() {
         *logger_);
     ui_channel_->set_listener(ui_receiver_.get());
     next_session_tick_ = clock_.now();
-#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
-    midi_thread_.start();
-#endif
     next_midi_scan_ = clock_.now();
     return std::nullopt;
 }
@@ -328,9 +341,9 @@ void CompositionRoot::apply_activity() {
 }
 
 void CompositionRoot::request_midi_refresh() {
-#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
     // 一覧の取得もポートの開閉も、JUCE のメッセージスレッドでしかできない。
-    midi_thread_.post([this] {
+    juce_thread_.post([this] {
         if (!device_midi_) {
             midi_catalog_ = device::make_juce_midi_device_catalog();
             device_midi_ = std::make_unique<DeviceMidiInputs>(DeviceMidiInputs::Ports{
@@ -345,12 +358,51 @@ void CompositionRoot::request_midi_refresh() {
 #endif
 }
 
-void CompositionRoot::stop_midi() {
-#if defined(VOCROZ_PA_ENGINE_HAS_MIDI)
-    // ポートを閉じてから JUCE を終える。キューは Panic を求めてから閉じるので、音は残らない。
-    midi_thread_.stop([this] {
+void CompositionRoot::start_juce() {
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
+    juce_thread_.start();
+    engine_plugin_rack_ = std::make_unique<EnginePluginRack>(EnginePluginRack::Ports{
+        [this](EnginePluginRack::Task task) { return juce_thread_.post(std::move(task)); },
+        [] { return plugin_host::make_vst3_plugin_loader(); },
+        [] { return plugin_host::make_juce_plugin_editor_host(); },
+        [this](const std::string& insert_id, session::PluginLoadTicket ticket,
+               EnginePluginRack::LoadResult result) {
+            // メッセージスレッドから呼ばれるので、コントロールスレッドへ移して session に渡す。
+            loop_.post([this, insert_id, ticket, result = std::move(result)] {
+                session_->on_plugin_loaded(insert_id, ticket, result);
+            });
+        },
+        *logger_});
+    plugin_rack_ = engine_plugin_rack_.get();
+
+    plugin_catalog_store_ = persistence::make_json_plugin_catalog_store(data_dir_, *logger_);
+    // スキャン用ヘルパーは pa-engine.exe と同じフォルダに置く。フォルダを決められなくても
+    // 起動は続け、ヘルパーを起動できないことをスキャンのスレッドが記録する。
+    const auto helper =
+        win::executable_directory().value_or(std::filesystem::path{}) / L"pa-plugin-scanner.exe";
+    plugin_scanner_ = plugin_host::make_helper_plugin_scanner(helper, win::vst3_directories(),
+                                                              plugin_host::kDefaultScanTimeout);
+    plugin_scan_ = std::make_unique<PluginScanWorker>(
+        *plugin_scanner_, *plugin_catalog_store_,
+        [this](std::vector<session::PluginDescription> plugins) {
+            // スキャンのスレッドから呼ばれるので、コントロールスレッドへ移して session に渡す。
+            loop_.post(
+                [this, plugins = std::move(plugins)] { session_->set_available_plugins(plugins); });
+        },
+        *logger_);
+#endif
+}
+
+void CompositionRoot::stop_juce() {
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
+    // ポートを閉じ、プラグインを破棄してから JUCE を終える。キューは Panic を求めてから閉じる
+    // ので、音は残らない。
+    juce_thread_.stop([this] {
         device_midi_.reset();
         midi_catalog_.reset();
+        if (engine_plugin_rack_) {
+            engine_plugin_rack_->destroy_all();
+        }
     });
 #endif
 }
@@ -360,7 +412,10 @@ void CompositionRoot::shutdown() {
     if (ui_channel_) {
         ui_channel_->set_listener(nullptr);
     }
-    stop_midi();
+    // スキャンの途中なら、ファイル 1 つのスキャンが済むまで待つ（ヘルパーの制限時間が上限）。
+    if (plugin_scan_) {
+        plugin_scan_->stop();
+    }
     // 外部出力の送信スレッドを止める（宛先のソケットはドライバーと一緒に閉じる）。
     if (external_output_) {
         external_output_->stop();
@@ -368,6 +423,8 @@ void CompositionRoot::shutdown() {
     if (outputs_) {
         outputs_->close_output();
     }
+    // オーディオ出力を閉じた後なら、グラフのプラグインの処理はもう呼ばれないので破棄できる。
+    stop_juce();
     // 返送を作るオーディオ出力を閉じてから、子機への送信スレッドを止める。送信スレッドが使う
     // endpoint_ は、メンバーの破棄で先に閉じるため。
     if (peer_links_) {

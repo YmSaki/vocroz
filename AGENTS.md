@@ -86,6 +86,7 @@ C++ のコードは**ヘキサゴナルアーキテクチャ（Ports and Adapter
 | ディスク I/O スレッド（Beta2 以降） | 録音の書き出し、再生ファイルの読み込みとデコード | ブロッキング I/O を含んでよい。オーディオスレッドとはロックフリーの SPSC リングバッファだけで受け渡し、溢れたら欠落として記録してオーディオスレッドを待たせない |
 | 送信スレッド | メディアと制御のパケットの暗号化と UDP の送信。子機は 1 本、親機は子機との接続ごとに 1 本（`docs/adr/0030-remote-pa-assembly.md`、`docs/adr/0036-return-monitor.md`） | ブロッキング I/O を含んでよい。オーディオスレッドからはエンコード済みのフレームを、コントロールスレッドからは制御パケットの平文を SPSC キューで受け取る |
 | JUCE のメッセージスレッド（`pa-engine`） | JUCE の MIDI 入力ポートの一覧、開閉、切断の通知と、プラグインのエディターのウィンドウ（`docs/adr/0039-pa-engine-juce-message-thread.md`） | JUCE の API を呼んでよい。コントロールスレッドとは分け、依頼は `MessageManager::callAsync` で受け、結果と通知はコントロールスレッドのキューへ戻す。子機は `remote-pa` の既存のメッセージループを使う |
+| プラグインのスキャンのスレッド（`pa-engine`） | `PluginCatalog` を持ち、ファイルごとにスキャン用ヘルパーを起動してスキャンし、記録を保存する（`docs/adr/0042-plugin-insert.md`） | ブロッキング I/O と子プロセスの待機を含んでよい。使えるプラグインの一覧はコントロールスレッドのキューへ戻す |
 
 スレッド間のデータの受け渡しは、6.1 のパターン（ロックフリー SPSC キュー、ダブルバッファリングによるグラフのスワップ）だけで行います。
 
@@ -147,7 +148,7 @@ cmake/         CMake の共通関数と、外部ライブラリの取得（cmake
 | `audio-core` | ドメイン | オーディオグラフ、ミキサー、ゲインランプ、リミッター、レベルメーターの算出。オーディオ入出力のポート。ルーティンググラフ、フィードバックループの検出、PDC、Minus-Me のミックス、録音タップと再生ノード、プラグインノード、MIDI の処理と Panic と、`PluginProcessor`、`AudioFileWriter`、`AudioFileReader`、`MidiInput` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧の `AudioDeviceCatalog` のポート（`docs/adr/0023-wasapi-device-io.md`）。MIDI ソースの `MidiSource` のポートと、MIDI の入力 1 系統のキュー `MidiInputQueue`（`docs/adr/0029-midi-and-vsti.md`）。MIDI 入力ポートの一覧の `MidiDeviceCatalog` と、受信した MIDI を受け取る `MidiInputCallback` のポート（同） | デバイス制御（`device`）、ネットワーク（`transport`） |
 | `transport` | ドメイン | ワイヤーフォーマット、Noise による鍵交換と AEAD（libsodium）、信頼制御層、Opus のエンコードとデコード、ジッターバッファ、クロックドリフト補正。ソケットのポート。親機から子機への下りストリーム、ステレオと複数ストリーム、MIDI 専用チャンネル（Beta、`docs/adr/0009-beta-module-layout.md`）。外部の受信機へ送る SRTP 外部出力の RTP の組み立てと SRTP の暗号化（libsrtp。子機と親機の間の形式とは部品を共有しない。`docs/adr/0040-srtp-external-output.md`） | 参加者と承認の判断（`session`）、ソケットの実装（`network`） |
 | `control-protocol` | ドメイン | UI とエンジン間のコマンドとイベントの DTO、JSON のシリアライズとデシリアライズ。メッセージを送受信する `MessageChannel` ポートと、2 つのチャンネルをつなぐ `ChannelRelay` | ビジネスロジック、状態（`session`） |
-| `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。子機の MIDI のデコード、時刻の写し方、承認済みの接続だけを受け付ける `PeerMidiInbox`（`docs/adr/0029-midi-and-vsti.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
+| `session` | ドメイン | 招待（招待 URL、`vocroz://` の引数、招待コードのパースと検証を含む）、承認、再接続、参加者とチャンネルストリップの状態、コマンドの適用。設定の永続化とランデブー通信のポート。ルーティングのステージングと適用、返送の設定、録音の状態、プラグインの一覧と挿入と、`PluginLoader`、`PluginScanner`、`PluginEditorHost` のポート（Beta、`docs/adr/0009-beta-module-layout.md`）。挿入のプラグインの読み込みと破棄を依頼する `PluginRack` のポート（`docs/adr/0042-plugin-insert.md`）。子機の MIDI のデコード、時刻の写し方、承認済みの接続だけを受け付ける `PeerMidiInbox`（`docs/adr/0029-midi-and-vsti.md`） | ワイヤーフォーマット（`transport`）、DSP（`audio-core`） |
 | `device` | アダプター | WASAPI によるオーディオ入出力、エンドポイント ID の解決、デバイス抜去の検知。JUCE の `MidiInput` による MIDI デバイスの列挙（永続 ID）、入力、抜去の検知（Beta、`docs/adr/0009-beta-module-layout.md`）。デバイスの一覧（`AudioDeviceCatalog` の実装）と、子機のマイク入力にも使う `AudioInput` の実装（`docs/adr/0023-wasapi-device-io.md`） | ミュートなどのポリシー判断（`session`。`device` は検知をイベントとして通知するだけ） |
 | `capture` | アダプター | WASAPI のループバックによるアプリ音声の収集（Beta、`docs/adr/0009-beta-module-layout.md`） | 子機のマイク入力（`device` の `AudioInput`、`docs/adr/0023-wasapi-device-io.md`）、エンコード（`transport`） |
 | `network` | アダプター | Winsock の UDP ソケット、ランデブーサーバーとの HTTP 通信。受信の振り分け、ランデブーメッセージと PCP、NAT-PMP のパース（`src/wire/`）、UDP ホールパンチ、自動ポート開放（PCP、NAT-PMP、UPnP-IGD）（`docs/adr/0021-udp-socket-and-nat-traversal.md`） | 子機と親機の間のパケットのパース（`transport`） |
@@ -662,11 +663,19 @@ CI はビルドとテストの成否だけを検査します。構造のドリ�
 ## 16. GitHub の運用
 
 - **Issue**: すべての作業は Issue から始める。テンプレートは「機能」「不具合」「配置のずれ」の 3 種類。
-- **ラベル**: 種類（`type:`）、領域（`area:`）、状態（`status:`）の 3 軸で付ける。定義は `.github/labels.yml`。
+- **ラベル**: 種類（`type:`）、領域（`area:`）、状態（`status:`）、優先度（`priority:` の `high`、`mid`、`low`、`icebox`）の 4 軸で付ける。優先度は 1 つの Issue に 1 つだけ付ける。定義は `.github/labels.yml`。
 - **マイルストーン**: 実装計画のフェーズ（P0〜P6、Beta1〜6、RC1、v1.0）。定義は `.github/milestones.yml`。ラベルとマイルストーンを変更したら、Actions の「Repository setup」を手動実行して反映する。
 - **ブランチ名**: `<種類>/<短い説明>`（例: `feat/jitter-buffer`、`fix/reconnect-strip`、`refactor/move-constants`）。
 - **コミットメッセージ**: Conventional Commits（`feat:`、`fix:`、`refactor:`、`docs:`、`test:`、`build:`、`ci:`）。本文は日本語でよい。
 - **PR**: テンプレートを埋め、`Closes #<Issue 番号>` で Issue をリンクする。CI の成功後にマージする。`main` へ直接 push しない。
+- **ドラフト PR と通常 PR**: 2 つは、レビュアーに何を求めるかで使い分ける。
+    - 通常 PR（ready for review）は「このままマージしてよいかを判断してほしい」という依頼。レビュアーはマージの可否を判断し、問題がなければマージする。
+    - ドラフト PR は「作業中で、まだマージの判断を求めていない」という表明。用途は、CI を回しながら作業を続ける、設計の方向性だけを先に見てもらう、複数の PR に分けた作業の途中経過を共有する、の 3 つ。レビュアーはマージの判断をせず、求められた点だけにコメントする。
+    - PR を出すときは、次の順に判定する。
+        1. 変更が小さく、作業がすでに終わっているか（文書の修正、定数の変更、単一ファイルで閉じる修正など） → 最初から通常 PR で出す。ドラフトを経由しない。
+        2. CI の結果や途中のフィードバックを見ながら作業を続けるか → ドラフト PR で出す。
+    - ドラフト PR は、マージできる状態（14 の Definition of Done を満たし、CI が成功している）になった時点で、作者が通常 PR（ready for review）に変える。作業が終わったのにドラフトのまま置かない。ドラフトのままではレビュアーがマージの判断を始められないため。
+    - 通常 PR に変えた後で大きな作業の追加が必要になったら、ドラフトに戻し、終わってから再び通常 PR にする。
 - **GitHub Actions**:
     - `CI`: ビルドとテスト（Windows、Linux、Go）
     - `Refactor cycle`: 月次の定期リファクタリングの Issue を作成する

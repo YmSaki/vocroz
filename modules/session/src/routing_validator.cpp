@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // ルーティングの構成の検証の実装。
-// 「件数 → ID → 出力のチャンネル → 遅延 → センド → ループ」の順に確かめ、最初の問題を返す。
+// 「件数 → ID → 出力のチャンネル → 遅延 → センド → 挿入 → ループ」の順に確かめ、最初の問題を返す。
 // 先に ID と参照を確かめておくと、ループの検出はノードがそろったグラフだけを相手にできる。
 
 #include "routing_validator.h"
@@ -55,34 +55,36 @@ using NodeTable = std::map<std::string, Role, std::less<>>;
 
 Outcome check_counts(const cp::RoutingConfig& config) {
     if (config.buses.size() > kMaxRoutingBuses || config.outputs.size() > kMaxRoutingOutputs ||
-        config.sends.size() > kMaxRoutingSends || config.delays.size() > kMaxRoutingDelays) {
+        config.sends.size() > kMaxRoutingSends || config.delays.size() > kMaxRoutingDelays ||
+        config.inserts.size() > kMaxInserts) {
         return Problem{RoutingIssue::kTooManyItems, std::nullopt};
     }
     return std::nullopt;
 }
 
 /// 種類ごとの接頭辞と一意性を確かめて、ノードを表に登録する。
-/// センドもノードではないが ID の一意性の対象にする（フェーダーの entity_id になるため）。
+/// センドと挿入もノードではないが ID の一意性の対象にする（どちらも UI が entity_id
+/// で操作するため）。
 Outcome register_ids(const cp::RoutingConfig& config, std::span<const std::string> strip_ids,
                      NodeTable& nodes) {
     for (const auto& id : strip_ids) {
         nodes.emplace(id, Role::kStrip);
     }
     nodes.emplace(kMasterEntityId, Role::kMaster);
-    std::set<std::string, std::less<>> send_ids;
+    std::set<std::string, std::less<>> other_ids;
 
     const auto add = [&](const std::string& id, std::string_view prefix,
                          std::optional<Role> role) -> Outcome {
         if (!id.starts_with(prefix) || id.size() == prefix.size()) {
             return problem(RoutingIssue::kInvalidId, id);
         }
-        if (nodes.contains(id) || send_ids.contains(id)) {
+        if (nodes.contains(id) || other_ids.contains(id)) {
             return problem(RoutingIssue::kDuplicateId, id);
         }
         if (role) {
             nodes.emplace(id, *role);
         } else {
-            send_ids.insert(id);
+            other_ids.insert(id);
         }
         return std::nullopt;
     };
@@ -103,6 +105,11 @@ Outcome register_ids(const cp::RoutingConfig& config, std::span<const std::strin
     }
     for (const auto& send : config.sends) {
         if (auto p = add(send.entity_id, kSendIdPrefix, std::nullopt)) {
+            return p;
+        }
+    }
+    for (const auto& insert : config.inserts) {
+        if (auto p = add(insert.entity_id, kInsertIdPrefix, std::nullopt)) {
             return p;
         }
     }
@@ -205,6 +212,45 @@ Outcome check_sends(const cp::RoutingConfig& config, const NodeTable& nodes) {
     return std::nullopt;
 }
 
+/// 挿入は、ストリップ、Master、バスの処理の直後に置く。出力と遅延ノードは素通しの段なので挿さない。
+[[nodiscard]] bool can_insert_into(Role role) noexcept {
+    switch (role) {
+        case Role::kStrip:
+        case Role::kMaster:
+        case Role::kBus:
+            return true;
+        case Role::kOutput:
+        case Role::kDelay:
+            return false;
+    }
+    return false;
+}
+
+Outcome check_inserts(const cp::RoutingConfig& config, const NodeTable& nodes,
+                      std::span<const PluginDescription> plugins) {
+    std::map<std::string_view, std::size_t> per_target;
+    for (const auto& insert : config.inserts) {
+        const auto target = nodes.find(insert.target);
+        if (target == nodes.end() || !can_insert_into(target->second)) {
+            return problem(RoutingIssue::kUnknownNode, insert.entity_id);
+        }
+        if (++per_target[insert.target] > kMaxInsertsPerTarget) {
+            return problem(RoutingIssue::kTooManyItems, insert.entity_id);
+        }
+        const auto plugin = std::find_if(
+            plugins.begin(), plugins.end(),
+            [&](const PluginDescription& d) { return d.identifier == insert.plugin_id; });
+        if (plugin == plugins.end()) {
+            return problem(RoutingIssue::kUnknownPlugin, insert.entity_id);
+        }
+        // VSTi は音声入力を持たず、挿しても前段の音を消すだけになる。音源の置き場所は別に決める。
+        if (plugin->is_instrument) {
+            return problem(RoutingIssue::kUnsupportedPlugin, insert.entity_id);
+        }
+    }
+    return std::nullopt;
+}
+
 /// ループの検出のためだけのグラフ。フェーダーやメーターの識別子はループの判定に使わないので 0
 /// にする。
 struct LoopGraph {
@@ -261,7 +307,8 @@ std::vector<std::string> names_of(const LoopGraph& graph, const std::vector<ac::
 }  // namespace
 
 cp::RoutingCheck check_routing(const cp::RoutingConfig& config,
-                               std::span<const std::string> strip_ids) {
+                               std::span<const std::string> strip_ids,
+                               std::span<const PluginDescription> plugins) {
     NodeTable nodes;
     Outcome outcome = check_counts(config);
     if (!outcome) {
@@ -275,6 +322,9 @@ cp::RoutingCheck check_routing(const cp::RoutingConfig& config,
     }
     if (!outcome) {
         outcome = check_sends(config, nodes);
+    }
+    if (!outcome) {
+        outcome = check_inserts(config, nodes, plugins);
     }
     cp::RoutingCheck check;
     if (outcome) {

@@ -56,7 +56,7 @@ RoutingBook::RoutingBook() {
 }
 
 void RoutingBook::stage(cp::RoutingConfig config, std::span<const std::string> strip_ids) {
-    auto check = check_routing(config, strip_ids);
+    auto check = check_routing(config, strip_ids, plugins_);
     info_.staged = cp::StagedRouting{std::move(config), std::move(check)};
     detail::bump_revision(info_.revision);
 }
@@ -76,7 +76,7 @@ common::Result<void, ErrorCode> RoutingBook::prepare_commit(
         return common::make_unexpected(ErrorCode::kInvalidState);
     }
     // ステージングのあとでストリップが削除されていることがあるので、適用の直前に検証し直す。
-    info_.staged->check = check_routing(info_.staged->config, strip_ids);
+    info_.staged->check = check_routing(info_.staged->config, strip_ids, plugins_);
     const auto& check = info_.staged->check;
     if (check.issue || (check.needs_approval && !approve_feedback)) {
         return common::make_unexpected(ErrorCode::kInvalidState);
@@ -93,6 +93,15 @@ void RoutingBook::commit() {
     detail::bump_revision(info_.revision);
 }
 
+void RoutingBook::set_plugins(std::vector<PluginDescription> plugins,
+                              std::span<const std::string> strip_ids) {
+    plugins_ = std::move(plugins);
+    if (info_.staged) {
+        // 検証の結果は観測値なので、変わっても revision は進めない。
+        info_.staged->check = check_routing(info_.staged->config, strip_ids, plugins_);
+    }
+}
+
 cp::RouteLevel* RoutingBook::find_level(const std::string& entity_id) noexcept {
     const auto it = std::find_if(info_.levels.begin(), info_.levels.end(),
                                  [&](const auto& level) { return level.entity_id == entity_id; });
@@ -104,19 +113,22 @@ bool RoutingBook::forget_strip(const std::string& strip_id,
     auto& applied = info_.applied;
     const auto sends_before = applied.sends.size();
     const auto delays_before = applied.input_delays.size();
+    const auto inserts_before = applied.inserts.size();
     std::erase_if(applied.sends,
                   [&](const auto& send) { return send.from == strip_id || send.to == strip_id; });
     std::erase_if(applied.input_delays,
                   [&](const auto& delay) { return delay.strip_id == strip_id; });
-    const bool changed =
-        applied.sends.size() != sends_before || applied.input_delays.size() != delays_before;
+    std::erase_if(applied.inserts, [&](const auto& insert) { return insert.target == strip_id; });
+    const bool changed = applied.sends.size() != sends_before ||
+                         applied.input_delays.size() != delays_before ||
+                         applied.inserts.size() != inserts_before;
     if (changed) {
         info_.levels = levels_for(applied, info_.levels);
         detail::bump_revision(info_.revision);
     }
     if (info_.staged) {
         // 検証の結果は観測値なので、変わっても revision は進めない。
-        info_.staged->check = check_routing(info_.staged->config, strip_ids);
+        info_.staged->check = check_routing(info_.staged->config, strip_ids, plugins_);
     }
     return changed;
 }
@@ -134,6 +146,7 @@ cp::RoutingConfig without_strip_references(cp::RoutingConfig config) {
     };
     std::erase_if(config.sends,
                   [&](const auto& send) { return !defined(send.from) || !defined(send.to); });
+    std::erase_if(config.inserts, [&](const auto& insert) { return !defined(insert.target); });
     config.input_delays.clear();
     return config;
 }

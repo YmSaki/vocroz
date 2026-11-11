@@ -48,7 +48,8 @@ void HarnessMixer::set_master_gain(control_protocol::GainDb gain_db) {
 }
 
 bool HarnessMixer::apply_routing(const control_protocol::RoutingConfig& /*config*/,
-                                 bool /*feedback_approved*/) {
+                                 bool /*feedback_approved*/,
+                                 std::span<const session::InsertedPlugin> /*plugins*/) {
     return true;
 }
 
