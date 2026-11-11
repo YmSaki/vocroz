@@ -45,10 +45,6 @@
     right: 0;
 }
 
-.fader__track:focus-visible {
-    box-shadow: 0 0 0 2px var(--color-focus);
-}
-
 .fader__mark {
     /* 線の太さの中心を値の位置に合わせる（つまみも中心を値の位置に合わせている）。 */
     position: absolute;
