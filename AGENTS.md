@@ -663,7 +663,7 @@ CI はビルドとテストの成否だけを検査します。構造のドリ�
 ## 16. GitHub の運用
 
 - **Issue**: すべての作業は Issue から始める。テンプレートは「機能」「不具合」「配置のずれ」の 3 種類。
-- **ラベル**: 種類（`type:`）、領域（`area:`）、状態（`status:`）の 3 軸で付ける。定義は `.github/labels.yml`。
+- **ラベル**: 種類（`type:`）、領域（`area:`）、状態（`status:`）、優先度（`priority:` の `high`、`mid`、`low`、`icebox`）の 4 軸で付ける。優先度は 1 つの Issue に 1 つだけ付ける。定義は `.github/labels.yml`。
 - **マイルストーン**: 実装計画のフェーズ（P0〜P6、Beta1〜6、RC1、v1.0）。定義は `.github/milestones.yml`。ラベルとマイルストーンを変更したら、Actions の「Repository setup」を手動実行して反映する。
 - **ブランチ名**: `<種類>/<短い説明>`（例: `feat/jitter-buffer`、`fix/reconnect-strip`、`refactor/move-constants`）。
 - **コミットメッセージ**: Conventional Commits（`feat:`、`fix:`、`refactor:`、`docs:`、`test:`、`build:`、`ci:`）。本文は日本語でよい。
