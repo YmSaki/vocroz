@@ -1,5 +1,5 @@
 # リポジトリのラベル定義。「Repository setup」ワークフローで GitHub に反映する。
-# 種類（type）・領域（area）・状態（status）の 3 軸で付ける。
+# 種類（type）・領域（area）・状態（status）・優先度（priority）の 4 軸で付ける。
 - { name: "type: feature",  color: "1d76db", description: "機能の追加" }
 - { name: "type: bug",      color: "d73a4a", description: "不具合" }
 - { name: "type: refactor", color: "a2eeef", description: "動作を変えない構造の改善" }
@@ -14,4 +14,8 @@
 - { name: "area: release",   color: "c5def5", description: "インストーラー・更新・署名" }
 - { name: "status: must-fix", color: "b60205", description: "絶対原則・依存の向き・リアルタイム・セキュリティ違反。次の定期サイクルを待たずに直す" }
 - { name: "status: blocked",  color: "000000", description: "外部の判断や作業待ち" }
+- { name: "priority: high",   color: "d93f0b", description: "優先度: 高。ほかの作業より先に着手する" }
+- { name: "priority: mid",    color: "f9d0c4", description: "優先度: 中。いまのマイルストーンのうちに片付ける" }
+- { name: "priority: low",    color: "c2e0c6", description: "優先度: 低。手が空いたときに着手する" }
+- { name: "priority: icebox", color: "d4c5f9", description: "当面は着手しない。必要になったら優先度を付け直す" }
 - { name: "good first task",  color: "7057ff", description: "小さく独立した作業" }
