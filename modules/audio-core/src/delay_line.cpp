@@ -43,4 +43,13 @@ void DelayLine::write(std::span<const float> in) noexcept VOCROZ_NONBLOCKING {
     }
 }
 
+bool DelayLine::adopt(DelayLine& previous) noexcept VOCROZ_NONBLOCKING {
+    if (previous.buffer_.size() != buffer_.size()) {
+        return false;
+    }
+    buffer_.swap(previous.buffer_);
+    std::swap(position_, previous.position_);
+    return true;
+}
+
 }  // namespace vocroz::audio_core

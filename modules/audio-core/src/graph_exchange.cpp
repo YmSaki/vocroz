@@ -43,10 +43,13 @@ RenderGraph* GraphExchange::acquire() noexcept VOCROZ_NONBLOCKING {
     if (retired_.load(std::memory_order_acquire) == nullptr) {
         RenderGraph* incoming = pending_.exchange(nullptr, std::memory_order_acq_rel);
         if (incoming != nullptr) {
-            // 退役させる前に発音中のノートを引き継ぐ。退役させた後はコントロールスレッドが
-            // いつ破棄してもよいので、ここでしか読めない。
+            // 退役させる前に発音中のノートと音声の履歴を引き継ぐ。退役させた後はコントロール
+            // スレッドがいつ破棄してもよいので、ここでしか読めない。音声の履歴は、古いグラフが
+            // 最後のブロックまで処理した時点のものが要るので、オーディオスレッド外では写せない。
+            // 引き継ぎはバッファの交換だけで、確保もコピーもしない。
             if (active_ != nullptr) {
                 incoming->adopt_midi_state(*active_);
+                incoming->adopt_audio_history(*active_);
             }
             retired_.store(active_, std::memory_order_release);
             active_ = incoming;
