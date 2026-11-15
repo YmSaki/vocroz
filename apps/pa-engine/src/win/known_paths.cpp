@@ -61,4 +61,12 @@ std::vector<std::filesystem::path> vst3_directories() {
     return directories;
 }
 
+std::optional<std::filesystem::path> default_media_folder() {
+    const auto music = known_folder(FOLDERID_Music);
+    if (!music) {
+        return std::nullopt;
+    }
+    return *music / L"VOCROZ";
+}
+
 }  // namespace vocroz::engine::win

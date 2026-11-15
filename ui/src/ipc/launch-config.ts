@@ -2,8 +2,9 @@
 // 起動時にネイティブ側から受け取る設定（モード、表示言語、招待）を読む。
 //
 // JUCE 上では WebBrowserComponent の初期化データ（window.__JUCE__.initialisationData）で受け取る。
-// 親機モードでは、ミキサーの窓とルーティングの窓を別の WebView で開くので、どちらの画面かと、
-// コマンドの request_id の接頭辞も受け取る（docs/adr/0038-routing-window.md）。
+// 親機モードでは、ミキサー、ルーティング、メディアの窓を別の WebView で開くので、どの画面かと、
+// コマンドの request_id の接頭辞も受け取る（docs/adr/0038-routing-window.md、
+// docs/adr/0043-recording-and-media-player.md）。
 // remote-pa は起動引数（--mode、--lang、--join）を検証してからここに渡す（docs/adr/0007-launch-interface.md）。
 // ブラウザでの開発時は、同じ名前の URL のクエリ（?mode=client&lang=en&join=...）で指定する。
 
@@ -11,7 +12,7 @@
 export type UiMode = "host" | "client";
 
 /** 窓に表示する画面。 */
-export type UiScreen = "main" | "routing";
+export type UiScreen = "main" | "routing" | "media";
 
 /** 起動時の設定。 */
 export interface LaunchConfig {
@@ -35,6 +36,11 @@ function readString(value: unknown): string | undefined {
   return typeof first === "string" && first !== "" ? first : undefined;
 }
 
+/** 画面の指定を読む。知らない値は主画面にする。 */
+function screenOf(value: string | undefined): UiScreen {
+  return value === "routing" || value === "media" ? value : "main";
+}
+
 /**
  * 起動時の設定を読む。初期化データを URL のクエリより優先する。
  * @param initialisationData JUCE の初期化データ。JUCE 上でなければ undefined
@@ -52,7 +58,7 @@ export function readLaunchConfig(
     mode: pick("mode") === "client" ? "client" : "host",
     lang: pick("lang"),
     invite: pick("join"),
-    screen: pick("screen") === "routing" ? "routing" : "main",
+    screen: screenOf(pick("screen")),
     requestPrefix: pick("request_prefix"),
   };
 }

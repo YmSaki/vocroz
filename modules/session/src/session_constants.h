@@ -96,6 +96,18 @@ inline constexpr std::size_t kMaxInserts = 32;
 /// 見逃さない長さで、時計の進み方のずれ（100 ppm で 4 秒あたり 0.4ms）が溜まらない短さにする。
 inline constexpr std::chrono::seconds kMidiTimelineWindow{2};
 
+/// 録音のファイル名に使う表示名の上限（バイト）。番号と拡張子を足しても、
+/// control-protocol のファイル名の上限（128
+/// バイト）に収まる（docs/adr/0043-recording-and-media-player.md）。
+inline constexpr std::size_t kMaxRecordingNameBytes = 80;
+
+/// 録音中に経過時間と欠落を UI へ送る間隔。秒の表示が滑らかに進み、メッセージを増やしすぎない間隔。
+inline constexpr std::chrono::seconds kRecorderPublishInterval{1};
+
+/// 再生中に再生位置を UI へ送る間隔。シークバーの動きとして十分な細かさで、メッセージを
+/// 増やしすぎない間隔。
+inline constexpr std::chrono::milliseconds kMediaPositionPublishInterval{250};
+
 // UI とスナップショットで使う固定の entity_id（kSessionEntityId など）は、ミキサーの組み立て
 // （pa-engine）もルーティングの送り元と送り先を引くのに使うので、公開ヘッダーに置いている。
 

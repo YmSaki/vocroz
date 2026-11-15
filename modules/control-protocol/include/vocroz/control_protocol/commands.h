@@ -199,14 +199,65 @@ struct OpenPluginEditor {
     friend bool operator==(const OpenPluginEditor&, const OpenPluginEditor&) = default;
 };
 
+/// 録音の設定を変える（親機）。対象は "recorder"。
+/// 録音中は INVALID_STATE で拒否する。録る対象がストリップ、Master、バスのどれでもなければ
+/// NOT_FOUND で拒否する（docs/adr/0043-recording-and-media-player.md）。
+struct SetRecorderConfig {
+    RecorderConfig config;
+    friend bool operator==(const SetRecorderConfig&, const SetRecorderConfig&) = default;
+};
+
+/// 録音を開始か停止する（親機）。対象は "recorder"。
+/// 録る対象がなければ、開始は INVALID_STATE で拒否する。ファイルを開けなかったときは
+/// コマンドを受け付けたうえで STOPPED のまま Recorder::last_result で知らせる。
+struct SetRecording {
+    bool recording = false;
+    friend bool operator==(const SetRecording&, const SetRecording&) = default;
+};
+
+/// メディアプレイヤーにファイルを読み込む（親機）。対象は "media_player"。
+/// path はライブラリの相対パス。空ならファイルを外す。ライブラリにないパスは NOT_FOUND で拒否する。
+/// 開けなかったときはコマンドを受け付けたうえで、ファイルなしのまま MediaPlayer::last_result
+/// で知らせる。
+struct LoadMedia {
+    std::string path;
+    friend bool operator==(const LoadMedia&, const LoadMedia&) = default;
+};
+
+/// メディアプレイヤーを再生、一時停止、停止する（親機）。対象は "media_player"。
+/// ファイルがなければ INVALID_STATE で拒否する。停止は一時停止と先頭へのシーク。
+struct SetMediaTransport {
+    MediaTransport transport = MediaTransport::kStopped;
+    friend bool operator==(const SetMediaTransport&, const SetMediaTransport&) = default;
+};
+
+/// メディアプレイヤーの再生位置を移す（親機）。対象は "media_player"。
+/// ファイルがなければ INVALID_STATE で拒否する。長さを超える位置は終わりとして扱う。
+struct SeekMedia {
+    std::uint64_t position_ms = 0;
+    friend bool operator==(const SeekMedia&, const SeekMedia&) = default;
+};
+
+/// メディアプレイヤーの流す先を変える（親機）。対象は "media_player"。
+/// Master か適用中のルーティングのバスでなければ NOT_FOUND で拒否する。
+struct SetMediaTarget {
+    std::string target;
+    friend bool operator==(const SetMediaTarget&, const SetMediaTarget&) = default;
+};
+
+/// メディアのライブラリを作り直す（親機）。対象は "media_player"。
+struct RefreshMediaLibrary {
+    friend bool operator==(const RefreshMediaLibrary&, const RefreshMediaLibrary&) = default;
+};
+
 /// 離散コマンドの種類ごとの本体。
-using DiscreteCommandBody =
-    std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
-                 RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
-                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput,
-                 SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget,
-                 SetExternalOutputConfig, SetExternalOutputKey, SetExternalOutputRunning,
-                 TestExternalOutput, RescanPlugins, OpenPluginEditor>;
+using DiscreteCommandBody = std::variant<
+    CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant, RejectParticipant,
+    RemoveStrip, Join, Leave, SelectInput, SetSendMute, StageRouting, CommitRouting, DiscardRouting,
+    SetRouteMute, SelectOutput, SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget,
+    SetExternalOutputConfig, SetExternalOutputKey, SetExternalOutputRunning, TestExternalOutput,
+    RescanPlugins, OpenPluginEditor, SetRecorderConfig, SetRecording, LoadMedia, SetMediaTransport,
+    SeekMedia, SetMediaTarget, RefreshMediaLibrary>;
 
 /// 離散コマンド。
 struct DiscreteCommand {

@@ -74,6 +74,9 @@ public:
         }
         ctx.restore_routing();
         ctx.restore_external_output();
+        // 録る対象のバスを確かめるので、ルーティングを戻した後で戻す。録音も再生も止めたまま。
+        ctx.media.restore(ctx.settings.recorder,
+                          [this](const std::string& id) { return ctx.recording_label(id); });
         ctx.refresh_output_devices();
         open_saved_output_device();
     }
@@ -195,6 +198,7 @@ public:
                 ctx.notice(cp::NoticeSeverity::kWarning, "participant_lost", label(p.strip));
             }
         }
+        ctx.media.tick();
     }
 
     HostContext ctx;

@@ -63,6 +63,7 @@ beforeEach(async () => {
       linkStats={new LinkStatsStore()}
       toasts={toasts}
       onOpenRouting={() => {}}
+      onOpenMedia={() => {}}
       writeClipboard={(text) => {
         copied.push(text);
         return Promise.resolve();

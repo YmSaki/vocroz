@@ -80,6 +80,22 @@ inline constexpr std::size_t kMaxPluginCatalogPageEntries = 24;
 /// なので、挿入の状態（32 件）と合わせても 1 メッセージに収まる数にする。
 inline constexpr std::size_t kMaxBlockedPluginFiles = 32;
 
+/// 録音で同時に録れるトラックの数の上限。ストリップ 24 本とバス、Master をまとめて録れる数で、
+/// ディスク I/O スレッドの書き出し（FLAC のエンコードを含む）が 1 周期に収まる数にする
+/// （docs/adr/0043-recording-and-media-player.md）。
+inline constexpr std::size_t kMaxRecordingTracks = 32;
+
+/// メディアフォルダのパスの最大バイト数。Windows の長いパスの実用上限に余裕を持たせる。
+inline constexpr std::size_t kMaxMediaFolderBytes = 1024;
+
+/// メディアのライブラリのファイルの相対パスの最大バイト数。テイクのフォルダ（15 文字）と
+/// ファイル名（番号、表示名 80 バイト、拡張子）が収まる長さ。
+inline constexpr std::size_t kMaxMediaPathBytes = 240;
+
+/// メディアのライブラリに載せるファイルの数の上限。上限まで並べても、スナップショットが
+/// kMaxMessageBytes に収まる数にする（docs/adr/0043-recording-and-media-player.md）。
+inline constexpr std::size_t kMaxMediaFiles = 128;
+
 /// revision とシーケンス番号の最大値。UI（JavaScript）の数値で正確に表せる最大の整数（2^53 - 1）。
 inline constexpr std::uint64_t kMaxCounter = (std::uint64_t{1} << 53) - 1;
 

@@ -6,6 +6,7 @@
 #include "wire/event_codec.h"
 
 #include <type_traits>
+#include <utility>
 
 #include "wire/entity_codec.h"
 #include "wire/field_rules.h"
@@ -119,6 +120,34 @@ void read_fields(ObjectReader& r, PluginCatalogPage& event) {
     event.plugins = r.list<PluginEntry>("plugins", read_plugin_entry);
     if (event.plugins.size() > kMaxPluginCatalogPageEntries) {
         r.fail(DecodeErrorCode::kOutOfRange, "plugins");
+    }
+}
+
+void write_fields(nlohmann::json& out, const RecorderUpdated& event) {
+    out["recorder"] = write_json(event.recorder);
+}
+void read_fields(ObjectReader& r, RecorderUpdated& event) {
+    event.recorder = r.nested<Recorder>("recorder", read_recorder);
+}
+
+void write_fields(nlohmann::json& out, const MediaPlayerUpdated& event) {
+    out["media_player"] = write_json(event.media_player);
+}
+void read_fields(ObjectReader& r, MediaPlayerUpdated& event) {
+    event.media_player = r.nested<MediaPlayer>("media_player", read_media_player);
+}
+
+void write_fields(nlohmann::json& out, const MediaLibraryUpdated& event) {
+    nlohmann::json files = nlohmann::json::array();
+    for (const auto& file : event.files) {
+        files.push_back(write_json(file));
+    }
+    out["files"] = std::move(files);
+}
+void read_fields(ObjectReader& r, MediaLibraryUpdated& event) {
+    event.files = r.list<MediaFile>("files", read_media_file);
+    if (event.files.size() > kMaxMediaFiles) {
+        r.fail(DecodeErrorCode::kOutOfRange, "files");
     }
 }
 

@@ -16,9 +16,11 @@ inline constexpr std::string_view kToEngineEventId = "vocroz.to_engine";
 inline constexpr std::string_view kFromEngineEventId = "vocroz.from_engine";
 
 /// UI からネイティブ側へ、窓の操作を求めるイベントの ID。ui/src/ipc/juce-window.ts の
-/// kWindowEventId と同じ値。値は kOpenRoutingRequest か kCloseWindowRequest。
+/// kWindowEventId と同じ値。値は kOpenRoutingRequest、kOpenMediaRequest、kCloseWindowRequest
+/// のどれか。
 inline constexpr std::string_view kWindowEventId = "vocroz.window";
 inline constexpr std::string_view kOpenRoutingRequest = "open_routing";
+inline constexpr std::string_view kOpenMediaRequest = "open_media";
 inline constexpr std::string_view kCloseWindowRequest = "close";
 
 /// 初期化データの名前。ui/src/ipc/launch-config.ts が読む名前と同じ。

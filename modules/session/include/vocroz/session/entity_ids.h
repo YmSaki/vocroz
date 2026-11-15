@@ -26,4 +26,10 @@ inline constexpr const char* kExternalOutputEntityId = "external_output";
 /// プラグインのスキャンと挿入の状態の entity_id（docs/adr/0042-plugin-insert.md）。
 inline constexpr const char* kPluginsEntityId = "plugins";
 
+/// 録音の entity_id（docs/adr/0043-recording-and-media-player.md）。
+inline constexpr const char* kRecorderEntityId = "recorder";
+
+/// メディアプレイヤーの entity_id。
+inline constexpr const char* kMediaPlayerEntityId = "media_player";
+
 }  // namespace vocroz::session

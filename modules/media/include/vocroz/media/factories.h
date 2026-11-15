@@ -29,7 +29,7 @@ namespace vocroz::media {
 /// 1 つのスレッド（ディスク I/O スレッド）からだけ使う。
 [[nodiscard]] common::Result<std::unique_ptr<audio_core::AudioFileWriter>,
                              audio_core::AudioFileError>
-open_audio_file_writer(const std::filesystem::path& file, audio_core::AudioFileFormat format,
+make_audio_file_writer(const std::filesystem::path& file, audio_core::AudioFileFormat format,
                        std::size_t channels);
 
 /// 再生する音声ファイルを開く。WAV、AIFF、FLAC、Ogg Vorbis を読み、48 kHz に変換して返す。
@@ -41,6 +41,6 @@ open_audio_file_writer(const std::filesystem::path& file, audio_core::AudioFileF
 /// 1 つのスレッド（ディスク I/O スレッド）からだけ使う。
 [[nodiscard]] common::Result<std::unique_ptr<audio_core::AudioFileReader>,
                              audio_core::AudioFileError>
-open_audio_file_reader(const std::filesystem::path& file);
+make_audio_file_reader(const std::filesystem::path& file);
 
 }  // namespace vocroz::media

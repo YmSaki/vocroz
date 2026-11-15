@@ -18,7 +18,7 @@
 
 | ヘッダー | 内容 |
 | --- | --- |
-| `vocroz/media/factories.h` | `open_audio_file_writer()`、`open_audio_file_reader()`。JUCE を使うので `VOCROZ_WITH_JUCE` が ON のときだけ定義がある |
+| `vocroz/media/factories.h` | `make_audio_file_writer()`、`make_audio_file_reader()`。JUCE を使うので `VOCROZ_WITH_JUCE` が ON のときだけ定義がある |
 
 ## 依存してよいモジュール
 

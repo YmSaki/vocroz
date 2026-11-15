@@ -117,8 +117,6 @@ struct InsertChain {
     std::optional<ac::NodeId> last;
     /// 読み込みの済んでいない挿入があり、挿す先を通る経路を切る。
     bool cut = false;
-    /// 末尾のプラグインの出力のチャンネル数。
-    std::size_t output_channels = 0;
 };
 
 // 挿す先の挿入を、構成の順にプラグインノードとして直列につなぐ。1 つでも読み込みが済んで
@@ -136,7 +134,7 @@ InsertChain add_insert_chain(GraphWriter& writer, const cp::RoutingConfig& confi
             return plugin.entity_id == insert.entity_id;
         });
         if (it == plugins.end() || !it->processor) {
-            return InsertChain{std::nullopt, std::nullopt, true, 0};
+            return InsertChain{std::nullopt, std::nullopt, true};
         }
         chain.push_back(&*it);
     }
@@ -151,7 +149,6 @@ InsertChain add_insert_chain(GraphWriter& writer, const cp::RoutingConfig& confi
             result.first = node;
         }
         result.last = node;
-        result.output_channels = plugin->processor->layout().output_channels;
     }
     return result;
 }
@@ -207,7 +204,59 @@ void add_returns(ac::GraphDescription& graph, ac::NodeId master_input,
     (void)ac::add_minus_me_returns(graph, mix_inputs, returns);
 }
 
+// 録音タップを足す。ストリップはプリフェーダーで録り、本番中のフェーダーやミュートの操作を
+// 録音に焼き込まない。Master とバスはポストフェーダー（挿入の後、リミッターの前）で録る。
+// 対象が見つからないときと、対象のチャンネル数がトラックより多いときもタップは置き、
+// つながずに無音を録る。ほかのトラックと長さと時間軸をそろえるため。
+void add_record_taps(GraphWriter& writer, const std::vector<RecordTapAssignment>& taps,
+                     const NodeTable& strips, const NodeTable& buses,
+                     const std::map<std::string, std::size_t, std::less<>>& channels_of) {
+    for (const auto& assignment : taps) {
+        if (!assignment.track) {
+            continue;
+        }
+        const auto tap = writer.add(ac::NodeSpec::make_record_tap(ac::NodeId{}, assignment.track));
+        const std::size_t track_channels = assignment.track->channel_count();
+        if (const auto strip = find(strips, assignment.source_id)) {
+            const auto it = channels_of.find(assignment.source_id);
+            if (it != channels_of.end() && it->second <= track_channels) {
+                writer.connect(*strip, tap, ac::SendTap::kPreFader);
+            }
+        } else if (const auto bus = find(buses, assignment.source_id)) {
+            const auto it = channels_of.find(assignment.source_id);
+            if (it == channels_of.end() || it->second <= track_channels) {
+                writer.connect(*bus, tap);
+            }
+        }
+    }
+}
+
 }  // namespace
+
+std::size_t strip_channel_count(const StripAssignment& strip, const cp::RoutingConfig& config,
+                                std::span<const session::InsertedPlugin> plugins) {
+    // add_insert_chain() と同じ規則: 挿す先の挿入がすべて読み込み済みなら末尾のプラグインの出力に
+    // 合わせる（モノラルの声にステレオのリバーブなど）。1 つでも済んでいなければ経路を切るので、
+    // 受信ストリームに合わせる。
+    std::optional<std::size_t> last_output;
+    for (const auto& insert : config.inserts) {
+        if (insert.target != strip.strip_id) {
+            continue;
+        }
+        const auto it = std::ranges::find_if(plugins, [&](const session::InsertedPlugin& plugin) {
+            return plugin.entity_id == insert.entity_id;
+        });
+        if (it == plugins.end() || !it->processor) {
+            last_output.reset();
+            break;
+        }
+        last_output = it->processor->layout().output_channels;
+    }
+    if (last_output) {
+        return *last_output;
+    }
+    return strip.source ? strip.source->channel_count() : 1;
+}
 
 std::string strip_midi_key(std::string_view strip_id) {
     return "strip:" + std::string(strip_id);
@@ -224,6 +273,11 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     GraphWriter writer;
     NodeTable sources_of_sends;
     NodeTable targets_of_sends;
+    // 録音の対象と、メディアプレイヤーの流す先として引けるノード。
+    NodeTable strip_nodes;
+    NodeTable bus_outputs;
+    NodeTable bus_inputs;
+    std::map<std::string, std::size_t, std::less<>> channels_of;
     // 経路を切った段の、後段の送り元（入力のない無音の段）。
     std::vector<ac::NodeId> silent_stages;
 
@@ -245,6 +299,8 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         silent_stages.push_back(master.output);
     }
     targets_of_sends.emplace(master_entity_id, master.input);
+    bus_outputs.emplace(master_entity_id, master.output);
+    bus_inputs.emplace(master_entity_id, master.input);
 
     // ストリップと、ストリップから Master への暗黙の結線。
     for (const auto& strip : assignments.strips) {
@@ -254,9 +310,8 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         // ストリームがまだなければモノラルで置く（無音なので違いはない）。
         // 挿入があれば、末尾のプラグインの出力に合わせる（モノラルの声にステレオのリバーブなど）。
         const auto chain = add_insert_chain(writer, config, strip.strip_id, plugins);
-        const std::size_t channels = chain.last     ? chain.output_channels
-                                     : strip.source ? strip.source->channel_count()
-                                                    : 1;
+        const std::size_t channels = strip_channel_count(strip, config, plugins);
+        channels_of.emplace(strip.strip_id, channels);
         const auto node = writer.add(
             with_history(ac::NodeSpec::make_strip(ac::NodeId{}, strip.fader, strip.meter,
                                                   input_delay_of(config, strip.strip_id), channels),
@@ -274,6 +329,7 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         }
         writer.connect(node, master.input);
         sources_of_sends.emplace(strip.strip_id, node);
+        strip_nodes.emplace(strip.strip_id, node);
     }
 
     for (const auto& bus : config.buses) {
@@ -297,6 +353,8 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
             silent_stages.push_back(stage.output);
         }
         targets_of_sends.emplace(bus.entity_id, stage.input);
+        bus_outputs.emplace(bus.entity_id, stage.output);
+        bus_inputs.emplace(bus.entity_id, stage.input);
     }
 
     // 追加の出力にも安全リミッターを通す。キューの返しも出演者の耳に届く出力なので、
@@ -364,6 +422,15 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
                 writer.add(ac::NodeSpec::make_stream_tap(ac::NodeId{}, external->sink));
             writer.connect(*source, limiter);
             writer.connect(limiter, tap);
+        }
+    }
+    add_record_taps(writer, assignments.record_taps, strip_nodes, bus_outputs, channels_of);
+    if (const auto& player = assignments.player; player && player->track) {
+        // 再生ノードは停止中も、流す先がなくても置く。シークの反映は再生ノードの処理の中で行うため。
+        // 流す先は Master かバスだけ（session が検証する）。ストリップへは流さない。
+        const auto node = writer.add(ac::NodeSpec::make_player(ac::NodeId{}, player->track));
+        if (const auto target = find(bus_inputs, player->target_id)) {
+            writer.connect(node, *target);
         }
     }
     built.graph = writer.take(feedback_approved);

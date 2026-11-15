@@ -38,6 +38,9 @@ struct ConfirmText {
 /// ルーティングの窓のタイトル。窓の枠は WebView の外なので、ここに置く。
 [[nodiscard]] std::string_view routing_window_title(DialogLanguage language) noexcept;
 
+/// メディアの窓のタイトル。
+[[nodiscard]] std::string_view media_window_title(DialogLanguage language) noexcept;
+
 /// --lang の値（ja、en）から言語を決める。
 /// @param lang --lang の値
 /// @return ja なら日本語、それ以外は英語

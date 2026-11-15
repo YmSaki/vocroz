@@ -19,12 +19,15 @@
 #include "fakes/fake_external_output_control.h"
 #include "fakes/fake_host_link.h"
 #include "fakes/fake_logger.h"
+#include "fakes/fake_media_library.h"
+#include "fakes/fake_media_player_control.h"
 #include "fakes/fake_mixer_control.h"
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_playout_control.h"
 #include "fakes/fake_plugin_rack.h"
 #include "fakes/fake_plugin_scan_control.h"
+#include "fakes/fake_recorder_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
@@ -194,12 +197,16 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedFromBackup) {
     session::FakeSecureRandom random;
     session::FakePlayoutControl playout;
     session::FakeExternalOutputControl external_output;
+    session::FakeRecorderControl recorder;
+    session::FakeMediaPlayerControl media_player;
+    session::FakeMediaLibrary media_library;
     session::FakeSecretStore secrets;
     session::FakePluginRack plugins;
     session::FakePluginScanControl plugin_scan;
-    session::HostSession host{{},
-                              {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_,
-                               logger_, playout, external_output, secrets, plugins, plugin_scan}};
+    session::HostSession host{
+        {},
+        {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_, logger_, playout,
+         external_output, secrets, plugins, plugin_scan, recorder, media_player, media_library}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());
@@ -217,12 +224,16 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedAndDefaultsWhenNo
     session::FakeSecureRandom random;
     session::FakePlayoutControl playout;
     session::FakeExternalOutputControl external_output;
+    session::FakeRecorderControl recorder;
+    session::FakeMediaPlayerControl media_player;
+    session::FakeMediaLibrary media_library;
     session::FakeSecretStore secrets;
     session::FakePluginRack plugins;
     session::FakePluginScanControl plugin_scan;
-    session::HostSession host{{},
-                              {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_,
-                               logger_, playout, external_output, secrets, plugins, plugin_scan}};
+    session::HostSession host{
+        {},
+        {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_, logger_, playout,
+         external_output, secrets, plugins, plugin_scan, recorder, media_player, media_library}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());

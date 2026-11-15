@@ -368,6 +368,45 @@ std::optional<control_protocol::ExternalOutputConfig> read_external_output(const
     return config;
 }
 
+// 録音の設定（docs/adr/0043-recording-and-media-player.md）。録る対象は session が Master と
+// バスだけに絞ってから渡す。
+json recorder_to_json(const control_protocol::RecorderConfig& config) {
+    json sources = json::array();
+    for (const auto& id : config.sources) {
+        sources.push_back(id);
+    }
+    return {{"format", config.format == control_protocol::RecordingFormat::kFlac ? "flac" : "wav"},
+            {"folder", config.folder},
+            {"sources", std::move(sources)}};
+}
+
+std::optional<control_protocol::RecorderConfig> read_recorder(const json& object) {
+    auto format = read_string(object, "format");
+    auto folder = read_string(object, "folder");
+    const auto sources = object.find("sources");
+    if (!format || !folder || sources == object.end() || !sources->is_array() ||
+        folder->size() > control_protocol::kMaxMediaFolderBytes ||
+        sources->size() > control_protocol::kMaxRecordingTracks) {
+        return std::nullopt;
+    }
+    control_protocol::RecorderConfig config;
+    if (*format == "wav") {
+        config.format = control_protocol::RecordingFormat::kWav;
+    } else if (*format == "flac") {
+        config.format = control_protocol::RecordingFormat::kFlac;
+    } else {
+        return std::nullopt;
+    }
+    config.folder = std::move(*folder);
+    for (const auto& source : *sources) {
+        if (!source.is_string()) {
+            return std::nullopt;
+        }
+        config.sources.push_back(source.get<std::string>());
+    }
+    return config;
+}
+
 // 表示名などに不正な UTF-8 が入っていても保存は止めず、置換文字にして書く。
 std::string dump(const json& root) {
     return root.dump(2, ' ', false, json::error_handler_t::replace) + "\n";
@@ -389,6 +428,7 @@ std::string encode_host_settings(const session::HostSettings& settings) {
     root["route_gains"] = std::move(gains);
     root["latency_target_ms"] = settings.latency_target_ms;
     root["external_output"] = external_output_to_json(settings.external_output);
+    root["recorder"] = recorder_to_json(settings.recorder);
     return dump(root);
 }
 
@@ -442,6 +482,18 @@ std::optional<session::HostSettings> decode_host_settings(std::string_view text)
             return std::nullopt;
         }
         settings.external_output = std::move(*external_output);
+    }
+    // 録音を保存する前のバージョンのファイルにはこの値がないので、既定の設定のまま読む。
+    if (root->contains("recorder")) {
+        const auto section = root->find("recorder");
+        if (!section->is_object()) {
+            return std::nullopt;
+        }
+        auto recorder = read_recorder(*section);
+        if (!recorder) {
+            return std::nullopt;
+        }
+        settings.recorder = std::move(*recorder);
     }
     return settings;
 }

@@ -92,6 +92,12 @@ std::optional<cp::Revision> HostCommandHandler::revision_of(const std::string& e
     if (entity_id == kPluginsEntityId) {
         return kPluginsRevision;
     }
+    if (entity_id == kRecorderEntityId) {
+        return ctx_.media.recorder().revision;
+    }
+    if (entity_id == kMediaPlayerEntityId) {
+        return ctx_.media.player().revision;
+    }
     if (const auto* level = ctx_.routing.find_level(entity_id)) {
         return level->revision;
     }
@@ -158,6 +164,27 @@ HostCommandHandler::CommandResult HostCommandHandler::apply(const cp::DiscreteCo
             } else if constexpr (std::is_same_v<B, cp::OpenPluginEditor>) {
                 return id == kPluginsEntityId ? open_plugin_editor(body.insert_id)
                                               : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetRecorderConfig>) {
+                return id == kRecorderEntityId ? set_recorder_config(body.config) : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetRecording>) {
+                return id == kRecorderEntityId
+                           ? ctx_.media.set_recording(body.recording, recording_label())
+                           : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::LoadMedia>) {
+                return id == kMediaPlayerEntityId ? ctx_.media.load(body.path) : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetMediaTransport>) {
+                return id == kMediaPlayerEntityId
+                           ? ctx_.media.set_transport(body.transport, media_target())
+                           : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SeekMedia>) {
+                return id == kMediaPlayerEntityId ? ctx_.media.seek(body.position_ms)
+                                                  : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::SetMediaTarget>) {
+                return id == kMediaPlayerEntityId
+                           ? ctx_.media.set_target(body.target, media_target())
+                           : invalid_state();
+            } else if constexpr (std::is_same_v<B, cp::RefreshMediaLibrary>) {
+                return id == kMediaPlayerEntityId ? ctx_.media.refresh_library() : invalid_state();
             } else {
                 static_assert(
                     std::is_same_v<B, cp::Join> || std::is_same_v<B, cp::Leave> ||
@@ -585,6 +612,26 @@ void HostCommandHandler::handle_route_gain(cp::RouteLevel& level, const cp::SetG
     ctx_.publish_route_level(level);
     ctx_.ports.ui.publish(
         cp::GainAck{command.entity_id, command.seq, level.revision, command.origin});
+}
+
+// --- 録音とメディアプレイヤー ---
+
+HostCommandHandler::CommandResult HostCommandHandler::set_recorder_config(
+    const cp::RecorderConfig& config) {
+    const auto before = ctx_.media.recorder().revision;
+    auto result = ctx_.media.set_recorder_config(config, recording_label());
+    if (result && result.value() != before) {
+        ctx_.save_settings();
+    }
+    return result;
+}
+
+MediaDesk::SourceLabel HostCommandHandler::recording_label() const {
+    return [this](const std::string& id) { return ctx_.recording_label(id); };
+}
+
+MediaDesk::TargetCheck HostCommandHandler::media_target() const {
+    return [this](const std::string& id) { return ctx_.is_master_or_bus(id); };
 }
 
 }  // namespace vocroz::session

@@ -2,7 +2,7 @@
 // 親機のミキサー画面（Container）。
 // ストアを購読して描画し、操作をコマンドにしてエンジンへ送る。
 //
-// レイアウト: 上部のステータス帯、ルーティング画面と外部出力と開発中の機能のツールバー、
+// レイアウト: 上部のステータス帯、ルーティング画面とメディア画面と外部出力と開発中の機能のツールバー、
 // 中央のチャンネル領域（横スクロール）、必要に応じて承認パネルと外部出力のパネルと通知履歴、右端に固定した Master。
 
 import { useState } from "preact/hooks";
@@ -43,13 +43,14 @@ export interface MixerScreenProps {
   toasts: ToastStore;
   /** ルーティング画面を開く。 */
   onOpenRouting: () => void;
+  /** メディア画面（録音とメディアプレイヤー）を開く。 */
+  onOpenMedia: () => void;
   /** クリップボードへの書き込み。テストで差し替えられるようにする。 */
   writeClipboard?: (text: string) => Promise<void>;
 }
 
 /** 今後のバージョンで実装する機能。ボタンは置くが、押しても「開発中」と知らせるだけにする。 */
 export const kMixerPlannedFeatures: readonly MessageKey[] = [
-  "feature.media",
   "feature.virtual_device",
   "feature.vst",
   "feature.midi",
@@ -67,6 +68,7 @@ export function MixerScreen({
   linkStats,
   toasts,
   onOpenRouting,
+  onOpenMedia,
   writeClipboard = defaultWriteClipboard,
 }: MixerScreenProps) {
   const state = useStore(store);
@@ -145,6 +147,9 @@ export function MixerScreen({
       <nav class="mixer-toolbar" aria-label={t("mixer.toolbar")}>
         <button type="button" class="mixer-toolbar__button" onClick={onOpenRouting}>
           {t("feature.routing")}
+        </button>
+        <button type="button" class="mixer-toolbar__button" onClick={onOpenMedia}>
+          {t("feature.media")}
         </button>
         <button
           type="button"

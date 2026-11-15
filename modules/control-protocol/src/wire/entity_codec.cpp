@@ -502,6 +502,105 @@ common::Result<BlockedPluginFile, DecodeError> read_blocked_plugin_file(
     });
 }
 
+nlohmann::json write_json(const RecorderConfig& config) {
+    nlohmann::json sources = nlohmann::json::array();
+    for (const auto& source : config.sources) {
+        sources.push_back(source);
+    }
+    return {
+        {"format", enum_json(config.format)},
+        {"folder", config.folder},
+        {"sources", std::move(sources)},
+    };
+}
+
+namespace {
+
+// 録る対象の entity_id の一覧を読む。
+common::Result<std::string, DecodeError> read_source_id(const nlohmann::json& value) {
+    if (!value.is_string()) {
+        return common::make_unexpected(DecodeError{DecodeErrorCode::kWrongType, "sources"});
+    }
+    const auto& text = value.get_ref<const std::string&>();
+    if (!satisfies(text, kIdentifierRule)) {
+        return common::make_unexpected(DecodeError{DecodeErrorCode::kOutOfRange, "sources"});
+    }
+    return text;
+}
+
+}  // namespace
+
+common::Result<RecorderConfig, DecodeError> read_recorder_config(const nlohmann::json& value) {
+    return read_object<RecorderConfig>(value, [](ObjectReader& r) {
+        RecorderConfig config;
+        config.format = r.enumeration<RecordingFormat>("format");
+        config.folder = r.text("folder", kMediaFolderRule);
+        config.sources = r.list<std::string>("sources", read_source_id);
+        if (config.sources.size() > kMaxRecordingTracks) {
+            r.fail(DecodeErrorCode::kOutOfRange, "sources");
+        }
+        return config;
+    });
+}
+
+nlohmann::json write_json(const RecordingTrackInfo& track) {
+    return {
+        {"source_id", track.source_id},
+        {"file_name", track.file_name},
+        {"dropped_ms", track.dropped_ms},
+    };
+}
+
+common::Result<RecordingTrackInfo, DecodeError> read_recording_track_info(
+    const nlohmann::json& value) {
+    return read_object<RecordingTrackInfo>(value, [](ObjectReader& r) {
+        RecordingTrackInfo track;
+        track.source_id = r.text("source_id", kIdentifierRule);
+        track.file_name = r.text("file_name", kFileNameRule);
+        track.dropped_ms = r.counter("dropped_ms");
+        return track;
+    });
+}
+
+nlohmann::json write_json(const Recorder& recorder) {
+    return {
+        {"entity_id", recorder.entity_id},        {"revision", recorder.revision},
+        {"config", write_json(recorder.config)},  {"state", enum_json(recorder.state)},
+        {"take", nullable(recorder.take)},        {"elapsed_ms", recorder.elapsed_ms},
+        {"tracks", write_array(recorder.tracks)}, {"last_result", enum_json(recorder.last_result)},
+    };
+}
+
+common::Result<Recorder, DecodeError> read_recorder(const nlohmann::json& value) {
+    return read_object<Recorder>(value, [](ObjectReader& r) {
+        Recorder recorder;
+        recorder.entity_id = r.text("entity_id", kIdentifierRule);
+        recorder.revision = r.counter("revision");
+        recorder.config = r.nested<RecorderConfig>("config", read_recorder_config);
+        recorder.state = r.enumeration<RecorderState>("state");
+        recorder.take = r.nullable_text("take", kFileNameRule);
+        recorder.elapsed_ms = r.counter("elapsed_ms");
+        recorder.tracks = r.list<RecordingTrackInfo>("tracks", read_recording_track_info);
+        if (recorder.tracks.size() > kMaxRecordingTracks) {
+            r.fail(DecodeErrorCode::kOutOfRange, "tracks");
+        }
+        recorder.last_result = r.nullable_enumeration<RecorderResult>("last_result");
+        return recorder;
+    });
+}
+
+nlohmann::json write_json(const MediaFile& file) {
+    return {{"path", file.path}};
+}
+
+common::Result<MediaFile, DecodeError> read_media_file(const nlohmann::json& value) {
+    return read_object<MediaFile>(value, [](ObjectReader& r) {
+        MediaFile file;
+        file.path = r.text("path", kMediaPathRule);
+        return file;
+    });
+}
+
 nlohmann::json write_json(const PluginInsertStatus& status) {
     return {
         {"entity_id", status.entity_id},
@@ -550,6 +649,41 @@ common::Result<PluginsInfo, DecodeError> read_plugins_info(const nlohmann::json&
     });
 }
 
+nlohmann::json write_json(const MediaPlayer& player) {
+    return {
+        {"entity_id", player.entity_id},
+        {"revision", player.revision},
+        {"file", nullable(player.file)},
+        {"channels", player.channels},
+        {"duration_ms", player.duration_ms},
+        {"target", player.target},
+        {"transport", enum_json(player.transport)},
+        {"position_ms", player.position_ms},
+        {"last_result", enum_json(player.last_result)},
+    };
+}
+
+common::Result<MediaPlayer, DecodeError> read_media_player(const nlohmann::json& value) {
+    return read_object<MediaPlayer>(value, [](ObjectReader& r) {
+        MediaPlayer player;
+        player.entity_id = r.text("entity_id", kIdentifierRule);
+        player.revision = r.counter("revision");
+        player.file = r.nullable_text("file", kMediaPathRule);
+        const std::uint64_t channels = r.counter("channels");
+        if (channels > kMaxInputChannels) {
+            r.fail(DecodeErrorCode::kOutOfRange, "channels");
+        } else {
+            player.channels = static_cast<std::uint8_t>(channels);
+        }
+        player.duration_ms = r.counter("duration_ms");
+        player.target = r.text("target", kIdentifierRule);
+        player.transport = r.enumeration<MediaTransport>("transport");
+        player.position_ms = r.counter("position_ms");
+        player.last_result = r.nullable_enumeration<MediaResult>("last_result");
+        return player;
+    });
+}
+
 nlohmann::json write_json(const MixerSnapshot& snapshot) {
     return {
         {"session", write_json(snapshot.session)},
@@ -558,6 +692,9 @@ nlohmann::json write_json(const MixerSnapshot& snapshot) {
         {"pending", write_array(snapshot.pending)},
         {"routing", write_json(snapshot.routing)},
         {"external_output", write_json(snapshot.external_output)},
+        {"recorder", write_json(snapshot.recorder)},
+        {"media_player", write_json(snapshot.media_player)},
+        {"media_library", write_array(snapshot.media_library)},
     };
 }
 
@@ -571,6 +708,12 @@ common::Result<MixerSnapshot, DecodeError> read_mixer_snapshot(const nlohmann::j
         snapshot.routing = r.nested<RoutingInfo>("routing", read_routing_info);
         snapshot.external_output =
             r.nested<ExternalOutput>("external_output", read_external_output);
+        snapshot.recorder = r.nested<Recorder>("recorder", read_recorder);
+        snapshot.media_player = r.nested<MediaPlayer>("media_player", read_media_player);
+        snapshot.media_library = r.list<MediaFile>("media_library", read_media_file);
+        if (snapshot.media_library.size() > kMaxMediaFiles) {
+            r.fail(DecodeErrorCode::kOutOfRange, "media_library");
+        }
         return snapshot;
     });
 }

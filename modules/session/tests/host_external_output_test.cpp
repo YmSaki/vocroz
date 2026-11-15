@@ -17,12 +17,15 @@
 #include "fakes/fake_clock.h"
 #include "fakes/fake_external_output_control.h"
 #include "fakes/fake_logger.h"
+#include "fakes/fake_media_library.h"
+#include "fakes/fake_media_player_control.h"
 #include "fakes/fake_mixer_control.h"
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_playout_control.h"
 #include "fakes/fake_plugin_rack.h"
 #include "fakes/fake_plugin_scan_control.h"
+#include "fakes/fake_recorder_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
@@ -68,7 +71,7 @@ protected:
                 HostSession::Config{},
                 HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_, random_,
                                    clock_, logger_, playout_, external_output_, secrets_, plugins_,
-                                   plugin_scan_});
+                                   plugin_scan_, recorder_, media_player_, media_library_});
             session_->start();
         }
         return *session_;
@@ -120,6 +123,9 @@ protected:
     FakeSecretStore secrets_;
     FakePluginRack plugins_;
     FakePluginScanControl plugin_scan_;
+    FakeRecorderControl recorder_;
+    FakeMediaPlayerControl media_player_;
+    FakeMediaLibrary media_library_;
     common::FakeClock clock_;
     common::FakeLogger logger_;
     std::optional<HostSession> session_;

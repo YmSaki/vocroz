@@ -12,6 +12,7 @@ import { readLaunchConfig, type UiMode } from "./ipc/launch-config";
 import type { Transport } from "./ipc/transport";
 import { ClientScreen } from "./screens/client/ClientScreen";
 import { MixerScreen } from "./screens/mixer/MixerScreen";
+import { MediaScreen } from "./screens/media/MediaScreen";
 import { RoutingScreen } from "./screens/routing/RoutingScreen";
 import {
   connectContinuousFeedback,
@@ -76,9 +77,24 @@ async function main(): Promise<void> {
       plugins.apply(message);
       if (message.type === "link_stats") linkStats.apply(message);
     });
-    // JUCE 上では、ルーティング画面は別の窓で開く（docs/adr/0038-routing-window.md）。
-    // 窓はネイティブ側が開き、その窓の UI は screen=routing で起動して自分でエンジンの状態を受け取る。
+    // JUCE 上では、ルーティング画面とメディア画面は別の窓で開く（docs/adr/0038-routing-window.md、
+    // docs/adr/0043-recording-and-media-player.md）。窓はネイティブ側が開き、その窓の UI は
+    // screen=routing か screen=media で起動して自分でエンジンの状態を受け取る。
     const windows = juce !== undefined ? new JuceWindowControl(juce.backend) : undefined;
+    if (windows !== undefined && config.screen === "media") {
+      render(
+        h(MediaScreen, {
+          client,
+          store,
+          toasts,
+          onClose: () => windows.close(),
+          inOwnWindow: true,
+        }),
+        root,
+      );
+      client.hello();
+      return;
+    }
     if (windows !== undefined && config.screen === "routing") {
       render(
         h(RoutingScreen, {
@@ -113,6 +129,7 @@ async function main(): Promise<void> {
           linkStats,
           toasts,
           onOpenRouting: windows !== undefined ? () => windows.openRouting() : showRouting,
+          onOpenMedia: windows !== undefined ? () => windows.openMedia() : showMedia,
         }),
         root,
       );
@@ -121,6 +138,8 @@ async function main(): Promise<void> {
         h(RoutingScreen, { client, store, plugins, optimistic, toasts, onClose: showMixer }),
         root,
       );
+    const showMedia = (): void =>
+      render(h(MediaScreen, { client, store, toasts, onClose: showMixer }), root);
     showMixer();
   }
   // 購読をつないでから全状態を要求し、スナップショットを取りこぼさないようにする。

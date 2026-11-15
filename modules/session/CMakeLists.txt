@@ -5,6 +5,7 @@
 # OS の API を呼ばず、外部 I/O（ミキサー、接続、ランデブーサーバー、設定、UI）はポート経由で使う。
 add_library(vocroz_session STATIC
   src/client_session.cpp
+  src/detail/file_name_utils.cpp
   src/detail/text_utils.cpp
   src/external_output_book.cpp
   src/gain_sequence_gate.cpp
@@ -14,6 +15,7 @@ add_library(vocroz_session STATIC
   src/host_session.cpp
   src/invite_book.cpp
   src/invite_code.cpp
+  src/media_desk.cpp
   src/midi_timeline.cpp
   src/participant_registry.cpp
   src/peer_midi_inbox.cpp
@@ -50,7 +52,9 @@ if(VOCROZ_BUILD_TESTS)
     tests/client_session_test.cpp
     tests/client_state_machine_test.cpp
     tests/connection_state_machine_test.cpp
+    tests/file_name_utils_test.cpp
     tests/host_external_output_test.cpp
+    tests/host_media_test.cpp
     tests/host_session_test.cpp
     tests/invite_book_test.cpp
     tests/invite_code_test.cpp

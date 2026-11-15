@@ -104,6 +104,35 @@ public:
     /// オーディオスレッド外で外れる。
     void detach_external_stream();
 
+    /// 録音タップをつなぐ。すべてのトラックのタップを 1 つのグラフで足すので、どのトラックも同じ
+    /// ブロックから録り始める（docs/adr/0043-recording-and-media-player.md）。つないでいれば
+    /// 置き換える。
+    /// @param taps 録音タップ（1 本以上、トラックは null にしない）
+    /// @return 引数が正しく、グラフを差し替えられたら true。失敗したら前の状態のまま
+    [[nodiscard]] bool attach_record_taps(std::vector<RecordTapAssignment> taps);
+
+    /// 録音タップをすべて外す。どのトラックも同じブロックで録り終える。RecordingTrack::finish()
+    /// を呼んでよいのは、この後 is_graph_settled() が true になってから。
+    void detach_record_taps();
+
+    /// 録る対象のチャンネル数を返す。Master とバスはステレオ、ストリップは今のチャンネル数。
+    /// @param source_id 録る対象の entity_id
+    /// @return 録れない対象（ないストリップ、ないバス）なら std::nullopt
+    [[nodiscard]] std::optional<std::size_t> recording_channels(std::string_view source_id) const;
+
+    /// メディアプレイヤーの再生ノードをつなぐ。つないでいれば置き換える（流す先の変更にも使う）。
+    /// @param player 再生ノードの割り当て（トラックは null にしない）
+    /// @return 引数が正しく、グラフを差し替えられたら true。失敗したら前の状態のまま
+    [[nodiscard]] bool attach_player(PlayerAssignment player);
+
+    /// メディアプレイヤーの再生ノードを外す。トラックの最後の参照は、古いグラフの破棄（collect()）
+    /// でオーディオスレッド外で外れる。
+    void detach_player();
+
+    /// 最後に適用したグラフをオーディオスレッドが使い始め、古いグラフを破棄し終えていれば true。
+    /// 録音タップを外した後、ファイルを閉じてよいかの判断に使う。
+    [[nodiscard]] bool is_graph_settled();
+
     /// MIDI ソースをグラフに加える。同じキーのソースがあれば置き換え、識別子は引き継ぐ。
     /// @param key    ソースを区別するキー（MidiSourceAssignment::key）
     /// @param source イベントの取り出し先（null にしない）

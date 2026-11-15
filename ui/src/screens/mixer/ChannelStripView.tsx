@@ -14,7 +14,7 @@ import { MuteButton } from "../../components/mute-button/MuteButton";
 import { t } from "../../i18n/i18n";
 import type { ChannelStrip, GainDb, LinkStat } from "../../ipc/messages";
 import { errorText } from "../shared/feedback";
-import { stripInputLabel } from "./strip-input";
+import { stripInputLabel } from "../shared/strip-input";
 import { stripStatus } from "./strip-status";
 
 /** チャンネルストリップの props。 */

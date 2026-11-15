@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // build_mixer_graph() の単体テスト。暗黙の経路（ストリップ → Master → リミッター → 出力）、
-// センドの結線、参照先のないセンドの除外、挿入の置き場所と読み込み前の経路の切断を確かめる。組み立てたグラフは
+// センドの結線、参照先のないセンドの除外、挿入の置き場所と読み込み前の経路の切断、録音タップと
+// 再生ノードの結線を確かめる。組み立てたグラフは
 // Mixer の検証も通す。
 
 #include "mixer_graph_builder.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include <gtest/gtest.h>
 
 #include "vocroz/audio_core/mixer.h"
+#include "vocroz/audio_core/playback_track.h"
+#include "vocroz/audio_core/recording_track.h"
 #include "vocroz/session/routing_delay.h"
 
 #include "fakes/fake_audio_sink.h"
@@ -538,6 +543,89 @@ TEST(MixerGraphBuilderTest, CutsWhatFollowsABusWhileItsInsertIsNotLoaded) {
             EXPECT_TRUE(inputs_of(built.graph, c.from).empty());
         }
     }
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+const ac::NodeSpec* node_of_kind(const ac::GraphDescription& g, ac::NodeKind kind) {
+    const auto it = std::find_if(g.nodes.begin(), g.nodes.end(),
+                                 [kind](const ac::NodeSpec& n) { return n.kind == kind; });
+    return it == g.nodes.end() ? nullptr : &*it;
+}
+
+std::vector<ac::Connection> connections_to(const ac::GraphDescription& g, ac::NodeId to) {
+    std::vector<ac::Connection> result;
+    std::copy_if(g.connections.begin(), g.connections.end(), std::back_inserter(result),
+                 [to](const ac::Connection& c) { return c.to == to; });
+    return result;
+}
+
+TEST(MixerGraphBuilderTest, RecordTapsTakeStripsPreFaderAndMasterPostFader) {
+    auto a = two_strips();
+    const auto master_track = std::make_shared<ac::RecordingTrack>(2);
+    const auto strip_track = std::make_shared<ac::RecordingTrack>(1);
+    a.record_taps.push_back(RecordTapAssignment{kMaster, master_track});
+    a.record_taps.push_back(RecordTapAssignment{"ch-1", strip_track});
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
+    const auto& g = built.graph;
+    ASSERT_EQ(count_kind(g, ac::NodeKind::kRecordTap), 2U);
+    const auto* master = node_with_fader(g, ac::FaderId{0});
+    const auto* ch1 = node_with_fader(g, ac::FaderId{1});
+    ASSERT_NE(master, nullptr);
+    ASSERT_NE(ch1, nullptr);
+    for (const auto& node : g.nodes) {
+        if (node.kind != ac::NodeKind::kRecordTap) {
+            continue;
+        }
+        const auto in = connections_to(g, node.id);
+        ASSERT_EQ(in.size(), 1U);
+        if (node.recording == master_track) {
+            EXPECT_EQ(in[0].from, master->id);
+            EXPECT_EQ(in[0].tap, ac::SendTap::kPostFader);
+        } else {
+            EXPECT_EQ(node.recording, strip_track);
+            EXPECT_EQ(in[0].from, ch1->id);
+            EXPECT_EQ(in[0].tap, ac::SendTap::kPreFader);
+        }
+    }
+    EXPECT_TRUE(is_valid(g));
+}
+
+TEST(MixerGraphBuilderTest, RecordTapOfMissingSourceStaysUnconnected) {
+    // 録音中に消えたストリップのトラックは、グラフに残して無音を録る（トラックの長さをそろえる）。
+    auto a = two_strips();
+    a.record_taps.push_back(RecordTapAssignment{"ch-9", std::make_shared<ac::RecordingTrack>(1)});
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
+    const auto* tap = node_of_kind(built.graph, ac::NodeKind::kRecordTap);
+    ASSERT_NE(tap, nullptr);
+    EXPECT_TRUE(connections_to(built.graph, tap->id).empty());
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, PlayerFeedsItsTargetBus) {
+    auto a = two_strips();
+    a.route_faders.emplace("bus-1", ac::FaderId{3});
+    const auto track = std::make_shared<ac::PlaybackTrack>(2);
+    a.player = PlayerAssignment{"bus-1", track};
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-1", "伴奏"});
+    const auto built = build_mixer_graph(a, kMaster, config, false, {});
+    const auto* player = node_of_kind(built.graph, ac::NodeKind::kPlayer);
+    const auto* bus = node_with_fader(built.graph, ac::FaderId{3});
+    ASSERT_NE(player, nullptr);
+    ASSERT_NE(bus, nullptr);
+    EXPECT_EQ(player->playback, track);
+    EXPECT_TRUE(connected(built.graph, player->id, bus->id));
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, PlayerWithoutTargetIsPlacedButUnconnected) {
+    auto a = two_strips();
+    a.player = PlayerAssignment{"bus-9", std::make_shared<ac::PlaybackTrack>(2)};
+    const auto built = build_mixer_graph(a, kMaster, cp::RoutingConfig{}, false, {});
+    const auto* player = node_of_kind(built.graph, ac::NodeKind::kPlayer);
+    ASSERT_NE(player, nullptr);
+    EXPECT_TRUE(std::none_of(built.graph.connections.begin(), built.graph.connections.end(),
+                             [&](const ac::Connection& c) { return c.from == player->id; }));
     EXPECT_TRUE(is_valid(built.graph));
 }
 

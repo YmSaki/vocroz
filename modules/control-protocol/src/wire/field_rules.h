@@ -42,4 +42,11 @@ inline constexpr TextRule kNoticeValueRule{0, kMaxNoticeValueBytes, Charset::kAn
 inline constexpr TextRule kHostRule{0, kMaxExternalOutputHostBytes, Charset::kAny};
 /// SRTP 外部出力の鍵。形式の検証は session が行う（transport の parse_srtp_master_key()）。
 inline constexpr TextRule kSrtpKeyRule{1, kMaxSrtpKeyBytes, Charset::kAny};
+
+/// メディアフォルダのパス。存在するかの確かめはエンジンが行う。未設定は空。
+inline constexpr TextRule kMediaFolderRule{0, kMaxMediaFolderBytes, Charset::kAny};
+/// メディアのライブラリの相対パス。ライブラリにあるかはエンジンが確かめる。空はファイルを外す。
+inline constexpr TextRule kMediaPathRule{0, kMaxMediaPathBytes, Charset::kAny};
+/// 録音のトラックのファイル名。
+inline constexpr TextRule kFileNameRule{1, kMaxFileNameBytes, Charset::kAny};
 }  // namespace vocroz::control_protocol::wire

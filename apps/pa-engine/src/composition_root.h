@@ -51,11 +51,15 @@
 #include "device_loss_relay.h"
 #include "device_midi_inputs.h"
 #include "device_midi_relay.h"
+#include "disk_io_worker.h"
 #include "engine_activity.h"
+#include "engine_media_player.h"
 #include "engine_mixer.h"
 #include "engine_output_devices.h"
 #include "engine_plugin_rack.h"
+#include "engine_recorder.h"
 #include "external_output_driver.h"
+#include "filesystem_media_library.h"
 #include "host_peer_links.h"
 #include "host_rendezvous_driver.h"
 #include "invite_result_relay.h"
@@ -205,6 +209,13 @@ private:
     // ドライバーは engine_mixer_ にタップをつなぐので、それより後に宣言する（先に破棄する）。
     std::unique_ptr<NetworkExternalSocketOpener> external_sockets_;
     std::unique_ptr<ExternalOutputDriver> external_output_;
+    // --- 録音とメディアプレイヤー（docs/adr/0043-recording-and-media-player.md） ---
+    // ディスク I/O スレッドは録音と再生の仕事を回すので、それらより前に宣言する（後に破棄する）。
+    // 破棄の前の最後の周期で、止めた録音のファイルを閉じる。
+    DiskIoWorker disk_io_{kDiskIoInterval};
+    std::unique_ptr<EngineRecorder> recorder_;
+    std::unique_ptr<EngineMediaPlayer> media_player_;
+    FilesystemMediaLibrary media_library_;
     std::unique_ptr<UiEventPublisher> ui_publisher_;
     std::unique_ptr<session::HostSession> session_;
     std::unique_ptr<UiMessageReceiver> ui_receiver_;

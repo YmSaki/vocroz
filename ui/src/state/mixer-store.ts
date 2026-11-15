@@ -66,6 +66,15 @@ export class MixerStore extends Store<MixerState> {
       case "external_output_updated":
         this.set({ ...current, external_output: message.external_output });
         return;
+      case "recorder_updated":
+        this.set({ ...current, recorder: message.recorder });
+        return;
+      case "media_player_updated":
+        this.set({ ...current, media_player: message.media_player });
+        return;
+      case "media_library_updated":
+        this.set({ ...current, media_library: message.files });
+        return;
       case "client_snapshot":
       case "client_updated":
       case "ack":

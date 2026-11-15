@@ -37,10 +37,20 @@ import type {
   PluginInsertStatus,
   PluginsInfo,
   InputSourceKind,
+  MediaFile,
+  MediaPlayer,
+  MediaResult,
+  MediaTransport,
   MixerSnapshot,
   OutputDevice,
   OutputDeviceState,
   PendingParticipant,
+  Recorder,
+  RecorderConfig,
+  RecorderResult,
+  RecorderState,
+  RecordingFormat,
+  RecordingTrackInfo,
   RouteLevel,
   RoutingBus,
   RoutingCheck,
@@ -131,6 +141,19 @@ const kUiMessageKeys: { [K in UiToEngineMessage["type"]]: string[] } = {
     ...kDiscreteKeys,
     insert_id: true,
   }),
+  set_recorder_config: keysOf<UiMessageOf<"set_recorder_config">>({
+    ...kDiscreteKeys,
+    config: true,
+  }),
+  set_recording: keysOf<UiMessageOf<"set_recording">>({ ...kDiscreteKeys, recording: true }),
+  load_media: keysOf<UiMessageOf<"load_media">>({ ...kDiscreteKeys, path: true }),
+  set_media_transport: keysOf<UiMessageOf<"set_media_transport">>({
+    ...kDiscreteKeys,
+    transport: true,
+  }),
+  seek_media: keysOf<UiMessageOf<"seek_media">>({ ...kDiscreteKeys, position_ms: true }),
+  set_media_target: keysOf<UiMessageOf<"set_media_target">>({ ...kDiscreteKeys, target: true }),
+  refresh_media_library: keysOf<UiMessageOf<"refresh_media_library">>(kDiscreteKeys),
 };
 
 /** エンジンから UI への種別ごとのフィールド。 */
@@ -155,6 +178,15 @@ const kEngineMessageKeys: { [K in EngineToUiMessage["type"]]: string[] } = {
     generation: true,
     offset: true,
     plugins: true,
+  }),
+  recorder_updated: keysOf<EngineMessageOf<"recorder_updated">>({ type: true, recorder: true }),
+  media_player_updated: keysOf<EngineMessageOf<"media_player_updated">>({
+    type: true,
+    media_player: true,
+  }),
+  media_library_updated: keysOf<EngineMessageOf<"media_library_updated">>({
+    type: true,
+    files: true,
   }),
   ack: keysOf<EngineMessageOf<"ack">>({ type: true, request_id: true, applied_revision: true }),
   reject: keysOf<EngineMessageOf<"reject">>({ type: true, request_id: true, error_code: true }),
@@ -226,7 +258,38 @@ const kMixerSnapshotKeys = keysOf<MixerSnapshot>({
   pending: true,
   routing: true,
   external_output: true,
+  recorder: true,
+  media_player: true,
+  media_library: true,
 });
+const kRecorderKeys = keysOf<Recorder>({
+  entity_id: true,
+  revision: true,
+  config: true,
+  state: true,
+  take: true,
+  elapsed_ms: true,
+  tracks: true,
+  last_result: true,
+});
+const kRecorderConfigKeys = keysOf<RecorderConfig>({ format: true, folder: true, sources: true });
+const kRecordingTrackKeys = keysOf<RecordingTrackInfo>({
+  source_id: true,
+  file_name: true,
+  dropped_ms: true,
+});
+const kMediaPlayerKeys = keysOf<MediaPlayer>({
+  entity_id: true,
+  revision: true,
+  file: true,
+  channels: true,
+  duration_ms: true,
+  target: true,
+  transport: true,
+  position_ms: true,
+  last_result: true,
+});
+const kMediaFileKeys = keysOf<MediaFile>({ path: true });
 const kExternalOutputKeys = keysOf<ExternalOutput>({
   entity_id: true,
   revision: true,
@@ -426,6 +489,26 @@ const kPluginInsertFailures: Record<PluginInsertFailure, true> = {
   PROCESSING_FAILED: true,
 };
 
+const kRecordingFormats: Record<RecordingFormat, true> = { WAV: true, FLAC: true };
+const kRecorderStates: Record<RecorderState, true> = { STOPPED: true, RECORDING: true };
+const kRecorderResults: Record<RecorderResult, true> = {
+  OK: true,
+  DISK_FULL: true,
+  IO_ERROR: true,
+  FOLDER_UNAVAILABLE: true,
+};
+const kMediaTransports: Record<MediaTransport, true> = {
+  STOPPED: true,
+  PLAYING: true,
+  PAUSED: true,
+};
+const kMediaResults: Record<MediaResult, true> = {
+  OK: true,
+  NOT_FOUND: true,
+  UNSUPPORTED_FORMAT: true,
+  IO_ERROR: true,
+};
+
 /** JSON の例に現れた状態の値を集める。 */
 class Seen {
   private readonly values = new Map<object, Set<string>>();
@@ -529,6 +612,25 @@ function checkPlugins(plugins: PluginsInfo, seen: Seen): void {
   }
 }
 
+function checkRecorder(recorder: Recorder, seen: Seen): void {
+  expectKeys(recorder, kRecorderKeys);
+  expectKeys(recorder.config, kRecorderConfigKeys);
+  seen.add(kRecordingFormats, recorder.config.format);
+  seen.add(kRecorderStates, recorder.state);
+  seen.add(kRecorderResults, recorder.last_result);
+  for (const track of recorder.tracks) expectKeys(track, kRecordingTrackKeys);
+}
+
+function checkMediaPlayer(player: MediaPlayer, seen: Seen): void {
+  expectKeys(player, kMediaPlayerKeys);
+  seen.add(kMediaTransports, player.transport);
+  seen.add(kMediaResults, player.last_result);
+}
+
+function checkMediaLibrary(files: MediaFile[]): void {
+  for (const file of files) expectKeys(file, kMediaFileKeys);
+}
+
 function checkClient(client: ClientSnapshot, seen: Seen): void {
   expectKeys(client, kClientKeys);
   for (const device of client.input_devices) expectKeys(device, kInputDeviceKeys);
@@ -548,6 +650,9 @@ function checkEngineMessage(message: EngineToUiMessage, seen: Seen): void {
       checkPending(message.snapshot.pending);
       checkRouting(message.snapshot.routing, seen);
       checkExternalOutput(message.snapshot.external_output, seen);
+      checkRecorder(message.snapshot.recorder, seen);
+      checkMediaPlayer(message.snapshot.media_player, seen);
+      checkMediaLibrary(message.snapshot.media_library);
       return;
     case "client_snapshot":
       checkClient(message.snapshot, seen);
@@ -578,6 +683,15 @@ function checkEngineMessage(message: EngineToUiMessage, seen: Seen): void {
       return;
     case "plugins_updated":
       checkPlugins(message.plugins, seen);
+      return;
+    case "recorder_updated":
+      checkRecorder(message.recorder, seen);
+      return;
+    case "media_player_updated":
+      checkMediaPlayer(message.media_player, seen);
+      return;
+    case "media_library_updated":
+      checkMediaLibrary(message.files);
       return;
     case "plugin_catalog_page":
       for (const entry of message.plugins) expectKeys(entry, kPluginEntryKeys);
@@ -640,6 +754,11 @@ describe("messages", () => {
       kBlockedPluginReasons,
       kPluginInsertStates,
       kPluginInsertFailures,
+      kRecordingFormats,
+      kRecorderStates,
+      kRecorderResults,
+      kMediaTransports,
+      kMediaResults,
     ]) {
       expect(seen.coversAll(table)).toBe(true);
     }
