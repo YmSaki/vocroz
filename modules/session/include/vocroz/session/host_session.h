@@ -43,6 +43,7 @@
 #include "vocroz/session/ports/secure_random.h"
 #include "vocroz/session/ports/settings_store.h"
 #include "vocroz/session/ports/ui_event_sink.h"
+#include "vocroz/session/settings.h"
 
 namespace vocroz::session {
 
@@ -171,6 +172,12 @@ public:
     /// PluginRack::open_editor() の結果。
     /// @param insert_id 挿入の entity_id。もう外した挿入なら何もしない
     void on_plugin_editor_failed(const std::string& insert_id);
+
+    /// 挿入のプラグインの状態を取った。PluginRack::capture_states() の結果。保存するルーティングに
+    /// ある挿入の状態だけを、保存してある状態に重ねて保存する（docs/adr/0042-plugin-insert.md）。
+    /// pa-engine は終了の前にも、すべての挿入の状態を取ってこれに渡す。
+    /// @param states 取れた状態
+    void on_plugin_states_captured(std::vector<SavedPluginState> states);
 
     /// 挿入のプラグインの読み込みが済んだ。PluginRack::load() の結果。
     /// 成功したら、その挿入を通る経路をつないだグラフに差し替える。失敗したら経路を無音のままにする。

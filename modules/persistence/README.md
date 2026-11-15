@@ -5,7 +5,7 @@
 
 ## 責務
 
-- `session::SettingsStore` の実装。親機と子機の設定を `--data-dir` の JSON ファイルにアトミックに保存し、1 世代のバックアップを残す。本体が壊れていればバックアップから読む
+- `session::SettingsStore` の実装。親機と子機の設定を `--data-dir` の JSON ファイルにアトミックに保存し、1 世代のバックアップを残す。本体が壊れていればバックアップから読む。親機の挿入のプラグインの状態は、同じ手順で `<data-dir>/plugin-states.json` に分けて保存する（`docs/adr/0042-plugin-insert.md`）
 - `session::PluginCatalogStore` の実装。プラグインのスキャンの記録を `<data-dir>/plugin-catalog.json` にアトミックに保存する。スキャンし直せば作り直せるので、バックアップは取らない
 - `common::Logger` の実装。`<data-dir>/logs` のファイルに 1 件 1 行で書き、大きさでローテーションする（既定 10MB × 5）
 - ログと診断レポートの秘密情報（鍵、トークン、招待コード）と個人情報（グローバルな IP アドレス、ユーザー名、セッション名、バスと出力の名前）の伏せ字
@@ -29,6 +29,8 @@
 | `src/atomic_file.{h,cpp}` | 一時ファイル → フラッシュ → 置き換えの保存と 1 世代のバックアップ |
 | `src/settings_codec.{h,cpp}` | 設定ファイルの JSON の変換（信頼境界） |
 | `src/json_settings_store.{h,cpp}` | `SettingsStore` の実装 |
+| `src/plugin_state_codec.{h,cpp}` | プラグインの状態の JSON の変換（信頼境界） |
+| `src/detail/base64_utils.{h,cpp}` | プラグインの状態を JSON に載せる Base64 |
 | `src/plugin_catalog_codec.{h,cpp}` | スキャンの記録の JSON の変換（信頼境界） |
 | `src/json_plugin_catalog_store.{h,cpp}` | `PluginCatalogStore` の実装 |
 | `src/rotating_file_logger.{h,cpp}` | `Logger` の実装 |

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// テスト用の PluginRack。依頼と破棄とエディターを開く依頼を記録するだけで、結果はテストが
-// HostSession::on_plugin_loaded() で届ける。読み込みの遅れと順序をテストが決められるようにする。
+// テスト用の PluginRack。依頼と破棄とエディターを開く依頼と状態を取る依頼を記録するだけで、
+// 結果はテストが HostSession::on_plugin_loaded() と on_plugin_states_captured()
+// で届ける。読み込みの遅れと順序をテストが決められるようにする。
 #pragma once
 
+#include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -19,11 +22,18 @@ public:
         std::string insert_id;
         PluginLoadTicket ticket = 0;
         std::string plugin_id;
+        /// 戻すよう渡された状態。
+        std::vector<std::uint8_t> state;
     };
 
     void load(const std::string& insert_id, PluginLoadTicket ticket,
-              const PluginDescription& description) override {
-        loads_.push_back(Load{insert_id, ticket, description.identifier});
+              const PluginDescription& description, std::span<const std::uint8_t> state) override {
+        loads_.push_back(
+            Load{insert_id, ticket, description.identifier, {state.begin(), state.end()}});
+    }
+
+    void capture_states(std::vector<std::string> insert_ids) override {
+        captures_.push_back(std::move(insert_ids));
     }
 
     void release(const std::string& insert_id) override {
@@ -45,6 +55,11 @@ public:
         return loads_;
     }
 
+    /// 状態を取る依頼（古い順）。結果はテストが HostSession::on_plugin_states_captured() で届ける。
+    [[nodiscard]] const std::vector<std::vector<std::string>>& captures() const noexcept {
+        return captures_;
+    }
+
     /// 破棄した挿入（古い順）。
     [[nodiscard]] const std::vector<std::string>& releases() const noexcept {
         return releases_;
@@ -57,6 +72,7 @@ public:
 
 private:
     std::vector<Load> loads_;
+    std::vector<std::vector<std::string>> captures_;
     std::vector<Editor> editors_;
     std::vector<std::string> releases_;
 };

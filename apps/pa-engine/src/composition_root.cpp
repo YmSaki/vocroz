@@ -4,6 +4,7 @@
 
 #include "composition_root.h"
 
+#include <optional>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -377,6 +378,11 @@ void CompositionRoot::start_juce() {
         [this](const std::string& insert_id) {
             loop_.post([this, insert_id] { session_->on_plugin_editor_failed(insert_id); });
         },
+        [this](std::vector<session::SavedPluginState> states) {
+            loop_.post([this, states = std::move(states)]() mutable {
+                session_->on_plugin_states_captured(std::move(states));
+            });
+        },
         *logger_});
     plugin_rack_ = engine_plugin_rack_.get();
 
@@ -410,13 +416,20 @@ void CompositionRoot::stop_juce() {
 #if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
     // ポートを閉じ、プラグインを破棄してから JUCE を終える。キューは Panic を求めてから閉じる
     // ので、音は残らない。
-    juce_thread_.stop([this] {
+    // 挿入のプラグインの状態は、破棄する前にここで取る。ループはもう止まっているので、
+    // メッセージスレッドを止めてから、このスレッドで session に渡して保存する。
+    std::optional<std::vector<session::SavedPluginState>> states;
+    juce_thread_.stop([this, &states] {
         device_midi_.reset();
         midi_catalog_.reset();
         if (engine_plugin_rack_) {
+            states = engine_plugin_rack_->capture_all();
             engine_plugin_rack_->destroy_all();
         }
     });
+    if (states && session_) {
+        session_->on_plugin_states_captured(std::move(*states));
+    }
 #endif
 }
 

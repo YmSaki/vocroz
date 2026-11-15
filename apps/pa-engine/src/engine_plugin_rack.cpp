@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <tuple>
 #include <utility>
 
@@ -19,6 +20,8 @@ struct EnginePluginRack::State {
     /// 読み込んだインスタンス 1 つ。
     struct Entry {
         std::unique_ptr<session::PluginInstance> instance;
+        /// 読み込んだプラグインの識別子。取った状態がどのプラグインのものかを session に返す。
+        std::string plugin_id;
         /// インスタンスが返した処理。グラフにはこれを指す別の共有ポインターを渡す。
         std::shared_ptr<audio_core::PluginProcessor> processor;
         /// session が手放した（release() した）。
@@ -45,6 +48,16 @@ struct EnginePluginRack::State {
             editors->close(*it->second.instance);
         }
         entries.erase(it);
+    }
+
+    // 挿入 1 つの状態を取る。取れなければ警告を残して std::nullopt。
+    std::optional<session::SavedPluginState> capture(const std::string& insert_id, Entry& entry) {
+        auto saved = entry.instance->save_state();
+        if (!saved) {
+            ports.logger.log(common::LogLevel::kWarning, "プラグインの状態を取れませんでした");
+            return std::nullopt;
+        }
+        return session::SavedPluginState{insert_id, entry.plugin_id, std::move(saved).value()};
     }
 
     void graph_released(std::uint64_t serial) {
@@ -81,48 +94,100 @@ EnginePluginRack::~EnginePluginRack() {
 }
 
 void EnginePluginRack::load(const std::string& insert_id, session::PluginLoadTicket ticket,
-                            const session::PluginDescription& description) {
+                            const session::PluginDescription& description,
+                            std::span<const std::uint8_t> saved_state) {
     auto state = state_;
-    const bool posted = state->post([state, insert_id, ticket, description] {
-        if (!state->loader) {
-            state->loader = state->ports.make_loader();
-            state->editors = state->ports.make_editor_host();
-        }
-        auto loaded = state->loader->load(description);
-        if (!loaded) {
-            state->ports.logger.log(common::LogLevel::kWarning,
-                                    "挿入のプラグインを読み込めませんでした");
-            state->ports.deliver(insert_id, ticket, common::make_unexpected(loaded.error()));
-            return;
-        }
-        const auto serial = state->next_serial++;
-        State::Entry entry;
-        entry.instance = std::move(loaded).value();
-        entry.processor = entry.instance->processor();
-        entry.held_by_graph = true;
-        auto* raw = entry.processor.get();
-        state->entries.emplace(serial, std::move(entry));
-        state->current[insert_id] = serial;
-        // グラフが最後の参照を手放したら、メッセージスレッドで破棄してよいかを確かめる。
-        // 状態は弱参照で持ち、ラックの破棄後に手放されても何もしない。
-        const std::weak_ptr<State> weak = state;
-        std::shared_ptr<audio_core::PluginProcessor> handed{
-            raw, [weak, serial](audio_core::PluginProcessor* /*unused*/) {
-                if (const auto owner = weak.lock()) {
-                    std::ignore = owner->post([weak, serial] {
-                        if (const auto s = weak.lock()) {
-                            s->graph_released(serial);
-                        }
-                    });
-                }
-            }};
-        state->ports.deliver(insert_id, ticket, std::move(handed));
-    });
+    std::vector<std::uint8_t> saved{saved_state.begin(), saved_state.end()};
+    const bool posted =
+        state->post([state, insert_id, ticket, description, saved = std::move(saved)] {
+            if (!state->loader) {
+                state->loader = state->ports.make_loader();
+                state->editors = state->ports.make_editor_host();
+            }
+            auto loaded = state->loader->load(description);
+            if (!loaded) {
+                state->ports.logger.log(common::LogLevel::kWarning,
+                                        "挿入のプラグインを読み込めませんでした");
+                state->ports.deliver(insert_id, ticket, common::make_unexpected(loaded.error()));
+                return;
+            }
+            const auto serial = state->next_serial++;
+            State::Entry entry;
+            entry.instance = std::move(loaded).value();
+            entry.plugin_id = description.identifier;
+            // グラフに渡す前に戻す。戻した後の状態で音を出し始めるため。戻せなくても既定の状態で使う。
+            if (!saved.empty() && !entry.instance->restore_state(saved)) {
+                state->ports.logger.log(
+                    common::LogLevel::kWarning,
+                    "保存したプラグインの状態を戻せなかったため、既定の状態で使います");
+            }
+            entry.processor = entry.instance->processor();
+            entry.held_by_graph = true;
+            auto* raw = entry.processor.get();
+            state->entries.emplace(serial, std::move(entry));
+            state->current[insert_id] = serial;
+            // グラフが最後の参照を手放したら、メッセージスレッドで破棄してよいかを確かめる。
+            // 状態は弱参照で持ち、ラックの破棄後に手放されても何もしない。
+            const std::weak_ptr<State> weak = state;
+            std::shared_ptr<audio_core::PluginProcessor> handed{
+                raw, [weak, serial](audio_core::PluginProcessor* /*unused*/) {
+                    if (const auto owner = weak.lock()) {
+                        std::ignore = owner->post([weak, serial] {
+                            if (const auto s = weak.lock()) {
+                                s->graph_released(serial);
+                            }
+                        });
+                    }
+                }};
+            state->ports.deliver(insert_id, ticket, std::move(handed));
+        });
     if (!posted) {
         // メッセージスレッドが止まっている。結果を返さないので、挿入は読み込み中のまま無音になる。
         state->ports.logger.log(common::LogLevel::kWarning,
                                 "メッセージスレッドが動いていないため、プラグインを読み込めません");
     }
+}
+
+void EnginePluginRack::capture_states(std::vector<std::string> insert_ids) {
+    auto state = state_;
+    const bool posted = state->post([state, insert_ids = std::move(insert_ids)] {
+        std::vector<session::SavedPluginState> captured;
+        for (const auto& insert_id : insert_ids) {
+            const auto current = state->current.find(insert_id);
+            if (current == state->current.end()) {
+                // 状態を取る前に外された。
+                continue;
+            }
+            const auto it = state->entries.find(current->second);
+            if (it == state->entries.end()) {
+                continue;
+            }
+            if (auto one = state->capture(insert_id, it->second)) {
+                captured.push_back(std::move(*one));
+            }
+        }
+        state->ports.captured(std::move(captured));
+    });
+    if (!posted) {
+        // 結果を返さないので、保存してある状態はそのまま残る。
+        state->ports.logger.log(
+            common::LogLevel::kWarning,
+            "メッセージスレッドが動いていないため、プラグインの状態を取れません");
+    }
+}
+
+std::vector<session::SavedPluginState> EnginePluginRack::capture_all() {
+    std::vector<session::SavedPluginState> captured;
+    for (const auto& [insert_id, serial] : state_->current) {
+        const auto it = state_->entries.find(serial);
+        if (it == state_->entries.end()) {
+            continue;
+        }
+        if (auto one = state_->capture(insert_id, it->second)) {
+            captured.push_back(std::move(*one));
+        }
+    }
+    return captured;
 }
 
 void EnginePluginRack::release(const std::string& insert_id) {

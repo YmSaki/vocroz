@@ -23,9 +23,10 @@ class FakePluginInstance final : public PluginInstance {
 public:
     /// @param processor 返す処理
     /// @param alive     生きているインスタンスの数（作るときに増やし、破棄するときに減らす）
+    /// @param reject    true の間は状態の保存と復元を失敗させる（壊れたプラグインの再現）
     FakePluginInstance(std::shared_ptr<audio_core::PluginProcessor> processor,
-                       std::shared_ptr<int> alive)
-        : processor_(std::move(processor)), alive_(std::move(alive)) {
+                       std::shared_ptr<int> alive, std::shared_ptr<const bool> reject = nullptr)
+        : processor_(std::move(processor)), alive_(std::move(alive)), reject_(std::move(reject)) {
         ++*alive_;
     }
     ~FakePluginInstance() override {
@@ -40,11 +41,17 @@ public:
 
     [[nodiscard]] common::Result<std::vector<std::uint8_t>, PluginStateError> save_state()
         override {
+        if (reject_ && *reject_) {
+            return common::make_unexpected(PluginStateError::kRejected);
+        }
         return state_;
     }
 
     [[nodiscard]] common::Result<void, PluginStateError> restore_state(
         std::span<const std::uint8_t> state) override {
+        if (reject_ && *reject_) {
+            return common::make_unexpected(PluginStateError::kRejected);
+        }
         state_.assign(state.begin(), state.end());
         return {};
     }
@@ -52,6 +59,7 @@ public:
 private:
     std::shared_ptr<audio_core::PluginProcessor> processor_;
     std::shared_ptr<int> alive_;
+    std::shared_ptr<const bool> reject_;
     std::vector<std::uint8_t> state_;
 };
 
@@ -70,12 +78,17 @@ public:
             return common::make_unexpected(*fail_with_);
         }
         return std::unique_ptr<PluginInstance>{
-            std::make_unique<FakePluginInstance>(make_processor_(), alive_)};
+            std::make_unique<FakePluginInstance>(make_processor_(), alive_, reject_states_)};
     }
 
     /// 以降の読み込みを error で失敗させる。
     void fail_with(PluginLoadError error) noexcept {
         fail_with_ = error;
+    }
+
+    /// 読み込んだすべてのインスタンスの、状態の保存と復元を失敗させるかを決める。
+    void reject_states(bool reject) noexcept {
+        *reject_states_ = reject;
     }
 
     /// 読み込んだプラグインの識別子（古い順）。
@@ -93,6 +106,7 @@ private:
     std::optional<PluginLoadError> fail_with_;
     std::vector<std::string> loaded_;
     std::shared_ptr<int> alive_ = std::make_shared<int>(0);
+    std::shared_ptr<bool> reject_states_ = std::make_shared<bool>(false);
 };
 
 }  // namespace vocroz::session
