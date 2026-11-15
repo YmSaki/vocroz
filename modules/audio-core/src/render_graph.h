@@ -75,6 +75,7 @@ private:
         std::size_t position = 0;      // 送り元のノードの nodes_ 上の位置
         bool pre_fader = false;        // 送り元のフェーダーの前から取り出す
         std::optional<FaderId> level;  // センドレベル
+        bool shares_level = false;  // level を別の結線と共有し、ランプを進めずに掛ける
         // プラグイン遅延補正。補正があるときだけ、送り元のチャンネルごとに 1 本ずつ確保する。
         std::vector<DelayLine> compensation;
     };

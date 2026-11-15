@@ -9,6 +9,7 @@
 #include <optional>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "vocroz/audio_core/constants.h"
 #include "vocroz/audio_core/feedback_analysis.h"
@@ -281,6 +282,7 @@ common::Result<GraphPlan, GraphError> plan_graph(const GraphDescription& descrip
     std::vector<std::vector<std::size_t>> same_block_outputs(specs.size());
     std::vector<std::size_t> same_block_inputs(specs.size(), 0);
     std::set<std::pair<std::size_t, std::size_t>> seen_connections;
+    std::vector<FaderId> shared_levels;
     for (std::size_t c = 0; c < description.connections.size(); ++c) {
         const Connection& connection = description.connections[c];
         const auto from = index_of.find(connection.from);
@@ -298,7 +300,16 @@ common::Result<GraphPlan, GraphError> plan_graph(const GraphDescription& descrip
         if (!seen_connections.emplace(from_index, to_index).second) {
             return make_unexpected(GraphError::kInvalidConnection);
         }
-        if (const auto error = claim_fader(connection.level, fader_capacity, used_faders)) {
+        if (connection.shares_level) {
+            // 共有する側はランプを進めないので、2 か所目として数えない。持ち主は後で確かめる。
+            if (!connection.level) {
+                return make_unexpected(GraphError::kMissingFader);
+            }
+            if (connection.level->value >= fader_capacity) {
+                return make_unexpected(GraphError::kFaderOutOfRange);
+            }
+            shared_levels.push_back(*connection.level);
+        } else if (const auto error = claim_fader(connection.level, fader_capacity, used_faders)) {
             return make_unexpected(*error);
         }
         plan.inputs_of[to_index].push_back(c);
@@ -311,6 +322,14 @@ common::Result<GraphPlan, GraphError> plan_graph(const GraphDescription& descrip
         if (specs[to_index].kind != NodeKind::kDelay) {
             same_block_outputs[from_index].push_back(to_index);
             ++same_block_inputs[to_index];
+        }
+    }
+
+    // 共有するセンドレベルには持ち主が要る。持ち主がいないとランプが進まず、ミュートの解除や
+    // 音量の変更が返送に届かない。
+    for (const FaderId fader : shared_levels) {
+        if (!used_faders.contains(fader)) {
+            return make_unexpected(GraphError::kMissingFader);
         }
     }
 

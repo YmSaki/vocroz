@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "vocroz/audio_core/gain_ramp.h"
@@ -37,6 +38,21 @@ public:
     void process(FaderId fader, float* const* channels, std::size_t channel_count,
                  std::size_t frames) noexcept VOCROZ_NONBLOCKING;
 
+    /// 処理ブロックの区切りを知らせる。RenderGraph::process() がブロックの先頭で呼ぶ。
+    /// follow() が、同じブロックで process() が進める前のランプの状態を使えるようにするため。
+    void begin_block() noexcept VOCROZ_NONBLOCKING;
+
+    /// フェーダーのゲインを、ランプを進めずに掛ける。同じブロックで同じフェーダーを process()
+    /// する結線と、処理順に関わらずサンプル単位で同じゲインになる。
+    /// 子機への返送（Minus-Me）が、親機のミックスのセンドと同じミュートと音量で取るために使う
+    /// （docs/adr/0036-return-monitor.md）。範囲外の FaderId なら無音にする。
+    /// @param fader 対象のフェーダー
+    /// @param channels 各チャンネルの先頭へのポインターの配列
+    /// @param channel_count チャンネル数
+    /// @param frames 処理するサンプル数
+    void follow(FaderId fader, float* const* channels, std::size_t channel_count,
+                std::size_t frames) const noexcept VOCROZ_NONBLOCKING;
+
     /// フェーダーの数を返す。
     [[nodiscard]] std::size_t capacity() const noexcept {
         return faders_.size();
@@ -47,9 +63,14 @@ private:
         GainRamp ramp;
         float gain = 1.0F;  // ミュート解除時に戻るリニアゲイン（0 dB）
         bool muted = true;  // 初期ミュート
+        // block_start_of の時点（そのブロックで最初に process() する前）のランプ。
+        GainRamp block_start;
+        std::uint64_t block_start_of = 0;  // block_start を写したブロックの番号
     };
 
     std::vector<Fader> faders_;
+    // 処理ブロックの番号。1 から数え、Fader::block_start_of の初期値 0 と区別する。
+    std::uint64_t block_ = 1;
 };
 
 }  // namespace vocroz::audio_core
