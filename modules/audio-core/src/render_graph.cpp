@@ -116,6 +116,7 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
             input.pre_fader = connection.tap == SendTap::kPreFader;
             input.level = connection.level;
             input.from_key = specs[plan.from_of[c]].history_key;
+            input.shares_level = connection.shares_level;
             const std::size_t compensation = plan.latency.compensation_samples[c];
             if (compensation > 0) {
                 const std::size_t channels = output_channels_of(specs[plan.from_of[c]]);
@@ -172,7 +173,9 @@ void RenderGraph::mix_inputs(Node& node, std::size_t frames,
             for (std::size_t ch = 0; ch < input.compensation.size(); ++ch) {
                 input.compensation[ch].process(std::span<float>(scratch_[ch], frames));
             }
-            if (input.level) {
+            if (input.level && input.shares_level) {
+                faders.follow(*input.level, scratch_.data(), from.channel_count, frames);
+            } else if (input.level) {
                 faders.process(*input.level, scratch_.data(), from.channel_count, frames);
             }
             source = scratch_.data();
@@ -305,6 +308,7 @@ std::span<const OutputBlock> RenderGraph::process(
     std::size_t frames, FaderBank& faders, MeterBank& meters,
     const MidiBlockClock& midi_clock) noexcept VOCROZ_NONBLOCKING {
     frames = std::min(frames, kBlockSize);
+    faders.begin_block();
     midi_.pull_sources(midi_clock, frames);
     for (std::size_t position = 0; position < nodes_.size(); ++position) {
         process_node(position, frames, faders, meters);

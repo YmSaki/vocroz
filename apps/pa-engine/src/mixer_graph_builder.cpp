@@ -183,18 +183,21 @@ BusStage add_bus_stage(GraphWriter& writer, ac::NodeId bus, const InsertChain& c
 }
 
 // 子機への返送を足す。返送の候補は Master へ入る信号（ストリップ、Master へ送るバスと
-// 遅延ノード）で、親機のメインのミックスと同じバランスにする。Master のフェーダーとミュートは
-// 通さない。Master はハウスの出力の操作で、出演者のモニターまで止めるものではないため。
+// 遅延ノード）で、Master へ入るセンドのミュートと音量も含めて親機のメインのミックスと同じ
+// バランスにする。Master のフェーダーとミュートは通さない。Master はハウスの出力の操作で、
+// 出演者のモニターまで止めるものではないため。
 // その子機の声を含む候補は add_minus_me_returns() が除く。
 void add_returns(ac::GraphDescription& graph, ac::NodeId master_input,
                  const std::vector<ac::MinusMeReturn>& returns) {
     if (returns.empty()) {
         return;
     }
-    std::vector<ac::NodeId> mix_inputs;
+    // 取り出し位置とセンドレベルも渡す。送り元だけを渡すと、Master へのセンドのミュートと
+    // 音量が返送に効かなくなる。
+    std::vector<ac::MinusMeInput> mix_inputs;
     for (const auto& connection : graph.connections) {
         if (connection.to == master_input) {
-            mix_inputs.push_back(connection.from);
+            mix_inputs.emplace_back(connection.from, connection.tap, connection.level);
         }
     }
     // 候補と返送のノードはすべてこのグラフのものなので失敗しない。万一失敗したら返送を足さない

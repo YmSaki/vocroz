@@ -228,6 +228,11 @@ struct Connection {
     /// プリフェーダーのセンドは、新規参加時の初期ミュートをチャンネルのフェーダーで守れないので、
     /// 必ずセンドレベルを付ける（フェーダーはミュートで始まる）。
     std::optional<FaderId> level;
+    /// true なら level を、同じフェーダーを持つ別の結線かノードと共有する。共有する側はランプを
+    /// 進めず、同じブロックの持ち主と同じゲインを掛ける。子機への返送（Minus-Me）が、Master へ
+    /// 入るセンドのミュートと音量をそのまま通るようにするため（docs/adr/0036-return-monitor.md）。
+    /// level が必要で、そのフェーダーを共有しないノードか結線が同じグラフに 1 つあること。
+    bool shares_level = false;
 };
 
 /// グラフ内の MIDI ソースの識別子。1 つのグラフの中で一意にする。NodeId とは別の名前空間。
@@ -270,8 +275,10 @@ enum class GraphError {
     kChannelMismatch,  ///< ステレオの出力をモノラルの入力（モノラルのストリップなど）へつないでいる
     kCycle,  ///< 遅延ノードを通らないループ（発振経路）がある。承認があっても適用できない
     kUnapprovedFeedback,  ///< 遅延ノードを通るループがあるが、オペレーターが承認していない
-    kMissingSource,    ///< ソースノードに AudioSource がない
-    kMissingFader,     ///< ストリップかバスにフェーダーがない
+    kMissingSource,  ///< ソースノードに AudioSource がない
+    /// ストリップかバスにフェーダーがない。共有するセンドレベル（Connection::shares_level）に
+    /// フェーダーがないか、そのフェーダーの持ち主がグラフにない
+    kMissingFader,
     kFaderOutOfRange,  ///< フェーダーの識別子が容量を超えている
     kMeterOutOfRange,  ///< メーターの識別子が容量を超えている
     kDuplicateFader,   ///< 同じフェーダーを複数のノードが使っている

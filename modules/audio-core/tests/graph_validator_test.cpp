@@ -87,6 +87,38 @@ TEST(GraphValidatorTest, RejectsSendLevelSharedWithNodeFader) {
     EXPECT_EQ(plan_error(out_of_range), GraphError::kFaderOutOfRange);
 }
 
+TEST(GraphValidatorTest, AcceptsSharedSendLevelWithAnOwner) {
+    // ストリップ 2 → バス 3 のセンド（フェーダー 3）を、ストリップ 2 → バス 4 が共有する。
+    GraphDescription graph = strip_and_bus();
+    graph.nodes.push_back(NodeSpec::make_bus(NodeId{4}, FaderId{2}, std::nullopt));
+    graph.connections.push_back({NodeId{2}, NodeId{3}, SendTap::kPostFader, FaderId{3}});
+    Connection shared{NodeId{2}, NodeId{4}, SendTap::kPostFader, FaderId{3}};
+    shared.shares_level = true;
+    graph.connections.push_back(shared);
+    EXPECT_TRUE(plan_graph(graph, kCapacity, kCapacity).has_value());
+}
+
+TEST(GraphValidatorTest, RejectsSharedSendLevelWithoutOwnerOrLevel) {
+    // 持ち主がいないと、共有する側のランプが進まず、ミュートの解除も音量も届かない。
+    GraphDescription no_owner = strip_and_bus();
+    Connection shared{NodeId{2}, NodeId{3}, SendTap::kPostFader, FaderId{5}};
+    shared.shares_level = true;
+    no_owner.connections.push_back(shared);
+    EXPECT_EQ(plan_error(no_owner), GraphError::kMissingFader);
+
+    GraphDescription no_level = strip_and_bus();
+    Connection without_level{NodeId{2}, NodeId{3}};
+    without_level.shares_level = true;
+    no_level.connections.push_back(without_level);
+    EXPECT_EQ(plan_error(no_level), GraphError::kMissingFader);
+
+    GraphDescription out_of_range = strip_and_bus();
+    Connection far{NodeId{2}, NodeId{3}, SendTap::kPostFader, FaderId{kCapacity}};
+    far.shares_level = true;
+    out_of_range.connections.push_back(far);
+    EXPECT_EQ(plan_error(out_of_range), GraphError::kFaderOutOfRange);
+}
+
 TEST(GraphValidatorTest, ChecksDelayRanges) {
     GraphDescription strip_max;
     strip_max.nodes = {

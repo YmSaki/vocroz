@@ -199,7 +199,7 @@ export function MixerScreen({
                 onRemove={() =>
                   command.send(channel.entity_id, channel.revision, { type: "remove_strip" })
                 }
-                onPlanned={() => notifyPlanned("feature.insert_fx", toasts)}
+                onOpenInserts={onOpenRouting}
               />
             ))
           )}

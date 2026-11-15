@@ -335,6 +335,50 @@ TEST_F(EngineMixerTest, ReturnOfAClientWithSeveralInputsCarriesOnlyTheOthers) {
     EXPECT_NEAR(sink->last(), 2.0F * kInput, 1e-5F);
 }
 
+TEST_F(EngineMixerTest, ReturnFollowsTheMuteAndGainOfTheBusToMasterSend) {
+    // ch-1 は Master へ直接は聞こえないようにミュートし、プリフェーダーのセンドで bus-1 へ送る。
+    // ch-2 の子機（キー 2）の返送に、bus-1 → Master のセンドのミュートと音量が効くことを確かめる。
+    engine_.add_channel("ch-1");
+    ASSERT_TRUE(engine_.attach_source("ch-1", constant_source()));
+    engine_.add_channel("ch-2");
+    engine_.set_master_muted(false);
+    ASSERT_TRUE(engine_.apply_routing(prefader_send_through_bus(), false, {}));
+    engine_.set_route_muted("send-1", false);
+    engine_.set_route_muted("bus-1", false);
+    auto sink = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(2, {"ch-2"}, sink));
+
+    // bus-1 → Master のセンドがミュートの間は、ハウスにも返送にも出ない。
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_EQ(sink->last(), 0.0F);
+
+    // センドを解除して -20 dB にすると、ハウスと返送が同じ 1/10 になる。
+    engine_.set_route_muted("send-2", false);
+    engine_.set_route_gain("send-2", -20.0);
+    EXPECT_NEAR(render_last_left(), kInput * 0.1F, 1e-5F);
+    EXPECT_NEAR(sink->last(), kInput * 0.1F, 1e-5F);
+
+    // Master をミュートしても、返送はセンドの音量のまま続く（Master は返送に効かない）。
+    engine_.set_master_muted(true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_NEAR(sink->last(), kInput * 0.1F, 1e-5F);
+}
+
+TEST_F(EngineMixerTest, ReturnOfTheBusOwnerStillExcludesItsOwnVoice) {
+    // ch-1 の子機（キー 1）の返送には、ch-1 を含む bus-1 が入らない。
+    engine_.add_channel("ch-1");
+    ASSERT_TRUE(engine_.attach_source("ch-1", constant_source()));
+    engine_.set_master_muted(false);
+    ASSERT_TRUE(engine_.apply_routing(prefader_send_through_bus(), false, {}));
+    for (const char* id : {"send-1", "bus-1", "send-2"}) {
+        engine_.set_route_muted(id, false);
+    }
+    auto sink = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink));
+    EXPECT_NEAR(render_last_left(), kInput, 1e-5F);
+    EXPECT_EQ(sink->last(), 0.0F);
+}
+
 TEST_F(EngineMixerTest, AttachReturnFailsForUnknownStripOrNullSink) {
     engine_.add_channel("ch-1");
     EXPECT_FALSE(engine_.attach_return(1, {"ch-unknown"}, std::make_shared<ac::FakeAudioSink>()));

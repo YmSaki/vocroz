@@ -11,7 +11,6 @@ import { kMixerFaderScale } from "../../components/fader/fader-scale";
 import { Meter, type MeterSample } from "../../components/meter/Meter";
 import { MuteBadge } from "../../components/mute-badge/MuteBadge";
 import { MuteButton } from "../../components/mute-button/MuteButton";
-import { PlannedButton } from "../../components/planned-button/PlannedButton";
 import { t } from "../../i18n/i18n";
 import type { ChannelStrip, GainDb, LinkStat } from "../../ipc/messages";
 import { errorText } from "../shared/feedback";
@@ -37,7 +36,8 @@ export interface ChannelStripViewProps {
   onToggleReturn: () => void;
   onSelect: () => void;
   onRemove: () => void;
-  onPlanned: () => void;
+  /** プラグインの挿入の編集を開く（ルーティング画面）。 */
+  onOpenInserts: () => void;
 }
 
 /**
@@ -64,7 +64,7 @@ export function ChannelStripView({
   onToggleReturn,
   onSelect,
   onRemove,
-  onPlanned,
+  onOpenInserts,
 }: ChannelStripViewProps) {
   const status = stripStatus(channel);
   // 原因コードはストリップの幅に収まらないので、ツールチップで説明する。
@@ -111,11 +111,14 @@ export function ChannelStripView({
         text={t("mute.send_muted")}
         title={t("mute.send_muted_hint")}
       />
-      <PlannedButton
-        text={t("feature.insert_fx")}
-        title={t("feature.planned_hint")}
-        onClick={onPlanned}
-      />
+      <button
+        type="button"
+        class="strip__fx"
+        title={t("mixer.insert_fx_hint")}
+        onClick={onOpenInserts}
+      >
+        {t("feature.insert_fx")}
+      </button>
       <div class="strip__body">
         <Meter read={readMeter} label={t("mixer.meter_label", { name: channel.name })} />
         <Fader

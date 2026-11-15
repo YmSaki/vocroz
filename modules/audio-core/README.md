@@ -28,7 +28,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/constants.h` | `kSampleRate`、`kBlockSize`、`kMaxFaderGainDb`、遅延と出力チャンネルの上限 | 対象外 |
 | `vocroz/audio_core/mixer.h` | `Mixer`、`MixerConfig`、`MixerError` | `render()` だけ呼び出し可能 |
 | `vocroz/audio_core/graph_description.h` | `GraphDescription`、`NodeSpec`、`Connection`、`SendTap`、`NodeId`、`FaderId`、`MeterId`、`GraphError` | 対象外（コントロールスレッドで記述する） |
-| `vocroz/audio_core/minus_me.h` | `add_minus_me_returns()`、`MinusMeReturn`、`MinusMeReport`（子機ごとの返送をグラフに足す） | 対象外（コントロールスレッドで記述する） |
+| `vocroz/audio_core/minus_me.h` | `add_minus_me_returns()`、`MinusMeInput`、`MinusMeReturn`、`MinusMeReport`（子機ごとの返送をグラフに足す） | 対象外（コントロールスレッドで記述する） |
 | `vocroz/audio_core/feedback_analysis.h` | `analyze_feedback()`、`FeedbackReport`（ループに含まれるノードと、遅延のないループ） | 対象外 |
 | `vocroz/audio_core/latency_compensation.h` | `analyze_latency()`、`LatencyReport`（ノードごとの遅延と結線ごとの補正） | 対象外 |
 | `vocroz/audio_core/midi_event.h` | `MidiEvent`（ブロック内の MIDI メッセージ） | 呼び出し可能 |
@@ -211,13 +211,16 @@ using namespace vocroz::audio_core;
 // 候補は Master へ入る信号。A の返送には A のストリップと、A を含むバスが入らない。
 std::shared_ptr<AudioSink> to_a = ...;  // transport の MediaStreamEncoder
 std::shared_ptr<AudioSink> to_b = ...;
-const std::vector<NodeId> mix_inputs = {NodeId{11}, NodeId{12}, NodeId{13}};
+// 候補は Master へ入る結線の送り元と取り出し方。センドで Master へ入るバス 30 は、そのセンドの
+// フェーダー（ここでは 6）も渡すと、返送もそのセンドのミュートと音量に従う。
+const std::vector<MinusMeInput> mix_inputs = {
+    NodeId{11}, NodeId{12}, NodeId{13}, MinusMeInput{NodeId{30}, SendTap::kPostFader, FaderId{6}}};
 const std::vector<MinusMeReturn> returns = {{{NodeId{11}}, to_a}, {{NodeId{12}}, to_b}};
 if (auto added = add_minus_me_returns(graph, mix_inputs, returns); !added) { /* GraphError */ }
 (void)mixer.apply_graph(graph);
 ```
 
-返送はポストフェーダーで取るので、チャンネルミュートしたチャンネルは返送にも入りません。返送タップはステレオの入力を L と R の平均でモノラルにして、1 ブロックごとに `AudioSink::push()` を呼びます。
+返送はポストフェーダーで取るので、チャンネルミュートしたチャンネルは返送にも入りません。Master へ入るセンドのフェーダーは返送の結線が共有する（`Connection::shares_level`）ので、センドをミュートすれば返送からも消え、下げれば返送も同じだけ下がります。返送タップはステレオの入力を L と R の平均でモノラルにして、1 ブロックごとに `AudioSink::push()` を呼びます。
 
 ### 使い方（SRTP 外部出力へのストリームタップ）
 
