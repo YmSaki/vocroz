@@ -101,6 +101,25 @@ protected:
         return config;
     }
 
+    // ch-1 →（プリフェーダー）→ bus-1 →（tap）→ Master。bus-1 から Master へのセンドの
+    // 取り出し位置を tap で選ぶ。
+    static cp::RoutingConfig bus_send_to_master(cp::SendTap tap) {
+        cp::RoutingConfig config;
+        config.buses.push_back(cp::RoutingBus{"bus-1", "A"});
+        config.sends.push_back(cp::RoutingSend{"send-1", "ch-1", "bus-1", cp::SendTap::kPreFader});
+        config.sends.push_back(cp::RoutingSend{"send-2", "bus-1", "master", tap});
+        return config;
+    }
+
+    // ストリップから Master への直接の経路を止め、バスを通る音だけを聞けるようにする。
+    // ch-1 のプリフェーダーのセンドはストリップのミュートで止まらない。
+    void listen_only_through_bus() {
+        for (const char* id : {"send-1", "send-2", "bus-1"}) {
+            engine_.set_route_muted(id, false);
+        }
+        engine_.set_channel_muted("ch-1", true);
+    }
+
     common::FakeLogger logger_;
     ac::Mixer mixer_;
     EngineMixer engine_;
@@ -451,6 +470,70 @@ TEST_F(EngineMixerTest, BusMuteSilencesTheSoundLeftInABusInsert) {
     engine_.set_route_muted("bus-1", true);
     EXPECT_EQ(render_last_left(), 0.0F);
     EXPECT_EQ(render_last_left(), 0.0F);
+}
+
+// 入力を半分の大きさにして通す、遅延のないプラグイン。出力の値で、音がプラグインを通ったかを確かめる。
+session::InsertedPlugin halving_insert(const std::string& id) {
+    return session::InsertedPlugin{
+        id, std::make_shared<ac::FakePluginProcessor>(ac::PluginBusLayout{}, 0, 0.5F),
+        std::make_shared<ac::PluginFault>()};
+}
+
+TEST_F(EngineMixerTest, BusInsertAcceptsAPreFaderSendFromTheBus) {
+    add_audible_strip("ch-1");
+    auto config = bus_send_to_master(cp::SendTap::kPreFader);
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "pass"});
+    const std::vector<session::InsertedPlugin> plugins{halving_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    listen_only_through_bus();
+
+    // プリフェーダーのセンドは挿入を通った音を、バスのフェーダーの手前で取る。
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+    // バスのフェーダーとミュートはプリフェーダーのセンドに効かない。
+    engine_.set_route_gain("bus-1", -20.0);
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+    engine_.set_route_muted("bus-1", true);
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+}
+
+TEST_F(EngineMixerTest, PostFaderSendFromABusWithAnInsertFollowsTheBusFader) {
+    add_audible_strip("ch-1");
+    auto config = bus_send_to_master(cp::SendTap::kPostFader);
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "pass"});
+    const std::vector<session::InsertedPlugin> plugins{halving_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    listen_only_through_bus();
+
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+    engine_.set_route_gain("bus-1", -20.0);
+    EXPECT_NEAR(render_last_left(), kInput * 0.05F, 1e-5F);
+    engine_.set_route_muted("bus-1", true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+}
+
+TEST_F(EngineMixerTest, PreFaderSendFromABusSurvivesAddingLoadingAndRemovingAnInsert) {
+    add_audible_strip("ch-1");
+    auto config = bus_send_to_master(cp::SendTap::kPreFader);
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+    listen_only_through_bus();
+    engine_.set_route_muted("bus-1", true);
+    EXPECT_NEAR(render_last_left(), kInput, 1e-5F);
+
+    // 読み込みの済んでいない挿入を足すと、バスを通る経路を切って無音にする。適用は失敗しない。
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "pass"});
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+    EXPECT_EQ(render_last_left(), 0.0F);
+
+    // 読み込みが済むと、挿入を通った音がプリフェーダーのセンドで届く。
+    const std::vector<session::InsertedPlugin> plugins{halving_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+
+    // 挿入を外すと、もとの音に戻る。バスのミュートは保たれ、プリフェーダーのセンドに効かない。
+    config.inserts.clear();
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+    EXPECT_NEAR(render_last_left(), kInput, 1e-5F);
 }
 
 }  // namespace
