@@ -47,6 +47,11 @@ public:
         }
     }
 
+    /// 開始していて、まだ止めていなければ true を返す。
+    [[nodiscard]] bool is_started() const noexcept {
+        return callback_ != nullptr;
+    }
+
     /// デバイスの抜去を模擬する。リスナーに通知し、以後コールバックを呼ばない。
     void simulate_device_lost() {
         lost_ = true;

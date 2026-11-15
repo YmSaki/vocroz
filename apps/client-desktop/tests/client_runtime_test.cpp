@@ -198,6 +198,80 @@ TEST_F(ClientRuntimeTest, RefreshesDevicesWhenInputIsUnplugged) {
     EXPECT_TRUE(snapshot.input_missing);
 }
 
+// 抜去の通知を処理した後も入力の一覧を数え直し、挿し直したマイクを一覧に戻す。
+// 戻したマイクを勝手に開き直さず、出演者が選び直したときにだけ開く。
+TEST_F(ClientRuntimeTest, ListsARepluggedMicrophoneAgainAndOpensItOnlyWhenSelected) {
+    ASSERT_EQ(inputs_.opened.size(), 1U);
+    devices_.set_devices(audio_core::AudioDeviceDirection::kInput, {});
+    inputs_.last->simulate_device_lost();
+    runtime_->poll();
+    ASSERT_TRUE(latest_snapshot().value().input_devices.empty());
+
+    devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
+                         {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"}});
+    clock_.advance(kInputDeviceScanInterval);
+    runtime_->poll();
+
+    send_ui(cp::Hello{});
+    const auto snapshot = latest_snapshot().value();
+    ASSERT_EQ(snapshot.input_devices.size(), 1U);
+    EXPECT_EQ(snapshot.input_devices[0].id, "mic-1");
+    EXPECT_EQ(inputs_.opened.size(), 1U);  // 一覧に戻っただけでは開き直さない
+    EXPECT_TRUE(snapshot.send_muted);
+
+    send_ui(cp::DiscreteCommand{.request_id = "r1",
+                                .entity_id = snapshot.entity_id,
+                                .expected_revision = snapshot.revision,
+                                .body = cp::SelectInput{.device_id = "mic-1"}});
+    ASSERT_EQ(inputs_.opened.size(), 2U);
+    EXPECT_EQ(inputs_.opened.back(), "mic-1");
+    EXPECT_TRUE(inputs_.last->is_started());
+    EXPECT_FALSE(latest_snapshot().value().input_missing);
+}
+
+// 起動した後につないだデバイスも、抜去の通知を待たずに一覧へ出す。
+TEST_F(ClientRuntimeTest, ListsAnInputDeviceConnectedAfterStart) {
+    devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
+                         {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"},
+                          audio_core::AudioDeviceInfo{.id = "mic-2", .name = "Mic 2"}});
+    clock_.advance(kInputDeviceScanInterval);
+    runtime_->poll();
+
+    const auto snapshot = latest_snapshot().value();
+    ASSERT_EQ(snapshot.input_devices.size(), 2U);
+    EXPECT_EQ(snapshot.input_devices[1].id, "mic-2");
+    EXPECT_EQ(snapshot.selected_input_id, "mic-1");  // 選択は変えない
+}
+
+// 選んでいないデバイスを抜き差ししても、選んだマイクはそのまま使い続ける。
+TEST_F(ClientRuntimeTest, UnpluggingAnotherDeviceKeepsTheSelectedMicrophone) {
+    devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
+                         {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"},
+                          audio_core::AudioDeviceInfo{.id = "mic-2", .name = "Mic 2"}});
+    clock_.advance(kInputDeviceScanInterval);
+    runtime_->poll();
+    devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
+                         {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"}});
+    clock_.advance(kInputDeviceScanInterval);
+    runtime_->poll();
+
+    const auto snapshot = latest_snapshot().value();
+    ASSERT_EQ(snapshot.input_devices.size(), 1U);
+    EXPECT_FALSE(snapshot.input_missing);
+    EXPECT_EQ(inputs_.opened.size(), 1U);
+    EXPECT_TRUE(inputs_.last->is_started());
+}
+
+// 一覧が変わらなければ、UI へ同じ状態を送り直さない。
+TEST_F(ClientRuntimeTest, DoesNotPublishWhenTheInputListIsUnchanged) {
+    static_cast<void>(take_ui_messages());
+    clock_.advance(kInputDeviceScanInterval);
+    runtime_->poll();
+    for (const auto& m : take_ui_messages()) {
+        EXPECT_FALSE(std::holds_alternative<cp::ClientUpdated>(m));
+    }
+}
+
 TEST_F(ClientRuntimeTest, OpensTheSelectedReturnOutputAndReportsItsLoss) {
     send_ui(cp::Hello{});
     auto snapshot = latest_snapshot().value();
