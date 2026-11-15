@@ -597,6 +597,53 @@ TEST_F(ClientSessionTest, UnpluggedMicrophoneRaisesInputMissingWithoutChangingTh
     EXPECT_FALSE(last_sent_of<wire::InputReport>()->input_missing);
 }
 
+// 選んでいたマイクが一覧に戻ったら、同じマイクを開き直す。送信を解除していれば、
+// 開き直した後に送信の世代を進め、親機に新しい区間として受け取らせる。
+TEST_F(ClientSessionTest, ReopensTheSelectedMicrophoneWhenItComesBack) {
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}});
+    ASSERT_TRUE(command(cp::SelectInput{"mic-1"}));
+    join_and_connect(token(7));
+    ASSERT_TRUE(command(cp::SetSendMute{false}));
+    session().on_input_devices_changed({});
+    const auto opened = capture_.select_count();
+    const auto epoch = capture_.epoch();
+    const auto revision = session().snapshot().revision;
+
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}});
+    EXPECT_EQ(capture_.select_count(), opened + 1);
+    EXPECT_EQ(capture_.input(), "mic-1");
+    EXPECT_FALSE(capture_.send_muted());  // 送信ミュートは変えない
+    EXPECT_EQ(capture_.epoch(), epoch + 1);
+    const auto report = last_sent_of<wire::SendMuteReport>();
+    ASSERT_TRUE(report);
+    EXPECT_EQ(report->epoch, epoch + 1);
+    EXPECT_EQ(session().snapshot().revision, revision);  // 観測値なので revision は進めない
+}
+
+// 送信ミュート中に戻ったときも開き直すが、送信の世代は進めない（解除のときに進む）。
+TEST_F(ClientSessionTest, ReopensTheSelectedMicrophoneWhileMutedWithoutAdvancingTheEpoch) {
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}});
+    ASSERT_TRUE(command(cp::SelectInput{"mic-1"}));
+    session().on_input_devices_changed({});
+    const auto opened = capture_.select_count();
+    const auto epoch = capture_.epoch();
+
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}});
+    EXPECT_EQ(capture_.select_count(), opened + 1);
+    EXPECT_TRUE(capture_.send_muted());
+    EXPECT_EQ(capture_.epoch(), epoch);
+}
+
+// ほかのデバイスの抜き差しでは、選んでいるマイクを開き直さない（開き直すと音が途切れる）。
+TEST_F(ClientSessionTest, KeepsTheSelectedMicrophoneOpenWhenAnotherDeviceChanges) {
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}, {"mic-2", "内蔵マイク"}});
+    ASSERT_TRUE(command(cp::SelectInput{"mic-1"}));
+    const auto opened = capture_.select_count();
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}});
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}, {"mic-2", "内蔵マイク"}});
+    EXPECT_EQ(capture_.select_count(), opened);
+}
+
 TEST_F(ClientSessionTest, ChoosingNoInputIsNotReportedAsMissing) {
     session().on_input_devices_changed({{"mic-1", "USB マイク"}});
     ASSERT_TRUE(command(cp::SelectInput{std::nullopt}));

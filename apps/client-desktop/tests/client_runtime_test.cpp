@@ -198,35 +198,50 @@ TEST_F(ClientRuntimeTest, RefreshesDevicesWhenInputIsUnplugged) {
     EXPECT_TRUE(snapshot.input_missing);
 }
 
-// 抜去の通知を処理した後も入力の一覧を数え直し、挿し直したマイクを一覧に戻す。
-// 戻したマイクを勝手に開き直さず、出演者が選び直したときにだけ開く。
-TEST_F(ClientRuntimeTest, ListsARepluggedMicrophoneAgainAndOpensItOnlyWhenSelected) {
+// 抜去の通知を処理した後も入力の一覧を数え直し、選んでいたマイクが戻ったら、同じマイクを
+// 開き直す。送信ミュートは変えない。
+TEST_F(ClientRuntimeTest, ReopensTheSelectedMicrophoneWhenItIsPluggedBackIn) {
     ASSERT_EQ(inputs_.opened.size(), 1U);
     devices_.set_devices(audio_core::AudioDeviceDirection::kInput, {});
     inputs_.last->simulate_device_lost();
     runtime_->poll();
-    ASSERT_TRUE(latest_snapshot().value().input_devices.empty());
+    ASSERT_TRUE(latest_snapshot().value().input_missing);
 
     devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
                          {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"}});
     clock_.advance(kInputDeviceScanInterval);
     runtime_->poll();
 
-    send_ui(cp::Hello{});
-    const auto snapshot = latest_snapshot().value();
-    ASSERT_EQ(snapshot.input_devices.size(), 1U);
-    EXPECT_EQ(snapshot.input_devices[0].id, "mic-1");
-    EXPECT_EQ(inputs_.opened.size(), 1U);  // 一覧に戻っただけでは開き直さない
-    EXPECT_TRUE(snapshot.send_muted);
-
-    send_ui(cp::DiscreteCommand{.request_id = "r1",
-                                .entity_id = snapshot.entity_id,
-                                .expected_revision = snapshot.revision,
-                                .body = cp::SelectInput{.device_id = "mic-1"}});
     ASSERT_EQ(inputs_.opened.size(), 2U);
     EXPECT_EQ(inputs_.opened.back(), "mic-1");
     EXPECT_TRUE(inputs_.last->is_started());
-    EXPECT_FALSE(latest_snapshot().value().input_missing);
+    send_ui(cp::Hello{});
+    const auto snapshot = latest_snapshot().value();
+    ASSERT_EQ(snapshot.input_devices.size(), 1U);
+    EXPECT_EQ(snapshot.selected_input_id, "mic-1");
+    EXPECT_FALSE(snapshot.input_missing);
+    EXPECT_TRUE(snapshot.send_muted);
+}
+
+// 抜けたのが選んでいないマイクなら、一覧に戻っても開かない。
+TEST_F(ClientRuntimeTest, DoesNotOpenAnUnselectedMicrophoneWhenItIsPluggedBackIn) {
+    devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
+                         {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"},
+                          audio_core::AudioDeviceInfo{.id = "mic-2", .name = "Mic 2"}});
+    clock_.advance(kInputDeviceScanInterval);
+    runtime_->poll();
+    devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
+                         {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"}});
+    clock_.advance(kInputDeviceScanInterval);
+    runtime_->poll();
+    devices_.set_devices(audio_core::AudioDeviceDirection::kInput,
+                         {audio_core::AudioDeviceInfo{.id = "mic-1", .name = "Mic 1"},
+                          audio_core::AudioDeviceInfo{.id = "mic-2", .name = "Mic 2"}});
+    clock_.advance(kInputDeviceScanInterval);
+    runtime_->poll();
+
+    EXPECT_EQ(inputs_.opened.size(), 1U);
+    EXPECT_EQ(latest_snapshot().value().selected_input_id, "mic-1");
 }
 
 // 起動した後につないだデバイスも、抜去の通知を待たずに一覧へ出す。
