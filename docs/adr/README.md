@@ -42,5 +42,8 @@
 | [0040](0040-srtp-external-output.md) | SRTP 外部出力（libsrtp の採用、鍵、RTP の形式、平文の禁止） | 採用 |
 | [0041](0041-plugin-editor-and-failure-notice.md) | プラグインのエディターのウィンドウと、プラグインの失敗の知らせ方 | 採用 |
 | [0042](0042-plugin-insert.md) | プラグインの挿入 | 採用 |
+| [0043](0043-recording-and-media-player.md) | 録音とメディアプレイヤーの状態、ファイル、ディスク I/O スレッド、メディア画面 | 採用 |
+| [0044](0044-ui-instance-namespace.md) | UI のインスタンスごとに request_id と seq の名前空間を分ける | 採用 |
+| [0045](0045-audio-history-carry-over.md) | グラフの差し替えで音声の履歴を引き継ぐ | 採用 |
 
 仕様書は RPC-SPEC-001（1.2-draft）。2026-11-07 にプロダクトオーナーが「UX を損なわない範囲で実装しやすい方法」を方針として承認した。
