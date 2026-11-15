@@ -24,4 +24,10 @@ namespace vocroz::engine::win {
 /// @return 取得できた場所。存在しない場所も含む（列挙で飛ばす）
 [[nodiscard]] std::vector<std::filesystem::path> vst3_directories();
 
+/// 録音の保存先とメディアプレイヤーのライブラリの既定の場所（ユーザーのミュージック\VOCROZ。
+/// docs/adr/0043-recording-and-media-player.md）。エクスプローラーで探しやすく、OneDrive などで
+/// ミュージックの場所を移していても追従する。
+/// @return 既定のメディアフォルダ。既知のフォルダを取得できなければ std::nullopt
+[[nodiscard]] std::optional<std::filesystem::path> default_media_folder();
+
 }  // namespace vocroz::engine::win

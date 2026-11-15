@@ -98,7 +98,7 @@ void expect_round_trip(AudioFileFormat format, std::size_t channels, const std::
     constexpr std::size_t kFrames = kRate + 123;
     const auto samples = make_pattern(kFrames, channels);
     {
-        auto writer = open_audio_file_writer(file, format, channels);
+        auto writer = make_audio_file_writer(file, format, channels);
         ASSERT_TRUE(writer.has_value());
         // ディスク I/O スレッドと同じく、小分けにして書く。
         constexpr std::size_t kChunk = 1000;
@@ -111,7 +111,7 @@ void expect_round_trip(AudioFileFormat format, std::size_t channels, const std::
         }
         ASSERT_TRUE(writer.value()->finish().has_value());
     }
-    auto reader = open_audio_file_reader(file);
+    auto reader = make_audio_file_reader(file);
     ASSERT_TRUE(reader.has_value());
     EXPECT_EQ(reader.value()->channel_count(), channels);
     EXPECT_EQ(reader.value()->length_frames(), kFrames);
@@ -138,7 +138,7 @@ TEST(JuceAudioFileTest, WriterDoesNotOverwriteExistingFile) {
     TempFolder folder;
     const fs::path file = folder.path() / "take.wav";
     std::ofstream(file) << "keep";
-    const auto writer = open_audio_file_writer(file, AudioFileFormat::kWav, 1);
+    const auto writer = make_audio_file_writer(file, AudioFileFormat::kWav, 1);
     ASSERT_FALSE(writer.has_value());
     EXPECT_EQ(writer.error(), AudioFileError::kIoError);
     std::ifstream in(file);
@@ -149,7 +149,7 @@ TEST(JuceAudioFileTest, WriterDoesNotOverwriteExistingFile) {
 
 TEST(JuceAudioFileTest, WriterRejectsUnsupportedChannelCount) {
     TempFolder folder;
-    const auto writer = open_audio_file_writer(folder.path() / "a.wav", AudioFileFormat::kWav, 3);
+    const auto writer = make_audio_file_writer(folder.path() / "a.wav", AudioFileFormat::kWav, 3);
     ASSERT_FALSE(writer.has_value());
     EXPECT_EQ(writer.error(), AudioFileError::kUnsupportedFormat);
 }
@@ -157,7 +157,7 @@ TEST(JuceAudioFileTest, WriterRejectsUnsupportedChannelCount) {
 TEST(JuceAudioFileTest, WriterFailsWhenFolderIsMissing) {
     TempFolder folder;
     const auto writer =
-        open_audio_file_writer(folder.path() / "missing" / "a.wav", AudioFileFormat::kWav, 1);
+        make_audio_file_writer(folder.path() / "missing" / "a.wav", AudioFileFormat::kWav, 1);
     ASSERT_FALSE(writer.has_value());
     EXPECT_EQ(writer.error(), AudioFileError::kIoError);
 }
@@ -189,7 +189,7 @@ TEST(JuceAudioFileTest, StopsWritingBeforeVolumeRunsOutAndKeepsWrittenAudio) {
     const auto finished = writer.value()->finish();
     ASSERT_FALSE(finished.has_value());
     EXPECT_EQ(finished.error(), AudioFileError::kDiskFull);
-    auto reader = open_audio_file_reader(file);
+    auto reader = make_audio_file_reader(file);
     ASSERT_TRUE(reader.has_value());
     EXPECT_EQ(reader.value()->length_frames(), kRate);
 }
@@ -207,14 +207,14 @@ TEST(JuceAudioFileTest, WriterRefusesToOpenWhenVolumeIsAlreadyFull) {
 TEST(JuceAudioFileTest, WavHeaderIsRewrittenWhileRecording) {
     TempFolder folder;
     const fs::path file = folder.path() / "crash.wav";
-    auto writer = open_audio_file_writer(file, AudioFileFormat::kWav, 2);
+    auto writer = make_audio_file_writer(file, AudioFileFormat::kWav, 2);
     ASSERT_TRUE(writer.has_value());
     // 1.5 秒書いたところで（閉じる前に）エンジンが落ちたとしても、1 秒の時点のヘッダーで読める。
     const auto samples = make_pattern(kRate / 2, 2);
     for (int i = 0; i < 3; ++i) {
         ASSERT_TRUE(writer.value()->write(samples).has_value());
     }
-    auto reader = open_audio_file_reader(file);
+    auto reader = make_audio_file_reader(file);
     ASSERT_TRUE(reader.has_value());
     EXPECT_GE(reader.value()->length_frames(), kRate);
     ASSERT_TRUE(writer.value()->finish().has_value());
@@ -222,13 +222,13 @@ TEST(JuceAudioFileTest, WavHeaderIsRewrittenWhileRecording) {
 
 TEST(JuceAudioFileTest, ReaderReportsMissingAndUnsupportedFiles) {
     TempFolder folder;
-    const auto missing = open_audio_file_reader(folder.path() / "none.wav");
+    const auto missing = make_audio_file_reader(folder.path() / "none.wav");
     ASSERT_FALSE(missing.has_value());
     EXPECT_EQ(missing.error(), AudioFileError::kNotFound);
 
     const fs::path text = folder.path() / "notes.wav";
     std::ofstream(text) << "this is not audio";
-    const auto unsupported = open_audio_file_reader(text);
+    const auto unsupported = make_audio_file_reader(text);
     ASSERT_FALSE(unsupported.has_value());
     EXPECT_EQ(unsupported.error(), AudioFileError::kUnsupportedFormat);
 }
@@ -256,7 +256,7 @@ TEST(JuceAudioFileTest, ReaderConvertsOtherSampleRatesTo48k) {
     TempFolder folder;
     const fs::path file = folder.path() / "44k.wav";
     write_sine_44k(file, 44'100, 1000.0);
-    auto reader = open_audio_file_reader(file);
+    auto reader = make_audio_file_reader(file);
     ASSERT_TRUE(reader.has_value());
     // 1 秒のファイルは、48 kHz で 48000 フレームになる。
     EXPECT_EQ(reader.value()->length_frames(), kRate);
@@ -275,12 +275,12 @@ TEST(JuceAudioFileTest, SeekMovesTheReadPosition) {
     TempFolder folder;
     const fs::path file = folder.path() / "seek.wav";
     {
-        auto writer = open_audio_file_writer(file, AudioFileFormat::kWav, 1);
+        auto writer = make_audio_file_writer(file, AudioFileFormat::kWav, 1);
         ASSERT_TRUE(writer.has_value());
         ASSERT_TRUE(writer.value()->write(make_pattern(kRate, 1)).has_value());
         ASSERT_TRUE(writer.value()->finish().has_value());
     }
-    auto reader = open_audio_file_reader(file);
+    auto reader = make_audio_file_reader(file);
     ASSERT_TRUE(reader.has_value());
     ASSERT_TRUE(reader.value()->seek(kRate / 2 + 7).has_value());
     std::vector<float> chunk(16);
@@ -317,7 +317,7 @@ TEST(JuceAudioFileTest, ReaderUsesFirstTwoChannelsOfMultichannelFiles) {
         }
         ASSERT_TRUE(writer->writeFromAudioSampleBuffer(buffer, 0, 100));
     }
-    auto reader = open_audio_file_reader(file);
+    auto reader = make_audio_file_reader(file);
     ASSERT_TRUE(reader.has_value());
     EXPECT_EQ(reader.value()->channel_count(), 2U);
     const auto read = read_all(*reader.value());

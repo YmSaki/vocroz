@@ -59,6 +59,13 @@ private:
     // プラグイン（docs/adr/0042-plugin-insert.md）。
     CommandResult rescan_plugins();
     CommandResult open_plugin_editor(const std::string& insert_id);
+    // 録音とメディアプレイヤー（docs/adr/0043-recording-and-media-player.md）。
+    /// 録音の設定を変え、変わったら保存する。
+    CommandResult set_recorder_config(const control_protocol::RecorderConfig& config);
+    /// 録る対象の表示名を引く関数。
+    [[nodiscard]] MediaDesk::SourceLabel recording_label() const;
+    /// メディアプレイヤーの流す先を確かめる関数。
+    [[nodiscard]] MediaDesk::TargetCheck media_target() const;
     void handle_gain(const control_protocol::SetGain& command);
     void handle_route_gain(control_protocol::RouteLevel& level,
                            const control_protocol::SetGain& command);

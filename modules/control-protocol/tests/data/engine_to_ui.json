@@ -308,7 +308,54 @@
             "muted": true
           }
         ]
-      }
+      },
+      "recorder": {
+        "entity_id": "recorder",
+        "revision": 3,
+        "config": {
+          "format": "WAV",
+          "folder": "C:\\Users\\pa\\Music\\VOCROZ",
+          "sources": [
+            "master",
+            "ch-1"
+          ]
+        },
+        "state": "RECORDING",
+        "take": "20261115-201500",
+        "elapsed_ms": 61000,
+        "tracks": [
+          {
+            "source_id": "master",
+            "file_name": "01-Master.wav",
+            "dropped_ms": 0
+          },
+          {
+            "source_id": "ch-1",
+            "file_name": "02-Vocal.wav",
+            "dropped_ms": 12
+          }
+        ],
+        "last_result": "OK"
+      },
+      "media_player": {
+        "entity_id": "media_player",
+        "revision": 5,
+        "file": "20261115-201500/01-Master.wav",
+        "channels": 2,
+        "duration_ms": 61000,
+        "target": "master",
+        "transport": "PLAYING",
+        "position_ms": 1500,
+        "last_result": "OK"
+      },
+      "media_library": [
+        {
+          "path": "20261115-201500/01-Master.wav"
+        },
+        {
+          "path": "bgm/opening.flac"
+        }
+      ]
     }
   },
   {
@@ -366,7 +413,33 @@
         "feedback_approved": false,
         "staged": null,
         "levels": []
-      }
+      },
+      "recorder": {
+        "entity_id": "recorder",
+        "revision": 0,
+        "config": {
+          "format": "WAV",
+          "folder": "C:\\Users\\pa\\Music\\VOCROZ",
+          "sources": []
+        },
+        "state": "STOPPED",
+        "take": null,
+        "elapsed_ms": 0,
+        "tracks": [],
+        "last_result": null
+      },
+      "media_player": {
+        "entity_id": "media_player",
+        "revision": 0,
+        "file": null,
+        "channels": 0,
+        "duration_ms": 0,
+        "target": "master",
+        "transport": "STOPPED",
+        "position_ms": 0,
+        "last_result": null
+      },
+      "media_library": []
     }
   },
   {
@@ -1456,6 +1529,138 @@
         "vendor": "",
         "version": "",
         "is_instrument": false
+      }
+    ]
+  },
+  {
+    "type": "recorder_updated",
+    "recorder": {
+      "entity_id": "recorder",
+      "revision": 4,
+      "config": {
+        "format": "FLAC",
+        "folder": "C:\\Users\\pa\\Music\\VOCROZ",
+        "sources": [
+          "master"
+        ]
+      },
+      "state": "STOPPED",
+      "take": "20261115-201500",
+      "elapsed_ms": 72000,
+      "tracks": [
+        {
+          "source_id": "master",
+          "file_name": "01-Master.flac",
+          "dropped_ms": 0
+        }
+      ],
+      "last_result": "DISK_FULL"
+    }
+  },
+  {
+    "type": "recorder_updated",
+    "recorder": {
+      "entity_id": "recorder",
+      "revision": 5,
+      "config": {
+        "format": "WAV",
+        "folder": "C:\\Users\\pa\\Music\\VOCROZ",
+        "sources": [
+          "master",
+          "ch-1"
+        ]
+      },
+      "state": "STOPPED",
+      "take": null,
+      "elapsed_ms": 0,
+      "tracks": [],
+      "last_result": "IO_ERROR"
+    }
+  },
+  {
+    "type": "recorder_updated",
+    "recorder": {
+      "entity_id": "recorder",
+      "revision": 6,
+      "config": {
+        "format": "WAV",
+        "folder": "C:\\Users\\pa\\Music\\VOCROZ",
+        "sources": [
+          "master",
+          "ch-1"
+        ]
+      },
+      "state": "STOPPED",
+      "take": null,
+      "elapsed_ms": 0,
+      "tracks": [],
+      "last_result": "FOLDER_UNAVAILABLE"
+    }
+  },
+  {
+    "type": "media_player_updated",
+    "media_player": {
+      "entity_id": "media_player",
+      "revision": 6,
+      "file": "bgm/opening.flac",
+      "channels": 1,
+      "duration_ms": 30000,
+      "target": "bus-1",
+      "transport": "PAUSED",
+      "position_ms": 12000,
+      "last_result": "OK"
+    }
+  },
+  {
+    "type": "media_player_updated",
+    "media_player": {
+      "entity_id": "media_player",
+      "revision": 7,
+      "file": null,
+      "channels": 0,
+      "duration_ms": 0,
+      "target": "master",
+      "transport": "STOPPED",
+      "position_ms": 0,
+      "last_result": "NOT_FOUND"
+    }
+  },
+  {
+    "type": "media_player_updated",
+    "media_player": {
+      "entity_id": "media_player",
+      "revision": 8,
+      "file": null,
+      "channels": 0,
+      "duration_ms": 0,
+      "target": "master",
+      "transport": "STOPPED",
+      "position_ms": 0,
+      "last_result": "UNSUPPORTED_FORMAT"
+    }
+  },
+  {
+    "type": "media_player_updated",
+    "media_player": {
+      "entity_id": "media_player",
+      "revision": 9,
+      "file": null,
+      "channels": 0,
+      "duration_ms": 0,
+      "target": "master",
+      "transport": "STOPPED",
+      "position_ms": 0,
+      "last_result": "IO_ERROR"
+    }
+  },
+  {
+    "type": "media_library_updated",
+    "files": [
+      {
+        "path": "20261115-201500/01-Master.wav"
+      },
+      {
+        "path": "bgm/opening.flac"
       }
     ]
   }

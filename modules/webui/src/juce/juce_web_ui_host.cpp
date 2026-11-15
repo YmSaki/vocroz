@@ -54,6 +54,8 @@ std::string_view screen_name(UiScreen screen) {
             return "main";
         case UiScreen::kRouting:
             return "routing";
+        case UiScreen::kMedia:
+            return "media";
     }
     return "main";
 }
@@ -228,6 +230,8 @@ void JuceWebUiHost::on_window_request(const std::string& request) {
     std::function<void()> action;
     if (request == kOpenRoutingRequest) {
         action = options_.on_open_routing;
+    } else if (request == kOpenMediaRequest) {
+        action = options_.on_open_media;
     } else if (request == kCloseWindowRequest) {
         action = options_.on_close_requested;
     }

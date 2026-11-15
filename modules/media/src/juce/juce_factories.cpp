@@ -25,7 +25,7 @@ namespace {
 }  // namespace
 
 common::Result<std::unique_ptr<audio_core::AudioFileWriter>, audio_core::AudioFileError>
-open_audio_file_writer(const std::filesystem::path& file, audio_core::AudioFileFormat format,
+make_audio_file_writer(const std::filesystem::path& file, audio_core::AudioFileFormat format,
                        std::size_t channels) {
     const juce::File target = to_juce_file(file);
     // ボリュームの空きは、ファイルの親フォルダで調べる（ファイルはまだないことがあるため）。
@@ -49,7 +49,7 @@ open_audio_file_writer(const std::filesystem::path& file, audio_core::AudioFileF
 }
 
 common::Result<std::unique_ptr<audio_core::AudioFileReader>, audio_core::AudioFileError>
-open_audio_file_reader(const std::filesystem::path& file) {
+make_audio_file_reader(const std::filesystem::path& file) {
     auto reader = JuceAudioFileReader::open(to_juce_file(file));
     if (!reader) {
         return common::make_unexpected(reader.error());

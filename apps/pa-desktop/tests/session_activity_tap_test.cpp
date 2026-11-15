@@ -45,6 +45,8 @@ std::string snapshot(cp::SessionState state) {
     event.snapshot.master.entity_id = "master";
     event.snapshot.routing.entity_id = "routing";
     event.snapshot.external_output.entity_id = "external_output";
+    event.snapshot.recorder.entity_id = "recorder";
+    event.snapshot.media_player.entity_id = "media_player";
     return cp::encode_engine_to_ui(event);
 }
 

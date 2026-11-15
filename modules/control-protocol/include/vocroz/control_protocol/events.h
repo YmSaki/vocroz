@@ -102,6 +102,24 @@ struct PluginCatalogPage {
     friend bool operator==(const PluginCatalogPage&, const PluginCatalogPage&) = default;
 };
 
+/// 録音の状態が変わった（recorder_updated）。録音中は経過時間と欠落を 1 秒ごとに送る。
+struct RecorderUpdated {
+    Recorder recorder;
+    friend bool operator==(const RecorderUpdated&, const RecorderUpdated&) = default;
+};
+
+/// メディアプレイヤーの状態が変わった（media_player_updated）。再生中は位置を 250 ms ごとに送る。
+struct MediaPlayerUpdated {
+    MediaPlayer media_player;
+    friend bool operator==(const MediaPlayerUpdated&, const MediaPlayerUpdated&) = default;
+};
+
+/// メディアのライブラリを作り直した（media_library_updated）。
+struct MediaLibraryUpdated {
+    std::vector<MediaFile> files;
+    friend bool operator==(const MediaLibraryUpdated&, const MediaLibraryUpdated&) = default;
+};
+
 /// 離散コマンドを適用した（ack）。
 struct Ack {
     std::string request_id;
@@ -176,7 +194,8 @@ struct Notice {
 using EngineToUiMessage =
     std::variant<MixerSnapshotEvent, ClientSnapshotEvent, SessionUpdated, ChannelUpdated,
                  ChannelRemoved, MasterUpdated, PendingUpdated, ClientUpdated, RoutingUpdated,
-                 RouteLevelUpdated, ExternalOutputUpdated, PluginsUpdated, PluginCatalogPage, Ack,
-                 Reject, GainAck, Meters, LinkStats, Notice>;
+                 RouteLevelUpdated, ExternalOutputUpdated, PluginsUpdated, PluginCatalogPage,
+                 RecorderUpdated, MediaPlayerUpdated, MediaLibraryUpdated, Ack, Reject, GainAck,
+                 Meters, LinkStats, Notice>;
 
 }  // namespace vocroz::control_protocol

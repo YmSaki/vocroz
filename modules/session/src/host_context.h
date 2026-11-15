@@ -18,6 +18,7 @@
 
 #include "external_output_book.h"
 #include "invite_book.h"
+#include "media_desk.h"
 #include "participant_registry.h"
 #include "plugin_insert_book.h"
 #include "plugin_status_book.h"
@@ -171,8 +172,15 @@ struct HostContext {
     /// 承認と再接続で接続を受け付けたとき（JoinApproved
     /// より前）と、ミュートを切り替えたときに呼ぶ。 接続がなければ何もしない。
     void sync_return(const Participant& participant);
+    /// Master か、適用中のルーティングのバスなら true。
+    [[nodiscard]] bool is_master_or_bus(const std::string& entity_id) const;
     /// 送り出すバスとして使える entity_id（Master か、適用中のルーティングのバス）なら true。
     [[nodiscard]] bool is_external_output_source(const std::string& entity_id) const;
+    /// 録れる対象（ストリップ、Master、適用中のルーティングのバス）の表示名。録れなければ
+    /// std::nullopt。録音のファイル名に使う。
+    [[nodiscard]] std::optional<std::string> recording_label(const std::string& entity_id) const;
+    /// 適用中のルーティングが変わったあと、メディアプレイヤーの流す先と録音の対象を確かめ直す。
+    void sync_media_with_routing();
     /// 保存した SRTP 外部出力の設定と鍵を戻す。送信は止めたまま。起動時に 1 回だけ呼ぶ。
     void restore_external_output();
     /// SRTP 外部出力の送り出すバスがルーティングから消えていたら、送信を止めて知らせる。
@@ -215,6 +223,7 @@ struct HostContext {
     PluginInsertBook inserts;
     PluginStatusBook plugin_status;
     ExternalOutputBook external_output;
+    MediaDesk media;
 };
 
 }  // namespace vocroz::session

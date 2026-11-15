@@ -38,11 +38,19 @@ inline constexpr int kHostWindowMinHeight = 600;
 inline constexpr int kRoutingWindowWidth = 1100;
 inline constexpr int kRoutingWindowHeight = 760;
 
-/// コマンドの request_id の接頭辞。ミキサーの窓とルーティングの窓は 1 本のパイプを共有し、
+/// メディアの窓の大きさ。録音の区画とプレイヤーの区画を縦に並べ、ライブラリの一覧が数行見える
+/// 大きさにする（docs/adr/0043-recording-and-media-player.md）。
+inline constexpr int kMediaWindowWidth = 900;
+inline constexpr int kMediaWindowHeight = 760;
+inline constexpr int kMediaWindowMinWidth = 640;
+inline constexpr int kMediaWindowMinHeight = 520;
+
+/// コマンドの request_id の接頭辞。ミキサー、ルーティング、メディアの窓は 1 本のパイプを共有し、
 /// エンジンの応答はどちらの窓にも届くので、窓ごとに違う値にして自分の応答を見分けさせる
 /// （docs/adr/0038-routing-window.md）。
 inline constexpr const char* kMixerRequestIdPrefix = "m";
 inline constexpr const char* kRoutingRequestIdPrefix = "rt";
+inline constexpr const char* kMediaRequestIdPrefix = "md";
 
 /// 親機モードの WebView2 のデータを置く、データフォルダの下のフォルダ名。
 /// 同じデータフォルダで子機モードと同時に動かしても、ブラウザープロセスを共有しないよう分ける。

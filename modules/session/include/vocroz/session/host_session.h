@@ -31,6 +31,8 @@
 #include "vocroz/session/plugin_description.h"
 #include "vocroz/session/plugin_scan_record.h"
 #include "vocroz/session/ports/external_output_control.h"
+#include "vocroz/session/ports/media_library.h"
+#include "vocroz/session/ports/media_player_control.h"
 #include "vocroz/session/ports/mixer_control.h"
 #include "vocroz/session/ports/output_device_control.h"
 #include "vocroz/session/ports/peer_link.h"
@@ -38,6 +40,7 @@
 #include "vocroz/session/ports/plugin_loader.h"
 #include "vocroz/session/ports/plugin_rack.h"
 #include "vocroz/session/ports/plugin_scan_control.h"
+#include "vocroz/session/ports/recorder_control.h"
 #include "vocroz/session/ports/rendezvous_client.h"
 #include "vocroz/session/ports/secret_store.h"
 #include "vocroz/session/ports/secure_random.h"
@@ -58,6 +61,9 @@ public:
         HostPublicKey host_public_key{};
         /// 招待 URL の基点（ランデブーサーバーの URL。例: "https://vocroz.example"）。
         std::string invite_base_url;
+        /// 設定にメディアフォルダがないときの、録音の保存先とプレイヤーのライブラリの場所
+        /// （docs/adr/0043-recording-and-media-player.md）。
+        std::string default_media_folder;
     };
 
     /// 注入するポート。ライフタイムはコンポジションルートが保証する（AGENTS.md 4.3）。
@@ -80,6 +86,12 @@ public:
         PluginRack& plugins;
         /// プラグインのスキャンし直しの依頼（docs/adr/0042-plugin-insert.md）。
         PluginScanControl& plugin_scan;
+        /// マルチトラック録音（docs/adr/0043-recording-and-media-player.md）。
+        RecorderControl& recorder;
+        /// メディアプレイヤー。
+        MediaPlayerControl& media_player;
+        /// メディアフォルダの一覧。
+        MediaLibrary& media_library;
     };
 
     /// @param config 固定の設定

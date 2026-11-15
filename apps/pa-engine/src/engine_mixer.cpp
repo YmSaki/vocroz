@@ -263,6 +263,75 @@ void EngineMixer::detach_external_stream() {
     }
 }
 
+bool EngineMixer::attach_record_taps(std::vector<RecordTapAssignment> taps) {
+    if (taps.empty() || std::ranges::any_of(taps, [](const RecordTapAssignment& tap) {
+            return !tap.track || tap.source_id.empty();
+        })) {
+        return false;
+    }
+    auto previous = std::move(assignments_.record_taps);
+    assignments_.record_taps = std::move(taps);
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
+        assignments_.record_taps = std::move(previous);
+        logger_.log(common::LogLevel::kError, "録音タップをつないだグラフを適用できませんでした");
+        return false;
+    }
+    return true;
+}
+
+void EngineMixer::detach_record_taps() {
+    if (assignments_.record_taps.empty()) {
+        return;
+    }
+    assignments_.record_taps.clear();
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
+        logger_.log(common::LogLevel::kError, "録音タップを外したグラフを適用できませんでした");
+    }
+}
+
+std::optional<std::size_t> EngineMixer::recording_channels(std::string_view source_id) const {
+    // Master とバスはステレオで録る。
+    if (source_id == session::kMasterEntityId ||
+        std::ranges::any_of(routing_.buses, [&](const cp::RoutingBus& bus) {
+            return bus.entity_id == source_id;
+        })) {
+        return kBusRecordingChannels;
+    }
+    const auto it = std::ranges::find(assignments_.strips, source_id, &StripAssignment::strip_id);
+    if (it == assignments_.strips.end()) {
+        return std::nullopt;
+    }
+    return strip_channel_count(*it, routing_, plugins_);
+}
+
+bool EngineMixer::attach_player(PlayerAssignment player) {
+    if (!player.track || player.target_id.empty()) {
+        return false;
+    }
+    const auto previous = assignments_.player;
+    assignments_.player = std::move(player);
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
+        assignments_.player = previous;
+        logger_.log(common::LogLevel::kError, "再生ノードをつないだグラフを適用できませんでした");
+        return false;
+    }
+    return true;
+}
+
+void EngineMixer::detach_player() {
+    if (!assignments_.player) {
+        return;
+    }
+    assignments_.player.reset();
+    if (!rebuild(assignments_, routing_, feedback_approved_, plugins_)) {
+        logger_.log(common::LogLevel::kError, "再生ノードを外したグラフを適用できませんでした");
+    }
+}
+
+bool EngineMixer::is_graph_settled() {
+    return mixer_.is_graph_settled();
+}
+
 void EngineMixer::detach_return(std::uint64_t key) {
     auto& returns = assignments_.returns;
     const auto it = std::ranges::find(returns, key, &ReturnAssignment::key);

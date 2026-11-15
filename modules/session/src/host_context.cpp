@@ -43,7 +43,13 @@ bool has_route_level(const cp::RoutingConfig& config, const std::string& entity_
 }  // namespace
 
 HostContext::HostContext(HostSession::Config config_value, HostSession::Ports ports_value)
-    : config(std::move(config_value)), ports(ports_value), inserts(ports_value.plugins) {
+    : config(std::move(config_value)),
+      ports(ports_value),
+      inserts(ports_value.plugins),
+      media(MediaDesk::Ports{ports_value.recorder, ports_value.media_player,
+                             ports_value.media_library, ports_value.clock, ports_value.ui,
+                             ports_value.logger},
+            config.default_media_folder) {
     session.entity_id = kSessionEntityId;
     session.revision = 1;
     master.entity_id = kMasterEntityId;
@@ -63,6 +69,9 @@ cp::MixerSnapshot HostContext::snapshot() const {
     snapshot.pending = registry.pending_entries();
     snapshot.routing = routing.info();
     snapshot.external_output = external_output.info();
+    snapshot.recorder = media.recorder();
+    snapshot.media_player = media.player();
+    snapshot.media_library = media.library();
     return snapshot;
 }
 
@@ -103,6 +112,8 @@ void HostContext::forget_strip_in_routing(const std::string& strip_id) {
         reconcile_inserts();
     }
     publish_routing();
+    // 片付けたストリップを録音の対象から外す（録音中のトラックは無音を録り続ける）。
+    media.prune_sources([this](const std::string& id) { return recording_label(id); });
 }
 
 common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_feedback) {
@@ -122,16 +133,43 @@ common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_
     // 外した挿入の破棄は、グラフを差し替えてから依頼する。
     reconcile_inserts();
     stop_external_output_without_source();
+    sync_media_with_routing();
     return {};
 }
 
-bool HostContext::is_external_output_source(const std::string& entity_id) const {
+bool HostContext::is_master_or_bus(const std::string& entity_id) const {
     if (entity_id == kMasterEntityId) {
         return true;
     }
     const auto& buses = routing.info().applied.buses;
     return std::any_of(buses.begin(), buses.end(),
                        [&](const cp::RoutingBus& bus) { return bus.entity_id == entity_id; });
+}
+
+bool HostContext::is_external_output_source(const std::string& entity_id) const {
+    return is_master_or_bus(entity_id);
+}
+
+std::optional<std::string> HostContext::recording_label(const std::string& entity_id) const {
+    if (entity_id == kMasterEntityId) {
+        return std::string{"Master"};
+    }
+    for (const auto& bus : routing.info().applied.buses) {
+        if (bus.entity_id == entity_id) {
+            return bus.name.empty() ? bus.entity_id : bus.name;
+        }
+    }
+    for (const auto& p : registry.participants()) {
+        if (p.strip.entity_id == entity_id) {
+            return label(p.strip);
+        }
+    }
+    return std::nullopt;
+}
+
+void HostContext::sync_media_with_routing() {
+    media.on_routing_applied([this](const std::string& id) { return is_master_or_bus(id); });
+    media.prune_sources([this](const std::string& id) { return recording_label(id); });
 }
 
 void HostContext::restore_external_output() {
@@ -456,6 +494,9 @@ void HostContext::save_settings() {
             settings.route_gains.push_back(SavedRouteGain{level.entity_id, level.gain_db});
         }
     }
+    // ストリップの entity_id はセッションごとに振り直すので、録る対象は Master とバスだけ保存する。
+    settings.recorder =
+        media.saved_config([this](const std::string& id) { return is_master_or_bus(id); });
     if (const auto saved = ports.settings.save_host(settings); !saved) {
         log(common::LogLevel::kWarning, "親機の設定を保存できませんでした");
     }

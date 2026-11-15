@@ -144,6 +144,48 @@ void read_fields(ObjectReader& r, OpenPluginEditor& command) {
     command.insert_id = r.text("insert_id", kIdentifierRule);
 }
 
+void write_fields(nlohmann::json& out, const SetRecorderConfig& command) {
+    out["config"] = write_json(command.config);
+}
+void read_fields(ObjectReader& r, SetRecorderConfig& command) {
+    command.config = r.nested<RecorderConfig>("config", read_recorder_config);
+}
+
+void write_fields(nlohmann::json& out, const SetRecording& command) {
+    out["recording"] = command.recording;
+}
+void read_fields(ObjectReader& r, SetRecording& command) {
+    command.recording = r.boolean("recording");
+}
+
+void write_fields(nlohmann::json& out, const LoadMedia& command) {
+    out["path"] = command.path;
+}
+void read_fields(ObjectReader& r, LoadMedia& command) {
+    command.path = r.text("path", kMediaPathRule);
+}
+
+void write_fields(nlohmann::json& out, const SetMediaTransport& command) {
+    out["transport"] = enum_json(command.transport);
+}
+void read_fields(ObjectReader& r, SetMediaTransport& command) {
+    command.transport = r.enumeration<MediaTransport>("transport");
+}
+
+void write_fields(nlohmann::json& out, const SeekMedia& command) {
+    out["position_ms"] = command.position_ms;
+}
+void read_fields(ObjectReader& r, SeekMedia& command) {
+    command.position_ms = r.counter("position_ms");
+}
+
+void write_fields(nlohmann::json& out, const SetMediaTarget& command) {
+    out["target"] = command.target;
+}
+void read_fields(ObjectReader& r, SetMediaTarget& command) {
+    command.target = r.text("target", kIdentifierRule);
+}
+
 void write_fields(nlohmann::json& out, const SetGain& command) {
     out["entity_id"] = command.entity_id;
     out["seq"] = command.seq;

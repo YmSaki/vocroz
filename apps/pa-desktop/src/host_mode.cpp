@@ -4,6 +4,7 @@
 
 #include "host_mode.h"
 
+#include <initializer_list>
 #include <string>
 #include <utility>
 
@@ -121,7 +122,8 @@ HostMode::~HostMode() {
     alive_.reset();
     timer_.reset();
     detach();
-    close_routing_window();
+    close_sub_window(routing_ui_);
+    close_sub_window(media_ui_);
     if (web_ui_) {
         windows_.remove(web_ui_->channel());
     }
@@ -144,6 +146,7 @@ void HostMode::open_window() {
     ui_options.user_data_folder = config_.data_dir / kHostWebViewDataFolderName;
     ui_options.on_close_requested = [this] { on_close_requested(); };
     ui_options.on_open_routing = [this] { open_routing_window(); };
+    ui_options.on_open_media = [this] { open_media_window(); };
     // 画面はエンジンの起動を待たずに開き、起動中であることが見えるようにする。
     web_ui_ = webui::make_juce_web_ui_host(std::move(ui_options));
     windows_.add(web_ui_->channel());
@@ -152,45 +155,59 @@ void HostMode::open_window() {
 }
 
 void HostMode::open_routing_window() {
-    if (routing_ui_) {
-        routing_ui_->bring_to_front();
+    open_sub_window(routing_ui_,
+                    SubWindow{routing_window_title(config_.language), kRoutingWindowWidth,
+                              kRoutingWindowHeight, kHostWindowMinWidth, kHostWindowMinHeight,
+                              webui::UiScreen::kRouting, kRoutingRequestIdPrefix});
+}
+
+void HostMode::open_media_window() {
+    open_sub_window(media_ui_,
+                    SubWindow{media_window_title(config_.language), kMediaWindowWidth,
+                              kMediaWindowHeight, kMediaWindowMinWidth, kMediaWindowMinHeight,
+                              webui::UiScreen::kMedia, kMediaRequestIdPrefix});
+}
+
+void HostMode::open_sub_window(std::unique_ptr<webui::WebUiHost>& slot, const SubWindow& window) {
+    if (slot) {
+        slot->bring_to_front();
         return;
     }
     webui::WebUiHostOptions ui_options;
-    ui_options.window = {.title = std::string{routing_window_title(config_.language)},
-                         .width = kRoutingWindowWidth,
-                         .height = kRoutingWindowHeight,
-                         .min_width = kHostWindowMinWidth,
-                         .min_height = kHostWindowMinHeight};
+    ui_options.window = {.title = std::string{window.title},
+                         .width = window.width,
+                         .height = window.height,
+                         .min_width = window.min_width,
+                         .min_height = window.min_height};
     ui_options.launch = {.mode = webui::UiMode::kHost,
                          .lang = config_.options.lang,
                          .join = {},
-                         .screen = webui::UiScreen::kRouting,
-                         .request_id_prefix = kRoutingRequestIdPrefix};
+                         .screen = window.screen,
+                         .request_id_prefix = window.request_id_prefix};
     ui_options.assets = config_.ui_assets;
     // ミキサーの窓と同じフォルダにして、WebView2 のブラウザープロセスを共有する。
     ui_options.user_data_folder = config_.data_dir / kHostWebViewDataFolderName;
     // 閉じるボタンの処理の中で窓を破棄しないよう、処理を抜けてから閉じる。
-    ui_options.on_close_requested = [alive = std::weak_ptr<HostMode*>(alive_)] {
-        juce::MessageManager::callAsync([alive] {
+    ui_options.on_close_requested = [alive = std::weak_ptr<HostMode*>(alive_), slot = &slot] {
+        juce::MessageManager::callAsync([alive, slot] {
             if (const auto self = alive.lock()) {
-                (*self)->close_routing_window();
+                (*self)->close_sub_window(*slot);
             }
         });
     };
-    routing_ui_ = webui::make_juce_web_ui_host(std::move(ui_options));
+    slot = webui::make_juce_web_ui_host(std::move(ui_options));
     // エンジンにつながっていれば、窓が読み込み後に送る hello でスナップショットを受け取る。
     // まだつながっていなければ、つながったときの reload() で受け取り直す。
-    windows_.add(routing_ui_->channel());
+    windows_.add(slot->channel());
 }
 
-void HostMode::close_routing_window() {
-    if (!routing_ui_) {
+void HostMode::close_sub_window(std::unique_ptr<webui::WebUiHost>& slot) {
+    if (!slot) {
         return;
     }
     // 先にまとめから外し、パイプの受信スレッドからこの窓へ送らないようにしてから破棄する。
-    windows_.remove(routing_ui_->channel());
-    routing_ui_.reset();
+    windows_.remove(slot->channel());
+    slot.reset();
 }
 
 void HostMode::on_engine_attached(std::unique_ptr<control_protocol::MessageChannel> channel) {
@@ -202,8 +219,10 @@ void HostMode::on_engine_attached(std::unique_ptr<control_protocol::MessageChann
     // つながる前に UI が送った hello は届いていないので、読み込み直して hello からやり直させる。
     // 再アタッチのときも、UI の表示を新しいスナップショットからやり直すために同じことをする。
     web_ui_->reload();
-    if (routing_ui_) {
-        routing_ui_->reload();
+    for (const auto* sub : {&routing_ui_, &media_ui_}) {
+        if (*sub) {
+            (*sub)->reload();
+        }
     }
     logger_.log(common::LogLevel::kInfo, "エンジンに接続しました");
 }

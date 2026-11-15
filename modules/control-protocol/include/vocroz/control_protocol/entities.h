@@ -336,6 +336,80 @@ struct PluginsInfo {
     friend bool operator==(const PluginsInfo&, const PluginsInfo&) = default;
 };
 
+/// 録音の設定（docs/adr/0043-recording-and-media-player.md）。
+struct RecorderConfig {
+    RecordingFormat format = RecordingFormat::kWav;
+    /// メディアフォルダ（録音の保存先で、プレイヤーのライブラリの場所）。エンジンが既定値を入れる。
+    std::string folder;
+    /// 録る対象（ストリップ、"master"、バスの entity_id）。この順に番号を振ってファイルにする。
+    std::vector<std::string> sources;
+
+    friend bool operator==(const RecorderConfig&, const RecorderConfig&) = default;
+};
+
+/// 録音中か直前の録音のトラック 1 本。
+struct RecordingTrackInfo {
+    /// 録る対象の entity_id。
+    std::string source_id;
+    /// ファイル名（テイクのフォルダの中）。
+    std::string file_name;
+    /// ディスクの書き込みが間に合わず、無音で埋めた長さ（ms）。
+    std::uint64_t dropped_ms = 0;
+
+    friend bool operator==(const RecordingTrackInfo&, const RecordingTrackInfo&) = default;
+};
+
+/// 録音の状態。entity_id は "recorder"。
+/// revision は設定の変更、録音の開始と停止（失敗による停止を含む）で進む。経過時間と欠落は
+/// 観測値なので進まない。
+struct Recorder {
+    std::string entity_id;
+    Revision revision = 0;
+    RecorderConfig config;
+    RecorderState state = RecorderState::kStopped;
+    /// 録音中か直前の録音のテイク（メディアフォルダの中のフォルダ名）。まだなければ std::nullopt。
+    std::optional<std::string> take;
+    /// 録音中か直前の録音の経過時間（ms）。
+    std::uint64_t elapsed_ms = 0;
+    /// 録音中か直前の録音のトラック。
+    std::vector<RecordingTrackInfo> tracks;
+    /// 直前の開始か録音の結果。まだなければ std::nullopt。
+    std::optional<RecorderResult> last_result;
+
+    friend bool operator==(const Recorder&, const Recorder&) = default;
+};
+
+/// メディアのライブラリのファイル 1 つ。
+struct MediaFile {
+    /// メディアフォルダからの相対パス（区切りは "/"）。
+    std::string path;
+
+    friend bool operator==(const MediaFile&, const MediaFile&) = default;
+};
+
+/// メディアプレイヤーの状態。entity_id は "media_player"。
+/// revision はファイルの読み込み、再生の操作、シーク、流す先の変更で進む。再生位置と、ファイルの
+/// 終わりでの停止は観測値なので進まない。
+struct MediaPlayer {
+    std::string entity_id;
+    Revision revision = 0;
+    /// 読み込んだファイルのライブラリの相対パス。なければ std::nullopt。
+    std::optional<std::string> file;
+    /// 読み込んだファイルのチャンネル数（1 か 2）。ファイルがなければ 0。
+    std::uint8_t channels = 0;
+    /// 読み込んだファイルの長さ（ms）。
+    std::uint64_t duration_ms = 0;
+    /// 流す先（"master" かバスの entity_id）。
+    std::string target = "master";
+    MediaTransport transport = MediaTransport::kStopped;
+    /// 再生位置（ms）。
+    std::uint64_t position_ms = 0;
+    /// 直前の読み込みか再生の結果。まだなければ std::nullopt。
+    std::optional<MediaResult> last_result;
+
+    friend bool operator==(const MediaPlayer&, const MediaPlayer&) = default;
+};
+
 /// 親機モードの全状態。UI の接続時にエンジンが送る。
 struct MixerSnapshot {
     SessionInfo session;
@@ -345,6 +419,10 @@ struct MixerSnapshot {
     std::vector<PendingParticipant> pending;
     RoutingInfo routing;
     ExternalOutput external_output;
+    Recorder recorder;
+    MediaPlayer media_player;
+    /// メディアのライブラリ（パスの昇順）。
+    std::vector<MediaFile> media_library;
 
     friend bool operator==(const MixerSnapshot&, const MixerSnapshot&) = default;
 };

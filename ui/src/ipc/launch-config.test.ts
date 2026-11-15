@@ -31,6 +31,13 @@ describe("readLaunchConfig", () => {
     expect(readLaunchConfig(undefined, "?screen=other").screen).toBe("main");
   });
 
+  it("メディアの窓の画面と request_id の接頭辞を読む", () => {
+    const config = readLaunchConfig({ screen: "media", request_prefix: "md" }, "");
+    expect(config.screen).toBe("media");
+    expect(config.requestPrefix).toBe("md");
+    expect(readLaunchConfig(undefined, "?screen=media").screen).toBe("media");
+  });
+
   it("不正なモードは親機モードにする", () => {
     expect(readLaunchConfig(undefined, "?mode=other").mode).toBe("host");
   });

@@ -11,6 +11,9 @@
 
 #include "vocroz/device/factories.h"
 #include "vocroz/ipc/factories.h"
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
+#include "vocroz/media/factories.h"
+#endif
 #include "vocroz/network/factories.h"
 #include "vocroz/network/rendezvous_url.h"
 #include "vocroz/persistence/factories.h"
@@ -24,6 +27,7 @@
 #include "engine_constants.h"
 #include "host_key_loader.h"
 #include "stderr_logger.h"
+#include "utf8_path.h"
 #include "win/console_stop_signal.h"
 #include "win/known_paths.h"
 #include "win/minidump_crash_handler.h"
@@ -56,6 +60,37 @@ namespace ac = audio_core;
 [[nodiscard]] std::wstring instance_lock_name(const std::wstring& pipe_name) {
     const auto slash = pipe_name.find_last_of(L'\\');
     return L"Local\\" + pipe_name.substr(slash == std::wstring::npos ? 0 : slash + 1);
+}
+
+// 録音のトラックのファイルを開く。JUCE を使わないビルドでは書き出せないので、開けないことにする
+// （録音を始めると IO_ERROR で知らせる）。
+[[nodiscard]] EngineRecorder::WriterFactory make_writer_factory() {
+    return [](const std::filesystem::path& file, audio_core::AudioFileFormat format,
+              std::size_t channels) -> common::Result<std::unique_ptr<audio_core::AudioFileWriter>,
+                                                      audio_core::AudioFileError> {
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
+        return media::make_audio_file_writer(file, format, channels);
+#else
+        (void)file;
+        (void)format;
+        (void)channels;
+        return common::make_unexpected(audio_core::AudioFileError::kIoError);
+#endif
+    };
+}
+
+// 再生するファイルを開く。JUCE を使わないビルドでは読めないので、開けないことにする。
+[[nodiscard]] EngineMediaPlayer::ReaderFactory make_reader_factory() {
+    return [](const std::filesystem::path& file)
+               -> common::Result<std::unique_ptr<audio_core::AudioFileReader>,
+                                 audio_core::AudioFileError> {
+#if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
+        return media::make_audio_file_reader(file);
+#else
+        (void)file;
+        return common::make_unexpected(audio_core::AudioFileError::kIoError);
+#endif
+    };
 }
 
 // --data-dir（なければ %LOCALAPPDATA%\VOCROZ）を絶対パスにそろえて作る。
@@ -200,6 +235,16 @@ std::optional<int> CompositionRoot::start() {
             loop_.post([this, result] { session_->on_external_output_test_finished(result); });
         });
 
+    recorder_ = std::make_unique<EngineRecorder>(EngineRecorder::Ports{
+        engine_mixer_, disk_io_, make_writer_factory(),
+        [](const std::filesystem::path& folder) {
+            return create_take_folder(folder, std::chrono::system_clock::now());
+        },
+        clock_, *logger_});
+    media_player_ = std::make_unique<EngineMediaPlayer>(
+        EngineMediaPlayer::Ports{engine_mixer_, disk_io_, make_reader_factory(), *logger_});
+    disk_io_.start();
+
     ui_publisher_ = std::make_unique<UiEventPublisher>(*ui_channel_, *logger_);
     // 保存した挿入のプラグインは session が start() で読み込みを頼むので、メッセージスレッドを
     // 先に動かしておく。
@@ -207,12 +252,15 @@ std::optional<int> CompositionRoot::start() {
     session::HostSession::Config config;
     config.host_public_key = host_keys_->public_key();
     config.invite_base_url = kInviteBaseUrl;
+    // ミュージックの場所を取れなければ、データフォルダの中に置く（録音できないよりよい）。
+    config.default_media_folder =
+        path_utf8(win::default_media_folder().value_or(data_dir_ / L"media"));
     session_ = std::make_unique<session::HostSession>(
         std::move(config),
-        session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, *peer_links_,
-                                    *rendezvous_tap_, *settings_, random_, clock_, *logger_,
-                                    *peer_links_, *external_output_, *secrets_, *plugin_rack_,
-                                    *plugin_scan_control_});
+        session::HostSession::Ports{
+            *ui_publisher_, engine_mixer_, *outputs_, *peer_links_, *rendezvous_tap_, *settings_,
+            random_, clock_, *logger_, *peer_links_, *external_output_, *secrets_, *plugin_rack_,
+            *plugin_scan_control_, *recorder_, *media_player_, media_library_});
     peer_events_.bind(session_.get());
     const auto on_registered =
         [this](
@@ -298,6 +346,7 @@ bool CompositionRoot::create_peer_network() {
 
 void CompositionRoot::on_tick() {
     engine_mixer_.collect();
+    recorder_->collect();
     rendezvous_driver_->poll();
     peer_links_->poll();
     const auto now = clock_.now();
@@ -435,6 +484,11 @@ void CompositionRoot::shutdown() {
     }
     if (outputs_) {
         outputs_->close_output();
+    }
+    // オーディオ出力を閉じた後なら、録音タップに書くスレッドはないので、録音を止めてファイルを
+    // 閉じてよい。閉じるのはディスク I/O スレッドが止まる前の最後の周期（disk_io_ の破棄）。
+    if (recorder_) {
+        recorder_->stop();
     }
     // オーディオ出力を閉じた後なら、グラフのプラグインの処理はもう呼ばれないので破棄できる。
     stop_juce();

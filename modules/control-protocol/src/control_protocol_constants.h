@@ -30,4 +30,7 @@ inline constexpr std::size_t kMaxNoticeKeyBytes = 64;
 /// 通知に埋め込む値の最大バイト数。
 inline constexpr std::size_t kMaxNoticeValueBytes = 1024;
 
+/// 録音のトラックのファイル名の最大バイト数（番号、表示名 80 バイト、拡張子が収まる長さ）。
+inline constexpr std::size_t kMaxFileNameBytes = 128;
+
 }  // namespace vocroz::control_protocol

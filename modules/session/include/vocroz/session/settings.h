@@ -51,6 +51,11 @@ struct HostSettings {
     /// 製品要件）。鍵は秘密情報なので SecretStore に分けて保存する
     /// （docs/adr/0040-srtp-external-output.md）。
     control_protocol::ExternalOutputConfig external_output;
+    /// 録音の設定（形式、メディアフォルダ、録る対象のうち Master とバス）。録音中かどうかは
+    /// 保存せず、起動時は必ず止めた状態から始める。ストリップの entity_id はセッションごとに
+    /// 振り直すので、録る対象のストリップは保存しない（docs/adr/0043-recording-and-media-player.md）。
+    /// folder が空なら、エンジンの既定のメディアフォルダを使う。
+    control_protocol::RecorderConfig recorder;
 
     friend bool operator==(const HostSettings&, const HostSettings&) = default;
 };
