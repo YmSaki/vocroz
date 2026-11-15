@@ -464,5 +464,34 @@ TEST(PlayoutStreamTest, WideningTheMaxDelayLetsTheTargetGrowPastTheOldLimit) {
     EXPECT_LE(stream->stats().target_delay_samples, kSampleRate * 15 / 1000);
 }
 
+TEST(PlayoutStreamTest, BufferDelayIsEmptyUntilPlayingThenFollowsTheTarget) {
+    // 画面のバッファの表示は、オーディオスレッドではないスレッドから buffer_delay() で読む。
+    // 再生していない間は値がなく、再生中は目標の深さ（既定の下限 10ms）を返す。
+    const SineSender sender;
+    auto stream = make_stream();
+    std::vector<float> out(kBlock);
+    EXPECT_FALSE(stream->buffer_delay());
+    stream->render(out);
+    EXPECT_FALSE(stream->buffer_delay());
+
+    std::uint64_t next = 0;
+    for (int i = 0; i < 50; ++i) {
+        while (next * kFrame < static_cast<std::uint64_t>(i + 1) * kBlock + 2 * kFrame) {
+            ASSERT_TRUE(stream->enqueue(sender.frame(next++, 1)));
+        }
+        stream->render(out);
+    }
+    ASSERT_TRUE(stream->stats().playing);
+    ASSERT_TRUE(stream->buffer_delay());
+    EXPECT_EQ(*stream->buffer_delay(), std::chrono::milliseconds{10});
+
+    // 途絶が続いて溜め直しに入ったら、また値がなくなる。
+    for (int i = 0; i < 50; ++i) {
+        stream->render(out);
+    }
+    EXPECT_FALSE(stream->stats().playing);
+    EXPECT_FALSE(stream->buffer_delay());
+}
+
 }  // namespace
 }  // namespace vocroz::transport

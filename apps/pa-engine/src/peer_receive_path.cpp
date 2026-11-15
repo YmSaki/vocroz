@@ -13,10 +13,10 @@
 #include "vocroz/transport/packet_header.h"
 
 namespace vocroz::engine {
-transport::PlayoutStream* StreamTable::find(std::uint16_t stream_id) const noexcept {
+PlayoutSource* StreamTable::find(std::uint16_t stream_id) const noexcept {
     for (std::size_t i = 0; i < count; ++i) {
         if (slots[i].stream_id == stream_id) {
-            return slots[i].playout;
+            return slots[i].source;
         }
     }
     return nullptr;
@@ -136,8 +136,8 @@ void PeerReceivePath::handle_media(ReceivePeer& peer, std::span<const std::uint8
     if (!media) {
         return;
     }
-    transport::PlayoutStream* const playout = peer.streams->find(media.value().stream_id);
-    if (playout == nullptr) {
+    PlayoutSource* const source = peer.streams->find(media.value().stream_id);
+    if (source == nullptr) {
         // 申告にないか、ストリップに対応づけていないストリーム。
         return;
     }
@@ -150,8 +150,9 @@ void PeerReceivePath::handle_media(ReceivePeer& peer, std::span<const std::uint8
     const auto frame = transport::make_media_frame(
         media.value().timestamp, media.value().mute_epoch, media.value().opus_payload);
     if (frame) {
-        // 満杯や遅着で捨てたぶんは PlayoutStream の統計に残る。
-        static_cast<void>(playout->enqueue(frame.value()));
+        // 満杯や遅着で捨てたぶんは PlayoutStream の統計に残る。ジッターの推定は、信号状態の判定が
+        // 受け付けたフレームごとに、到着した受信スレッドで行う。
+        static_cast<void>(source->receive(frame.value(), now));
     }
 }
 

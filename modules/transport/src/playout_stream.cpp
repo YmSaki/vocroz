@@ -133,6 +133,9 @@ struct PlayoutStream::Impl {
     std::size_t min_depth_since_adjust = std::numeric_limits<std::size_t>::max();
 
     PlayoutStats stats;
+    // render() の終わりの目標の深さ（サンプル数）。再生していなければ 0（目標は 1 フレーム以上
+    // なので 0 にはならない）。buffer_delay() で別のスレッドから読むので、アトミック変数に置く。
+    std::atomic<std::size_t> published_target{0};
     // 生産者スレッドだけが増やす。
     // stats() で読む。
     std::atomic<std::uint64_t> queue_full{0};
@@ -343,6 +346,7 @@ void PlayoutStream::Impl::render(const Outputs& outs,
         }
     }
     update_after_render(frames);
+    published_target.store(mode == Mode::kPlaying ? target : 0, std::memory_order_relaxed);
 }
 
 void PlayoutStream::Impl::raise_target() noexcept VOCROZ_NONBLOCKING {
@@ -437,6 +441,14 @@ void PlayoutStream::render(std::span<float> left,
 
 std::size_t PlayoutStream::channels() const noexcept {
     return impl_->channels;
+}
+
+std::optional<std::chrono::microseconds> PlayoutStream::buffer_delay() const noexcept {
+    const std::size_t samples = impl_->published_target.load(std::memory_order_relaxed);
+    if (samples == 0) {
+        return std::nullopt;
+    }
+    return std::chrono::microseconds{static_cast<std::int64_t>(samples * 1'000'000 / kSampleRate)};
 }
 
 PlayoutStats PlayoutStream::stats() const noexcept {

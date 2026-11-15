@@ -62,6 +62,11 @@ inline constexpr std::chrono::milliseconds kReceiveWakeInterval{100};
 /// 演奏の途中で挿し直したときに、待たされたと感じない程度にする。
 inline constexpr std::chrono::milliseconds kMidiDeviceScanInterval{1000};
 
+/// 回線の観測値（link_stats）を UI へ送る間隔。オペレーターが値を読んで目標レイテンシーを
+/// 判断するには十分で、メーター（10〜30 Hz）ほど IPC と再描画の負荷をかけない約 1 Hz にする
+/// （docs/adr/0037-latency-target-and-link-stats.md）。
+inline constexpr std::chrono::milliseconds kLinkStatsInterval{1000};
+
 /// ランデブーサーバーの UDP のポート。infra/rendezvous の既定値で、
 /// 子機の client_constants.h と同じ値。
 inline constexpr std::uint16_t kRendezvousUdpPort = 3478;

@@ -221,6 +221,7 @@ private:
     IdleShutdownTimer idle_timer_;
     common::Clock::TimePoint next_session_tick_{};
     common::Clock::TimePoint next_midi_scan_{};
+    common::Clock::TimePoint next_link_stats_{};
     bool session_exists_ = false;
     int exit_code_ = 0;
 };
