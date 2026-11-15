@@ -115,6 +115,7 @@ export class FakeClientEngine extends FakeEngineBase {
           entity_id: kClientId,
           seq: message.seq,
           applied_revision: this.state.revision,
+          origin: message.origin,
         });
         return;
       case "join":

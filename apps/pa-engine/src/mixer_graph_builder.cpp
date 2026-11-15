@@ -123,26 +123,38 @@ InsertChain add_insert_chain(GraphWriter& writer, const cp::RoutingConfig& confi
     return result;
 }
 
-// Master かバスの後段の送り元を返す。挿入があれば node → 挿入の列とつなぎ、列の末尾を返す。
-// 経路を切るなら、入力のない安全リミッター（常に無音）を代わりの送り元にする。センドを
-// グラフから外すと、センドのフェーダーをミュートすることになり、session の状態とずれるため。
-ac::NodeId downstream_of(GraphWriter& writer, ac::NodeId node, const InsertChain& chain) {
+/// Master かバス 1 つの、挿入とフェーダーをつないだ段。
+struct BusStage {
+    /// 前段（ストリップ、センド）の送り先。
+    ac::NodeId input;
+    /// 後段（センド、リミッター、出力、外部出力）の送り元。
+    ac::NodeId output;
+};
+
+// Master かバスの段を組み立てる。挿入があれば「前段 → 挿入の列 → バス → 後段」とつなぎ、
+// フェーダーとミュートを挿入の後ろに置く。ミュートしたあとに、プラグインに残った残響や
+// 遅延の音、無音の入力からプラグインが作る音を後段へ流さないため（初期ミュートとフェイルセーフ）。
+// 前段の結線は先頭のプラグインが加算して受ける。
+// 経路を切るなら、前段はバスで受けて行き止まりにし、入力のない安全リミッター（常に無音）を
+// 後段の送り元にする。センドをグラフから外すと、センドのフェーダーをミュートすることになり、
+// session の状態とずれるため。
+BusStage add_bus_stage(GraphWriter& writer, ac::NodeId bus, const InsertChain& chain) {
     if (chain.cut) {
-        return writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}));
+        return BusStage{bus, writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}))};
     }
     if (!chain.first) {
-        return node;
+        return BusStage{bus, bus};
     }
-    writer.connect(node, *chain.first);
-    return *chain.last;
+    writer.connect(*chain.last, bus);
+    return BusStage{*chain.first, bus};
 }
 
 // 子機への返送を足す。返送の候補は Master へ入る信号（ストリップ、Master へ送るバスと
 // 遅延ノード）で、Master へ入るセンドのミュートと音量も含めて親機のメインのミックスと同じ
-// バランスにする。Master のフェーダーとミュートは
-// 通さない。Master はハウスの出力の操作で、出演者のモニターまで止めるものではないため。
+// バランスにする。Master のフェーダーとミュートは通さない。Master はハウスの出力の操作で、
+// 出演者のモニターまで止めるものではないため。
 // その子機の声を含む候補は add_minus_me_returns() が除く。
-void add_returns(ac::GraphDescription& graph, ac::NodeId master,
+void add_returns(ac::GraphDescription& graph, ac::NodeId master_input,
                  const std::vector<ac::MinusMeReturn>& returns) {
     if (returns.empty()) {
         return;
@@ -151,7 +163,7 @@ void add_returns(ac::GraphDescription& graph, ac::NodeId master,
     // 音量が返送に効かなくなる。
     std::vector<ac::MinusMeInput> mix_inputs;
     for (const auto& connection : graph.connections) {
-        if (connection.to == master) {
+        if (connection.to == master_input) {
             mix_inputs.emplace_back(connection.from, connection.tap, connection.level);
         }
     }
@@ -179,17 +191,18 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     NodeTable targets_of_sends;
 
     // Master と、メインの出力への暗黙の経路。安全リミッターを必ず通す。
-    const auto master =
-        writer.add(ac::NodeSpec::make_bus(ac::NodeId{}, assignments.master_fader, std::nullopt));
-    const auto master_out =
-        downstream_of(writer, master, add_insert_chain(writer, config, master_entity_id, plugins));
+    const auto master_chain = add_insert_chain(writer, config, master_entity_id, plugins);
+    const auto master = add_bus_stage(
+        writer,
+        writer.add(ac::NodeSpec::make_bus(ac::NodeId{}, assignments.master_fader, std::nullopt)),
+        master_chain);
     const auto main_limiter = writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}));
     const auto main_output = writer.add(
         ac::NodeSpec::make_output(ac::NodeId{}, assignments.master_meter, kMainOutputChannel));
-    writer.connect(master_out, main_limiter);
+    writer.connect(master.output, main_limiter);
     writer.connect(main_limiter, main_output);
-    sources_of_sends.emplace(master_entity_id, master_out);
-    targets_of_sends.emplace(master_entity_id, master);
+    sources_of_sends.emplace(master_entity_id, master.output);
+    targets_of_sends.emplace(master_entity_id, master.input);
 
     // ストリップと、ストリップから Master への暗黙の結線。
     for (const auto& strip : assignments.strips) {
@@ -216,7 +229,7 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
                 writer.connect(source, chain.first ? *chain.first : node);
             }
         }
-        writer.connect(node, master);
+        writer.connect(node, master.input);
         sources_of_sends.emplace(strip.strip_id, node);
     }
 
@@ -226,14 +239,16 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
             continue;
         }
         const auto meter = assignments.bus_meters.find(bus.entity_id);
-        const auto node = writer.add(ac::NodeSpec::make_bus(
-            ac::NodeId{}, fader->second,
-            meter == assignments.bus_meters.end() ? std::nullopt
-                                                  : std::optional<ac::MeterId>{meter->second}));
-        sources_of_sends.emplace(
-            bus.entity_id,
-            downstream_of(writer, node, add_insert_chain(writer, config, bus.entity_id, plugins)));
-        targets_of_sends.emplace(bus.entity_id, node);
+        const auto chain = add_insert_chain(writer, config, bus.entity_id, plugins);
+        const auto stage = add_bus_stage(
+            writer,
+            writer.add(ac::NodeSpec::make_bus(ac::NodeId{}, fader->second,
+                                              meter == assignments.bus_meters.end()
+                                                  ? std::nullopt
+                                                  : std::optional<ac::MeterId>{meter->second})),
+            chain);
+        sources_of_sends.emplace(bus.entity_id, stage.output);
+        targets_of_sends.emplace(bus.entity_id, stage.input);
     }
 
     // 追加の出力にも安全リミッターを通す。キューの返しも出演者の耳に届く出力なので、
@@ -297,7 +312,7 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     for (const auto& midi : assignments.midi_sources) {
         built.graph.midi_sources.push_back(ac::MidiSourceSpec{midi.id, midi.source});
     }
-    add_returns(built.graph, master, returns);
+    add_returns(built.graph, master.input, returns);
     return built;
 }
 

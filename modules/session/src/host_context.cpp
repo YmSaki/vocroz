@@ -75,6 +75,14 @@ std::vector<std::string> HostContext::strip_ids() const {
     return ids;
 }
 
+std::string HostContext::plugin_name(const std::string& plugin_id) const {
+    const auto& plugins = routing.plugins();
+    const auto it = std::find_if(plugins.begin(), plugins.end(), [&](const PluginDescription& d) {
+        return d.identifier == plugin_id;
+    });
+    return it == plugins.end() || it->name.empty() ? plugin_id : it->name;
+}
+
 void HostContext::reapply_routing(const char* context) {
     const auto& info = routing.info();
     // 構成は変わらないか、参照を取り除いただけなのでループは増えず、承認の状態はそのまま引き継げる。
@@ -86,6 +94,7 @@ void HostContext::reapply_routing(const char* context) {
 
 void HostContext::reconcile_inserts() {
     inserts.reconcile(routing.info().applied.inserts, routing.plugins());
+    publish_plugins();
 }
 
 void HostContext::forget_strip_in_routing(const std::string& strip_id) {
@@ -480,6 +489,17 @@ void HostContext::publish_route_level(const cp::RouteLevel& level) {
 
 void HostContext::publish_external_output() {
     ports.ui.publish(cp::ExternalOutputUpdated{external_output.info()});
+}
+
+void HostContext::publish_plugins() {
+    ports.ui.publish(
+        cp::PluginsUpdated{plugin_status.info(routing.info().applied.inserts, inserts)});
+}
+
+void HostContext::publish_plugin_catalog() {
+    for (auto& page : plugin_status.pages()) {
+        ports.ui.publish(std::move(page));
+    }
 }
 
 void HostContext::notice(cp::NoticeSeverity severity, const char* code, const std::string& name) {

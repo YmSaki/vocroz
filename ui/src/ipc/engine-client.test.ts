@@ -39,22 +39,37 @@ beforeEach(() => {
   timers = new FakeTimers();
   timers.advance(1000);
   transport = new RecordingTransport();
-  client = new EngineClient(transport, timers);
+  client = new EngineClient(transport, timers, "r", "a1");
   outcomes = [];
   client.onContinuousOutcome((id, outcome) => outcomes.push([id, outcome]));
 });
 
 describe("EngineClient の離散コマンド", () => {
   it("接続を共有する窓ごとの接頭辞で request_id を作り、ほかの窓の応答では解決しない", async () => {
-    const routing = new EngineClient(transport, timers, "rt");
+    const routing = new EngineClient(transport, timers, "rt", "b2");
     const result = routing.sendCommand("routing", 1, { type: "discard_routing" });
     const sent = transport.sent[0];
     if (sent === undefined || !("request_id" in sent)) throw new Error("unreachable");
-    expect(sent.request_id).toBe("rt1");
-    // ミキサーの窓のコマンド（r1）への応答は、ルーティングの窓には関係がない。
-    transport.deliver({ type: "reject", request_id: "r1", error_code: "NOT_FOUND" });
-    transport.deliver({ type: "ack", request_id: "rt1", applied_revision: 2 });
+    expect(sent.request_id).toBe("rt-b2.1");
+    // ミキサーの窓のコマンド（r-a1.1）への応答は、ルーティングの窓には関係がない。
+    transport.deliver({ type: "reject", request_id: "r-a1.1", error_code: "NOT_FOUND" });
+    transport.deliver({ type: "ack", request_id: "rt-b2.1", applied_revision: 2 });
     await expect(result).resolves.toEqual({ ok: true, applied_revision: 2 });
+  });
+
+  it("開き直した画面のクライアントは、前の画面と重ならない request_id を振る", () => {
+    // エンジンは画面の再表示にまたがって request_id の重複を覚えている。新しい画面の最初の
+    // コマンドが前の画面の最初のコマンドと同じ request_id だと、重複として捨てられる。
+    const before = new EngineClient(transport, timers, "m");
+    void before.sendCommand("master", 1, { type: "set_master_mute", muted: false });
+    const reopened = new EngineClient(transport, timers, "m");
+    void reopened.sendCommand("master", 2, { type: "set_master_mute", muted: true });
+    const ids = transport.sent.map((m) => ("request_id" in m ? m.request_id : undefined));
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(before.origin).not.toBe(reopened.origin);
+    expect(ids[0]?.startsWith(`${before.origin}.`)).toBe(true);
+    expect(ids[1]?.startsWith(`${reopened.origin}.`)).toBe(true);
   });
 
   it("request_id と expected_revision を付けて送り、ACK で解決する", async () => {
@@ -103,13 +118,55 @@ describe("EngineClient の連続値", () => {
     expect(transport.gains().map((g) => g.gain_db)).toEqual([-1, -5]);
   });
 
+  it("set_gain に送り元を付け、開き直した画面では別の送り元で seq を 1 から数える", () => {
+    client.setContinuous("master", -1);
+    const reopened = new EngineClient(transport, timers, "r", "c3");
+    reopened.setContinuous("master", -30);
+    expect(transport.gains().map((g) => [g.origin, g.seq])).toEqual([
+      ["r-a1", 1],
+      ["r-c3", 1],
+    ]);
+  });
+
+  it("接続を共有するほかの窓の送った値への gain_ack では settled にしない", () => {
+    client.setContinuous("bus-cue", -1);
+    transport.deliver({
+      type: "gain_ack",
+      entity_id: "bus-cue",
+      seq: 5,
+      applied_revision: 1,
+      origin: "rt-b2",
+    });
+    expect(outcomes).toEqual([]);
+    transport.deliver({
+      type: "gain_ack",
+      entity_id: "bus-cue",
+      seq: 1,
+      applied_revision: 1,
+      origin: "r-a1",
+    });
+    expect(outcomes).toEqual([["bus-cue", "settled"]]);
+  });
+
   it("最後の送信までの ACK がそろったら settled を知らせる", () => {
     client.setContinuous("ch1", -1);
     timers.advance(kContinuousSendIntervalMs);
     client.setContinuous("ch1", -2);
-    transport.deliver({ type: "gain_ack", entity_id: "ch1", seq: 1, applied_revision: 1 });
+    transport.deliver({
+      type: "gain_ack",
+      entity_id: "ch1",
+      seq: 1,
+      applied_revision: 1,
+      origin: "r-a1",
+    });
     expect(outcomes).toEqual([]);
-    transport.deliver({ type: "gain_ack", entity_id: "ch1", seq: 2, applied_revision: 1 });
+    transport.deliver({
+      type: "gain_ack",
+      entity_id: "ch1",
+      seq: 2,
+      applied_revision: 1,
+      origin: "r-a1",
+    });
     expect(outcomes).toEqual([["ch1", "settled"]]);
   });
 
@@ -132,7 +189,13 @@ describe("EngineClient の連続値", () => {
   it("期限切れのあとに届いた古い ACK では settled を知らせない", () => {
     client.setContinuous("ch1", -1);
     timers.advance(kContinuousAckTimeoutMs);
-    transport.deliver({ type: "gain_ack", entity_id: "ch1", seq: 1, applied_revision: 1 });
+    transport.deliver({
+      type: "gain_ack",
+      entity_id: "ch1",
+      seq: 1,
+      applied_revision: 1,
+      origin: "r-a1",
+    });
     expect(outcomes).toEqual([["ch1", "timeout"]]);
   });
 

@@ -134,6 +134,15 @@ public:
 // 送信スレッドの代わりに、送信待ちに入ったその場で送る。送ったデータグラムを決定的に確かめるため。
 class InlineSendWorker final : public PeerSendWorker {
 public:
+    explicit InlineSendWorker(std::shared_ptr<std::size_t> alive) : alive_(std::move(alive)) {
+        ++*alive_;
+    }
+    ~InlineSendWorker() override {
+        --*alive_;
+    }
+    InlineSendWorker(const InlineSendWorker&) = delete;
+    InlineSendWorker& operator=(const InlineSendWorker&) = delete;
+
     void notify() noexcept VOCROZ_NONBLOCKING override {
         if (sender_ != nullptr) {
             sender_->pump();
@@ -147,14 +156,23 @@ public:
     }
 
 private:
+    std::shared_ptr<std::size_t> alive_;
     tp::PeerPacketSender* sender_ = nullptr;
 };
 
 class InlineSendScheduler final : public PeerSendScheduler {
 public:
     std::unique_ptr<PeerSendWorker> create() override {
-        return std::make_unique<InlineSendWorker>();
+        return std::make_unique<InlineSendWorker>(alive_);
     }
+
+    // 破棄されていない送信の数（送信方向と返送のエンコーダーが残っている接続の数）。
+    [[nodiscard]] std::size_t alive() const noexcept {
+        return *alive_;
+    }
+
+private:
+    std::shared_ptr<std::size_t> alive_ = std::make_shared<std::size_t>(0);
 };
 
 class NullRendezvousListener final : public net::HostRendezvousListener {
@@ -342,6 +360,11 @@ protected:
         EXPECT_TRUE(client.finish(endpoint_.sent.back().datagram));
         endpoint_.sent.clear();
         return next_handle_++;
+    }
+
+    // i 番目の子機の送信元。ポートだけを変え、別々の子機に見せる。
+    static net::UdpAddress port_of(std::size_t i) {
+        return net::UdpAddress::from_ipv4({203, 0, 113, 20}, static_cast<std::uint16_t>(40000 + i));
     }
 
     // マイク 1 本（ストリーム 0、モノラル）を strip へ流す対応。
@@ -585,6 +608,68 @@ TEST_F(HostPeerLinksTest, NewHandshakeFromSameAddressClosesUnadmittedConnection)
     connect(*second);
     EXPECT_EQ(events_.log, (std::vector<std::string>{"closed:" + std::to_string(first_peer)}));
     EXPECT_EQ(links_.peer_count(), 1U);
+}
+
+TEST_F(HostPeerLinksTest, RejectsNewHandshakeWhenConnectionsAreFull) {
+    std::vector<std::unique_ptr<TestClient>> silent;
+    for (std::size_t i = 0; i < kMaxPeerConnections; ++i) {
+        silent.push_back(make_client());
+        connect(*silent.back(), port_of(i));
+    }
+    ASSERT_EQ(links_.peer_count(), kMaxPeerConnections);
+    auto late = make_client();
+    endpoint_.sent.clear();
+    deliver(kClientAddress, late->initiation);
+    EXPECT_TRUE(endpoint_.sent.empty());
+    EXPECT_EQ(links_.peer_count(), kMaxPeerConnections);
+}
+
+TEST_F(HostPeerLinksTest, SilentPreJoinConnectionsClosedOnTimeoutFreeTheirSlots) {
+    std::vector<std::unique_ptr<TestClient>> silent;
+    for (std::size_t i = 0; i < kMaxPeerConnections; ++i) {
+        silent.push_back(make_client());
+        connect(*silent.back(), port_of(i));
+    }
+    ASSERT_EQ(sending_.alive(), kMaxPeerConnections);
+
+    // 5 秒の途絶で session に知らせ、session は申請のない接続を閉じる（HostSession の振る舞い）。
+    clock_.advance(6s);
+    links_.poll();
+    ASSERT_EQ(events_.log.size(), kMaxPeerConnections);
+    for (const auto& entry : events_.log) {
+        ASSERT_EQ(entry.rfind("timeout:", 0), 0U);
+        links_.close(static_cast<session::PeerHandle>(std::stoul(entry.substr(8))));
+    }
+    EXPECT_EQ(links_.peer_count(), 0U);
+    // 受信スレッドが取り外しを反映し、次の周期で送信方向（送信と返送のエンコーダー）も破棄する。
+    wake();
+    links_.poll();
+    EXPECT_EQ(sending_.alive(), 0U);
+
+    // 受信スレッドの枠も空いたので、上限まで新しい子機を受け付けられる。
+    std::vector<std::unique_ptr<TestClient>> fresh;
+    for (std::size_t i = 0; i < kMaxPeerConnections; ++i) {
+        fresh.push_back(make_client());
+        connect(*fresh.back(), port_of(kMaxPeerConnections + i));
+    }
+    wake();
+    EXPECT_EQ(links_.peer_count(), kMaxPeerConnections);
+    EXPECT_EQ(sending_.alive(), kMaxPeerConnections);
+}
+
+TEST_F(HostPeerLinksTest, SameSourceCanRedoItsHandshakeWhenConnectionsAreFull) {
+    std::vector<std::unique_ptr<TestClient>> silent;
+    for (std::size_t i = 0; i < kMaxPeerConnections; ++i) {
+        silent.push_back(make_client());
+        connect(*silent.back(), port_of(i));
+    }
+    // 1 台目が申請の前に張り直した（子機の再起動など）。
+    auto again = make_client();
+    connect(*again, port_of(0));
+    EXPECT_EQ(events_.log, (std::vector<std::string>{"closed:1"}));
+    EXPECT_EQ(links_.peer_count(), kMaxPeerConnections);
+    wake();
+    EXPECT_EQ(links_.peer_count(), kMaxPeerConnections);
 }
 
 TEST_F(HostPeerLinksTest, NewHandshakeKeepsAdmittedConnectionUntilSessionCloses) {

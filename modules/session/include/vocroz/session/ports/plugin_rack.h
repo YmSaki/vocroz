@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 挿入のプラグインを読み込み、破棄するポート。
+// 挿入のプラグインを読み込み、破棄し、エディターを開くポート。
 // 読み込みは JUCE のメッセージスレッドで行い、時間がかかるので、session は依頼だけをして結果を
 // 後で HostSession::on_plugin_loaded() で受け取る。session はスレッドを知らずに済み、テストでは
 // 読み込みの成功、失敗、遅れをフェイクで再現できる（docs/adr/0042-plugin-insert.md）。
@@ -38,6 +38,13 @@ public:
     /// グラフが処理をまだ持っていても、処理はグラフが手放すまで生き続ける。
     /// @param insert_id 挿入の entity_id。読み込んでいなければ何もしない
     virtual void release(const std::string& insert_id) = 0;
+
+    /// 挿入のプラグインのエディターを開く。開いていれば前面に出す。
+    /// 開けなければ、コントロールスレッドで HostSession::on_plugin_editor_failed() に届ける。
+    /// 読み込みの済んだ挿入だけに呼ぶ（docs/adr/0041-plugin-editor-and-failure-notice.md）。
+    /// @param insert_id 挿入の entity_id。読み込んでいなければ何もしない
+    /// @param title     ウィンドウのタイトル
+    virtual void open_editor(const std::string& insert_id, const std::string& title) = 0;
 };
 
 }  // namespace vocroz::session

@@ -83,7 +83,12 @@ void HostPeerHandler::on_peer_timeout(PeerHandle peer) {
         if (ctx_.advance_participant(*p, ConnectionEvent::kReceiveTimeout)) {
             ctx_.notice(cp::NoticeSeverity::kWarning, "participant_reconnecting", label(p->strip));
         }
+        return;
     }
+    // 鍵交換だけを済ませ、参加の申請も再接続の申請も届かないまま途絶えた接続。承認待ちにも
+    // 参加者にもいないので、ここで閉じなければ誰も閉じず、接続の上限を占め続けて新しい参加を
+    // 断り続けてしまう。戻る先のストリップも申請もないので、再接続の猶予を待たずに閉じる。
+    ctx_.ports.peers.close(peer);
 }
 
 void HostPeerHandler::on_peer_resumed(PeerHandle peer) {

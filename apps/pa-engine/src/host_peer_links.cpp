@@ -471,7 +471,16 @@ void HostPeerLinks::accept(const network::UdpAddress& from,
         }
         return;
     }
-    if (peers_.size() >= kMaxPeerConnections) {
+    // 同じ送信元の承認前の接続は、鍵交換が成り立てば下で閉じて置き換える。上限で断るのは
+    // 置き換えるものがないときだけにする（満杯でも、申請を張り直した子機は入れるようにするため）。
+    // 閉じている途中の接続は数えない。受信スレッドへの取り外しの指示は新しい接続の取り付けより
+    // 先に積むので、受信スレッドの枠は足りる。
+    const bool replaces_unadmitted =
+        std::any_of(peers_.begin(), peers_.end(), [&from](const auto& entry) {
+            const Peer& peer = *entry.second;
+            return !peer.closing && !peer.admitted && peer.address == from;
+        });
+    if (peer_count() >= kMaxPeerConnections && !replaces_unadmitted) {
         ports_.logger.log(common::LogLevel::kWarning,
                           "接続が上限に達しているため、子機の鍵交換を断りました");
         return;

@@ -12,6 +12,7 @@
 #include "vocroz/common/result.h"
 #include "vocroz/control_protocol/commands.h"
 
+#include "gain_sequence_gate.h"
 #include "host_context.h"
 #include "request_deduplicator.h"
 #include "session_constants.h"
@@ -55,16 +56,19 @@ private:
     CommandResult set_external_output_key(const std::string& text);
     CommandResult set_external_output_running(bool running);
     CommandResult test_external_output();
+    // プラグイン（docs/adr/0042-plugin-insert.md）。
+    CommandResult rescan_plugins();
+    CommandResult open_plugin_editor(const std::string& insert_id);
     void handle_gain(const control_protocol::SetGain& command);
     void handle_route_gain(control_protocol::RouteLevel& level,
                            const control_protocol::SetGain& command);
 
     HostContext& ctx_;
     RequestDeduplicator requests_{kRememberedRequestIds};
-    /// Master の SetGain の最後に適用した seq。古い seq の値で戻さないため。
-    std::optional<control_protocol::Sequence> last_master_gain_seq_;
-    /// バスとセンドの SetGain の最後に適用した seq（entity_id ごと）。
-    std::map<std::string, control_protocol::Sequence> last_route_gain_seq_;
+    /// Master の SetGain の順序の判定。古い seq の値で戻さないため。
+    GainSequenceGate master_gain_order_;
+    /// バスとセンドの SetGain の順序の判定（entity_id ごと）。
+    std::map<std::string, GainSequenceGate> route_gain_order_;
 };
 
 }  // namespace vocroz::session

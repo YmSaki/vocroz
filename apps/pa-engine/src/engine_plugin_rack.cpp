@@ -148,6 +148,31 @@ void EnginePluginRack::release(const std::string& insert_id) {
     });
 }
 
+void EnginePluginRack::open_editor(const std::string& insert_id, const std::string& title) {
+    auto state = state_;
+    const bool posted = state->post([state, insert_id, title] {
+        const auto current = state->current.find(insert_id);
+        if (current == state->current.end() || !state->editors) {
+            // 開く前に外された。外した挿入のエディターは開かない。
+            return;
+        }
+        const auto it = state->entries.find(current->second);
+        if (it == state->entries.end()) {
+            return;
+        }
+        if (!state->editors->open(*it->second.instance, title)) {
+            state->ports.logger.log(common::LogLevel::kWarning,
+                                    "プラグインのエディターを開けませんでした");
+            state->ports.editor_failed(insert_id);
+        }
+    });
+    if (!posted) {
+        state->ports.logger.log(
+            common::LogLevel::kWarning,
+            "メッセージスレッドが動いていないため、プラグインのエディターを開けません");
+    }
+}
+
 void EnginePluginRack::destroy_all() {
     state_->stop_posting();
     if (state_->editors) {

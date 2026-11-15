@@ -54,6 +54,9 @@ public:
         std::function<void(const std::string& insert_id, session::PluginLoadTicket ticket,
                            LoadResult result)>
             deliver;
+        /// エディターを開けなかったことを返す。メッセージスレッドから呼ぶので、受け取る側が
+        /// コントロールスレッドへ移して HostSession::on_plugin_editor_failed() に渡す。
+        std::function<void(const std::string& insert_id)> editor_failed;
         common::Logger& logger;
     };
 
@@ -65,6 +68,7 @@ public:
     void load(const std::string& insert_id, session::PluginLoadTicket ticket,
               const session::PluginDescription& description) override;
     void release(const std::string& insert_id) override;
+    void open_editor(const std::string& insert_id, const std::string& title) override;
 
     /// エディターをすべて閉じ、すべてのインスタンスとローダーを破棄する。以降に手放された
     /// 処理はメッセージスレッドへ知らせない。JUCE を終える前に、メッセージスレッドの最後の
