@@ -13,12 +13,17 @@ import type { Transport } from "./ipc/transport";
 import { ClientScreen } from "./screens/client/ClientScreen";
 import { MixerScreen } from "./screens/mixer/MixerScreen";
 import { RoutingScreen } from "./screens/routing/RoutingScreen";
-import { connectContinuousFeedback, connectNotices } from "./screens/shared/feedback";
+import {
+  connectContinuousFeedback,
+  connectNotices,
+  connectPluginNotices,
+} from "./screens/shared/feedback";
 import { ClientStore } from "./state/client-store";
 import { LinkStatsStore } from "./state/link-stats-store";
 import { MeterStore } from "./state/meter-store";
 import { MixerStore } from "./state/mixer-store";
 import { OptimisticStore } from "./state/optimistic-store";
+import { PluginStore } from "./state/plugin-store";
 import { ToastStore } from "./state/toast-store";
 import "./theme.css";
 
@@ -65,8 +70,10 @@ async function main(): Promise<void> {
   } else {
     const store = new MixerStore();
     const linkStats = new LinkStatsStore();
+    const plugins = new PluginStore();
     client.subscribe((message) => {
       store.apply(message);
+      plugins.apply(message);
       if (message.type === "link_stats") linkStats.apply(message);
     });
     // JUCE 上では、ルーティング画面は別の窓で開く（docs/adr/0038-routing-window.md）。
@@ -77,6 +84,7 @@ async function main(): Promise<void> {
         h(RoutingScreen, {
           client,
           store,
+          plugins,
           optimistic,
           toasts,
           onClose: () => windows.close(),
@@ -87,6 +95,12 @@ async function main(): Promise<void> {
       client.hello();
       return;
     }
+    // プラグインの失敗はミキサーの窓で知らせる。ルーティングの窓でも知らせると、2 つの窓に同じ通知が出るため。
+    connectPluginNotices(plugins, toasts, (insertId) => {
+      const insert = store.get()?.routing.applied.inserts.find((i) => i.entity_id === insertId);
+      if (insert === undefined) return insertId;
+      return plugins.find(insert.plugin_id)?.name ?? insert.plugin_id;
+    });
     // ブラウザでの開発時は窓を開けないので、同じ窓で切り替える。
     // ストアは画面をまたいで共有するので、切り替えてもエンジンの状態を取り直さない。
     const showMixer = (): void =>
@@ -103,7 +117,10 @@ async function main(): Promise<void> {
         root,
       );
     const showRouting = (): void =>
-      render(h(RoutingScreen, { client, store, optimistic, toasts, onClose: showMixer }), root);
+      render(
+        h(RoutingScreen, { client, store, plugins, optimistic, toasts, onClose: showMixer }),
+        root,
+      );
     showMixer();
   }
   // 購読をつないでから全状態を要求し、スナップショットを取りこぼさないようにする。

@@ -19,6 +19,7 @@ import type {
 } from "../messages";
 import { FakeEngineBase, type FakeEngineOptions } from "./fake-engine-base";
 import { FakeExternalOutput, kFakeExternalOutputTestMs } from "./fake-external-output";
+import { FakePlugins } from "./fake-plugins";
 import { FakeRouting } from "./fake-routing";
 
 /** フェイクエンジンの初期状態の種類。demo は画面を一通り確かめられる参加者をあらかじめ置く。 */
@@ -32,6 +33,9 @@ export interface FakeMixerEngineOptions extends FakeEngineOptions {
 const kSessionId = "session";
 const kMasterId = "master";
 const kRoutingId = "routing";
+const kPluginsId = "plugins";
+/** 再スキャンにかかる時間（ms）。スキャン中の表示を画面で確かめられる長さにする。 */
+const kFakeScanMs = 1500;
 const kExternalOutputId = "external_output";
 /** 招待 URL の例。HTTPS の /join#<コード> の形（docs/adr/0006-invite-url-scheme.md）。 */
 const kInviteUrl = "https://vocroz.example/join#7KQ2-M9XD";
@@ -149,6 +153,8 @@ export class FakeMixerEngine extends FakeEngineBase {
   private readonly routing = new FakeRouting(kRoutingId);
   /** 外部出力は停止から始める。 */
   private readonly externalOutput = new FakeExternalOutput(kExternalOutputId);
+  /** プラグインは開発用の一覧から始める。 */
+  private readonly plugins = new FakePlugins(kPluginsId);
   private nextIndex: number;
   private sinceLinkStatsMs = 0;
 
@@ -174,6 +180,12 @@ export class FakeMixerEngine extends FakeEngineBase {
     this.updateSession({ output_device_state: "LOST", output_device_name: null }, false);
     this.updateMaster({ master_muted: true, master_mute_reason: "SAFETY" });
     this.emit({ type: "notice", severity: "warning", code: "output_lost", params: {} });
+  }
+
+  /** 挿入のプラグインが処理中に失敗したことを再現する。経路は無音になり、読み込み直すまで戻らない。 */
+  simulatePluginFailure(insertId: string): void {
+    this.plugins.fail(insertId);
+    this.emitPlugins();
   }
 
   /** 参加の申請を再現する。 */
@@ -242,6 +254,9 @@ export class FakeMixerEngine extends FakeEngineBase {
     switch (message.type) {
       case "hello":
         this.emit({ type: "mixer_snapshot", snapshot: this.snapshot() });
+        // プラグインの状態と一覧はスナップショットに入らないので、続けて送る（pa-engine と同じ順）。
+        this.emitPlugins();
+        this.emitPluginCatalog();
         return;
       case "set_gain":
         this.applyGain(message);
@@ -264,6 +279,8 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "set_external_output_key":
       case "set_external_output_running":
       case "test_external_output":
+      case "rescan_plugins":
+      case "open_plugin_editor":
         this.applyCommand(message);
         return;
       case "join":
@@ -434,6 +451,8 @@ export class FakeMixerEngine extends FakeEngineBase {
         }
         this.ack(command, result.revision);
         this.emitRouting();
+        // 適用した挿入の読み込みの状態が変わる。
+        if (command.type === "commit_routing") this.emitPlugins();
         this.stopExternalOutputWithoutSource();
         return;
       }
@@ -457,6 +476,32 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "test_external_output":
         this.applyExternalOutput(command);
         return;
+      case "rescan_plugins":
+        if (command.entity_id !== kPluginsId) return this.reject(command, "INVALID_STATE");
+        this.plugins.startScan();
+        this.ack(command, this.plugins.revision());
+        this.emitPlugins();
+        this.later(() => {
+          this.plugins.finishScan();
+          this.emitPlugins();
+          this.emitPluginCatalog();
+        }, kFakeScanMs);
+        return;
+      case "open_plugin_editor": {
+        if (command.entity_id !== kPluginsId) return this.reject(command, "INVALID_STATE");
+        const error = this.plugins.checkEditor(this.appliedInserts(), command.insert_id);
+        if (error !== null) return this.reject(command, error);
+        // ブラウザではウィンドウを開けないので、開けなかったときの通知を出す（pa-engine と同じ形）。
+        this.ack(command, this.plugins.revision());
+        const insert = this.appliedInserts().find((i) => i.entity_id === command.insert_id);
+        this.emit({
+          type: "notice",
+          severity: "warning",
+          code: "plugin_editor_failed",
+          params: { name: this.plugins.nameOf(insert?.plugin_id ?? command.insert_id) },
+        });
+        return;
+      }
       case "join":
       case "leave":
       case "select_input":
@@ -518,6 +563,7 @@ export class FakeMixerEngine extends FakeEngineBase {
     if (entityId === kMasterId) return this.state.master.revision;
     if (entityId === kRoutingId) return this.routing.info().revision;
     if (entityId === kExternalOutputId) return this.externalOutput.info().revision;
+    if (entityId === kPluginsId) return this.plugins.revision();
     return (
       this.state.channels.find((c) => c.entity_id === entityId)?.revision ??
       this.state.pending.find((p) => p.entity_id === entityId)?.revision ??
@@ -611,6 +657,18 @@ export class FakeMixerEngine extends FakeEngineBase {
 
   private emitRouting(): void {
     this.emit({ type: "routing_updated", routing: this.routing.info() });
+  }
+
+  private appliedInserts() {
+    return this.routing.info().applied.inserts;
+  }
+
+  private emitPlugins(): void {
+    this.emit({ type: "plugins_updated", plugins: this.plugins.info(this.appliedInserts()) });
+  }
+
+  private emitPluginCatalog(): void {
+    for (const page of this.plugins.pages()) this.emit(page);
   }
 
   private emitRouteLevel(level: RouteLevel): void {

@@ -269,7 +269,8 @@
 
 .strip__sel,
 .strip__return,
-.strip__remove {
+.strip__remove,
+.strip__fx {
     flex: 1;
     /* 折り返しの判定で文字の幅に引っ張られず、SEL と返送を 1 行に収める。 */
     min-width: 0;
@@ -282,6 +283,12 @@
     border: 1px solid var(--color-border);
     border-radius: 3px;
     cursor: pointer;
+}
+
+/* FX はプラグインの挿入を編集するルーティング画面を開く。 */
+.strip__fx {
+    flex: none;
+    padding: 4px 8px;
 }
 
 /* 削除は切断したストリップにだけ出る 3 つ目のボタン。96px の幅に 3 つは収まらないので、

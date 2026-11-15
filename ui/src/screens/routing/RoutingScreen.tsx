@@ -7,14 +7,23 @@
 import { useState } from "preact/hooks";
 import { t, type MessageKey } from "../../i18n/i18n";
 import type { EngineClient } from "../../ipc/engine-client";
-import type { ChannelStrip, RoutingConfig, RoutingInfo, RoutingIssue } from "../../ipc/messages";
+import type {
+  ChannelStrip,
+  DiscreteCommandBody,
+  RoutingConfig,
+  RoutingInfo,
+  RoutingIssue,
+} from "../../ipc/messages";
 import type { MixerStore } from "../../state/mixer-store";
 import type { OptimisticStore } from "../../state/optimistic-store";
+import type { PluginStore } from "../../state/plugin-store";
 import type { ToastStore } from "../../state/toast-store";
 import { useStore } from "../../state/use-store";
 import { ToastLayer } from "../shared/ToastLayer";
 import { useCommand } from "../shared/use-command";
 import { useContinuousGain } from "../shared/use-continuous-gain";
+import { InsertsSection } from "./InsertsSection";
+import { PluginScanView } from "./PluginScanView";
 import { RouteLevelsView } from "./RouteLevelsView";
 import { RoutingEditor, type NodeOption } from "./RoutingEditor";
 import { editingConfig, nextRoutingId } from "./routing-edit";
@@ -24,6 +33,8 @@ import "./RoutingScreen.css";
 export interface RoutingScreenProps {
   client: EngineClient;
   store: MixerStore;
+  /** プラグインの一覧とスキャンと挿入の状態。 */
+  plugins: PluginStore;
   optimistic: OptimisticStore;
   toasts: ToastStore;
   /**
@@ -33,6 +44,12 @@ export interface RoutingScreenProps {
   /** 別の窓で開いているか。閉じるボタンの文言を変える。 */
   inOwnWindow?: boolean;
 }
+
+/** entity "plugins" に送るコマンド。 */
+type PluginCommandBody = Extract<
+  DiscreteCommandBody,
+  { type: "rescan_plugins" } | { type: "open_plugin_editor" }
+>;
 
 const kIssueKey: Record<RoutingIssue, MessageKey> = {
   INVALID_ID: "routing.issue.INVALID_ID",
@@ -54,6 +71,7 @@ function makeLabelOf(
   config: RoutingConfig,
   applied: RoutingConfig,
   channels: readonly ChannelStrip[],
+  pluginName: (pluginId: string) => string,
 ): (entityId: string) => string {
   const labels = new Map<string, string>();
   labels.set("master", t("mixer.master"));
@@ -70,6 +88,10 @@ function makeLabelOf(
   for (const source of [applied, config]) {
     for (const s of source.sends) {
       labels.set(s.entity_id, `${nodeLabel(s.from)} → ${nodeLabel(s.to)}`);
+    }
+    // 挿入は、挿す先とプラグインの名前で示す（検証の問題の箇所を読めるようにするため）。
+    for (const i of source.inserts) {
+      labels.set(i.entity_id, `${nodeLabel(i.target)} / ${pluginName(i.plugin_id)}`);
     }
   }
   return nodeLabel;
@@ -93,12 +115,14 @@ function statusText(routing: RoutingInfo, labelOf: (id: string) => string): stri
 export function RoutingScreen({
   client,
   store,
+  plugins,
   optimistic,
   toasts,
   onClose,
   inOwnWindow = false,
 }: RoutingScreenProps) {
   const state = useStore(store);
+  const pluginState = useStore(plugins);
   const command = useCommand(client, toasts);
   const gain = useContinuousGain(client, optimistic);
   // 承認は、承認したときの revision の構成にだけ効く。ステージングし直したら改めて承認が要る。
@@ -111,7 +135,12 @@ export function RoutingScreen({
   const { routing, channels } = state;
   const config = editingConfig(routing);
   const check = routing.staged?.check ?? null;
-  const labelOf = makeLabelOf(config, routing.applied, channels);
+  const labelOf = makeLabelOf(
+    config,
+    routing.applied,
+    channels,
+    (pluginId) => plugins.find(pluginId)?.name ?? pluginId,
+  );
   const pending = command.isPending(routing.entity_id);
   const approved = approvedRevision === routing.revision;
 
@@ -126,6 +155,19 @@ export function RoutingScreen({
     ...config.outputs.map((o) => option(o.entity_id)),
     ...delays,
   ];
+
+  // 挿せる先はストリップ、バス、Master。挿せるのは音声入力を持つプラグインだけ（VSTi は挿入にしない）。
+  const insertTargets = [option("master"), ...strips, ...buses];
+  const effects = pluginState.catalog.filter((p) => !p.is_instrument);
+  const pluginInfo = pluginState.info;
+  // 読み込みの状態は適用中の挿入にだけある。ステージング中に足しただけの挿入には出さない。
+  const statusOf = (insertId: string) =>
+    routing.applied.inserts.some((i) => i.entity_id === insertId)
+      ? pluginInfo?.inserts.find((s) => s.entity_id === insertId)
+      : undefined;
+  const pluginCommand = (body: PluginCommandBody) => {
+    if (pluginInfo !== null) command.send(pluginInfo.entity_id, pluginInfo.revision, body);
+  };
 
   const stage = (next: RoutingConfig) =>
     command.send(routing.entity_id, routing.revision, { type: "stage_routing", config: next });
@@ -193,6 +235,27 @@ export function RoutingScreen({
           disabled={pending}
           onChange={stage}
         />
+        <div class="routing-editor routing-plugins">
+          <InsertsSection
+            config={config}
+            check={check}
+            targets={insertTargets}
+            plugins={effects}
+            statusOf={statusOf}
+            labelOf={labelOf}
+            newId={(prefix) => nextRoutingId(prefix, routing, config)}
+            disabled={pending}
+            onChange={stage}
+            onOpenEditor={(insertId) =>
+              pluginCommand({ type: "open_plugin_editor", insert_id: insertId })
+            }
+          />
+          <PluginScanView
+            info={pluginInfo}
+            disabled={pluginInfo !== null && command.isPending(pluginInfo.entity_id)}
+            onRescan={() => pluginCommand({ type: "rescan_plugins" })}
+          />
+        </div>
       </div>
       <RouteLevelsView
         levels={routing.levels}

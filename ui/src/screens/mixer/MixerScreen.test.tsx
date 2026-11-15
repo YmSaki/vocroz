@@ -195,8 +195,8 @@ describe("開発中のボタン（AT-A09）", () => {
     const send = vi.spyOn(engine, "send");
     const before = JSON.stringify(engine.snapshot());
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-planned]"));
-    // ツールバーの 5 機能と、各ストリップの FX。
-    expect(buttons.length).toBe(5 + engine.snapshot().channels.length);
+    // ツールバーの 5 機能。各ストリップの FX はルーティング画面を開くので、開発中ではない。
+    expect(buttons.length).toBe(5);
     for (const button of buttons) fireEvent.click(button);
     await advance(20);
     expect(open).not.toHaveBeenCalled();

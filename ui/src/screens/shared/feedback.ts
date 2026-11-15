@@ -3,7 +3,9 @@
 
 import { isMessageKey, t, type MessageKey } from "../../i18n/i18n";
 import type { CommandResult, EngineClient } from "../../ipc/engine-client";
+import type { PluginsInfo } from "../../ipc/messages";
 import type { OptimisticStore } from "../../state/optimistic-store";
+import type { PluginStore } from "../../state/plugin-store";
 import type { ToastStore } from "../../state/toast-store";
 
 /**
@@ -75,5 +77,39 @@ export function connectNotices(client: EngineClient, toasts: ToastStore): () => 
       ? t(key, message.params)
       : t("notice.unknown", { code: message.code });
     toasts.push(message.severity, text);
+  });
+}
+
+/**
+ * プラグインの失敗をトーストで知らせるようにつなぐ。エンジンは失敗を一度だけのイベントではなく状態として
+ * 送るので、前の状態と比べて新しく失敗した挿入と、新しくスキャンから外したファイルだけを知らせる
+ * （docs/adr/0041-plugin-editor-and-failure-notice.md）。最初に届いた状態は比べる相手がないので知らせない。
+ * 接続した時点の失敗は、ルーティング画面の挿入の状態で分かる。
+ * @param plugins プラグインの状態のストア
+ * @param toasts トーストのストア
+ * @param nameOf 挿入の表示名（プラグインの名前）
+ * @returns つなぎを外す関数
+ */
+export function connectPluginNotices(
+  plugins: PluginStore,
+  toasts: ToastStore,
+  nameOf: (insertId: string) => string,
+): () => void {
+  let previous: PluginsInfo | null = plugins.get().info;
+  return plugins.subscribe(() => {
+    const info = plugins.get().info;
+    if (info === null || info === previous) return;
+    const before = previous;
+    previous = info;
+    if (before === null) return;
+    for (const insert of info.inserts) {
+      if (insert.state !== "FAILED") continue;
+      const was = before.inserts.find((i) => i.entity_id === insert.entity_id);
+      if (was?.state === "FAILED") continue;
+      toasts.push("warning", t("toast.plugin_failed", { name: nameOf(insert.entity_id) }));
+    }
+    const known = new Set(before.blocked.map((b) => b.path));
+    const added = info.blocked.filter((b) => !known.has(b.path)).length;
+    if (added > 0) toasts.push("warning", t("toast.plugin_blocked", { count: added }));
   });
 }

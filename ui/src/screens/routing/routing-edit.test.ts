@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { describe, expect, it } from "vitest";
 import type { RoutingConfig, RoutingInfo } from "../../ipc/messages";
-import { addOutput, nextRoutingId, removeNode } from "./routing-edit";
+import { addOutput, nextRoutingId, reloadInsert, removeNode } from "./routing-edit";
 
 function empty(): RoutingConfig {
   return { buses: [], outputs: [], sends: [], delays: [], input_delays: [], inserts: [] };
@@ -57,5 +57,24 @@ describe("removeNode", () => {
       ],
     };
     expect(removeNode(config, "bus-1").sends.map((s) => s.entity_id)).toEqual(["send-2"]);
+  });
+});
+
+describe("挿入の ID", () => {
+  it("読み込み直した挿入は、適用中の挿入と同じ ID を使わず、位置はそのまま残す", () => {
+    const applied: RoutingConfig = {
+      ...empty(),
+      inserts: [
+        { entity_id: "fx-1", target: "master", plugin_id: "A" },
+        { entity_id: "fx-2", target: "master", plugin_id: "B" },
+      ],
+    };
+    const id = nextRoutingId("fx-", info(applied), applied);
+    expect(id).toBe("fx-3");
+    // 同じ ID のままでは、エンジンは失敗した挿入を読み込み直さない。
+    expect(reloadInsert(applied, "fx-1", id).inserts.map((i) => i.entity_id)).toEqual([
+      "fx-3",
+      "fx-2",
+    ]);
   });
 });
