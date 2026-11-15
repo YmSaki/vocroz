@@ -1345,6 +1345,97 @@ TEST_F(HostSessionTest, RestoresSavedInsertsAndDropsThoseOfMissingPlugins) {
     EXPECT_EQ(plugins_.loads()[0].insert_id, "fx-verb");
 }
 
+// --- プラグインの状態の保存と復元 ---
+
+TEST_F(HostSessionTest, CommitCapturesTheStatesOfLoadedInsertsOnMasterAndBuses) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    // 読み込みの済んだ挿入がなければ、取る依頼はしない。
+    EXPECT_TRUE(plugins_.captures().empty());
+    session().on_plugin_loaded("fx-eq", plugins_.loads()[0].ticket, fake_processor());
+    session().on_plugin_loaded("fx-verb", plugins_.loads()[1].ticket, fake_processor());
+
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    // ストリップへの挿入（fx-eq）は保存しないので、状態も取らない。
+    ASSERT_EQ(plugins_.captures().size(), 1U);
+    EXPECT_EQ(plugins_.captures()[0], std::vector<std::string>{"fx-verb"});
+
+    session().on_plugin_states_captured(
+        {{"fx-verb", "VST3-Verb-2", {1, 2, 3}}, {"fx-eq", "VST3-EQ-1", {4}}});
+    ASSERT_TRUE(settings_.plugin_states());
+    EXPECT_EQ(*settings_.plugin_states(),
+              (std::vector<SavedPluginState>{{"fx-verb", "VST3-Verb-2", {1, 2, 3}}}));
+}
+
+TEST_F(HostSessionTest, EndingTheSessionCapturesPluginStates) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    session().on_plugin_loaded("fx-verb", plugins_.loads()[1].ticket, fake_processor());
+    ASSERT_TRUE(command("session", cp::EndSession{}));
+    ASSERT_EQ(plugins_.captures().size(), 1U);
+    EXPECT_EQ(plugins_.captures()[0], std::vector<std::string>{"fx-verb"});
+}
+
+TEST_F(HostSessionTest, DropsStatesOfRemovedOrChangedInsertsAndOversizedStates) {
+    session().set_available_plugins(insert_plugins());
+    create();
+    const auto a = connect(1, "Vo");
+    ASSERT_TRUE(command("routing", cp::StageRouting{insert_routing(a)}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    session().on_plugin_states_captured({{"fx-verb", "VST3-Verb-2", {1}}});
+    ASSERT_EQ(settings_.plugin_states()->size(), 1U);
+
+    // 状態を取っている間にプラグインを替えた挿入の状態は、保存しない。
+    auto changed = insert_routing(a);
+    changed.inserts[1].plugin_id = "VST3-EQ-1";
+    ASSERT_TRUE(command("routing", cp::StageRouting{changed}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    session().on_plugin_states_captured({{"fx-verb", "VST3-Verb-2", {2}}});
+    EXPECT_TRUE(settings_.plugin_states()->empty());
+
+    // 上限を超えた状態は保存しない。
+    session().on_plugin_states_captured(
+        {{"fx-verb", "VST3-EQ-1", std::vector<std::uint8_t>(kMaxPluginStateBytes + 1)}});
+    EXPECT_TRUE(settings_.plugin_states()->empty());
+
+    // 変わらなければ書かない。
+    const auto saves = settings_.plugin_state_save_count();
+    session().on_plugin_states_captured({});
+    EXPECT_EQ(settings_.plugin_state_save_count(), saves);
+}
+
+TEST_F(HostSessionTest, RestoresSavedPluginStatesWhenLoadingSavedInserts) {
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-fx", "FX", cp::BusKind::kUser});
+    config.inserts.push_back(cp::RoutingInsert{"fx-verb", "bus-fx", "VST3-Verb-2"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-eq", "master", "VST3-EQ-1"});
+    HostSettings saved;
+    saved.routing = config;
+    settings_.host() = saved;
+    // fx-eq の状態は別のプラグインのものなので戻さない。
+    settings_.plugin_states() = std::vector<SavedPluginState>{{"fx-verb", "VST3-Verb-2", {7, 8}},
+                                                              {"fx-eq", "VST3-Other", {9}}};
+    session_.emplace(
+        config_,
+        HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_, random_, clock_,
+                           logger_, playout_, external_output_, secrets_, plugins_, plugin_scan_});
+    session_->set_available_plugins(insert_plugins());
+    session_->start();
+
+    ASSERT_EQ(plugins_.loads().size(), 2U);
+    EXPECT_EQ(plugins_.loads()[0].insert_id, "fx-verb");
+    EXPECT_EQ(plugins_.loads()[0].state, (std::vector<std::uint8_t>{7, 8}));
+    EXPECT_EQ(plugins_.loads()[1].insert_id, "fx-eq");
+    EXPECT_TRUE(plugins_.loads()[1].state.empty());
+}
+
 // --- 子機の複数の入力（ステレオ、複数入力、アプリ音声） ---
 
 constexpr InputStream kMic{0, cp::InputSourceKind::kMicrophone, 1};

@@ -8,6 +8,7 @@
 #include <string>
 
 #include "persistence_constants.h"
+#include "plugin_state_codec.h"
 #include "settings_codec.h"
 
 namespace vocroz::persistence {
@@ -66,6 +67,7 @@ common::Result<void, SettingsError> save_settings(AtomicFile& file, const std::s
 
 JsonSettingsStore::JsonSettingsStore(const std::filesystem::path& data_dir, common::Logger& logger)
     : host_file_(data_dir / kHostSettingsFileName),
+      plugin_states_file_(data_dir / kPluginStatesFileName, kMaxPluginStatesFileBytes),
       client_file_(data_dir / kClientSettingsFileName),
       logger_(logger) {}
 
@@ -76,6 +78,18 @@ common::Result<session::HostSettings, SettingsError> JsonSettingsStore::load_hos
 common::Result<void, SettingsError> JsonSettingsStore::save_host(
     const session::HostSettings& settings) {
     return save_settings(host_file_, encode_host_settings(settings), decode_host_settings, logger_);
+}
+
+common::Result<std::vector<session::SavedPluginState>, SettingsError>
+JsonSettingsStore::load_plugin_states() {
+    return load_settings<std::vector<session::SavedPluginState>>(plugin_states_file_,
+                                                                 decode_plugin_states, logger_);
+}
+
+common::Result<void, SettingsError> JsonSettingsStore::save_plugin_states(
+    std::span<const session::SavedPluginState> states) {
+    return save_settings(plugin_states_file_, encode_plugin_states(states), decode_plugin_states,
+                         logger_);
 }
 
 common::Result<session::ClientSettings, SettingsError> JsonSettingsStore::load_client() {

@@ -22,7 +22,7 @@ std::filesystem::path with_suffix(const std::filesystem::path& path, std::string
 }
 
 common::Result<std::optional<std::string>, AtomicFileError> read_small_file(
-    const std::filesystem::path& path) {
+    const std::filesystem::path& path, std::uintmax_t max_bytes) {
     std::error_code ec;
     const auto status = std::filesystem::status(path, ec);
     if (status.type() == std::filesystem::file_type::not_found) {
@@ -35,7 +35,7 @@ common::Result<std::optional<std::string>, AtomicFileError> read_small_file(
     if (ec) {
         return common::make_unexpected(AtomicFileError::kIoError);
     }
-    if (size > kMaxSmallFileBytes) {
+    if (size > max_bytes) {
         return common::make_unexpected(AtomicFileError::kTooLarge);
     }
     std::ifstream in{path, std::ios::binary};
@@ -51,17 +51,18 @@ common::Result<std::optional<std::string>, AtomicFileError> read_small_file(
 
 }  // namespace
 
-AtomicFile::AtomicFile(std::filesystem::path path)
+AtomicFile::AtomicFile(std::filesystem::path path, std::uintmax_t max_bytes)
     : path_(std::move(path)),
       temporary_path_(with_suffix(path_, kTemporarySuffix)),
-      backup_path_(with_suffix(path_, kBackupSuffix)) {}
+      backup_path_(with_suffix(path_, kBackupSuffix)),
+      max_bytes_(max_bytes) {}
 
 common::Result<std::optional<std::string>, AtomicFileError> AtomicFile::read_current() const {
-    return read_small_file(path_);
+    return read_small_file(path_, max_bytes_);
 }
 
 common::Result<std::optional<std::string>, AtomicFileError> AtomicFile::read_backup() const {
-    return read_small_file(backup_path_);
+    return read_small_file(backup_path_, max_bytes_);
 }
 
 common::Result<void, AtomicFileError> AtomicFile::commit(std::span<const char> bytes,

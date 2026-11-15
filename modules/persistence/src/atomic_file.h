@@ -6,12 +6,15 @@
 // 内容が正常かどうか（パースできるか）は知らないので、バックアップに回すかどうかは呼び出し側が決める。
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
 
 #include "vocroz/common/result.h"
+
+#include "persistence_constants.h"
 
 namespace vocroz::persistence {
 
@@ -25,8 +28,9 @@ enum class AtomicFileError {
 /// スレッド安全性: 1 つのファイルを複数のスレッドやプロセスから同時に書かない。
 class AtomicFile {
 public:
-    /// @param path 本体のパス。親フォルダは commit() のときになければ作る
-    explicit AtomicFile(std::filesystem::path path);
+    /// @param path      本体のパス。親フォルダは commit() のときになければ作る
+    /// @param max_bytes 読み込む大きさの上限。超えたファイルは kTooLarge にする
+    explicit AtomicFile(std::filesystem::path path, std::uintmax_t max_bytes = kMaxSmallFileBytes);
 
     /// 本体を読む。
     /// @return 内容。本体がなければ std::nullopt
@@ -57,6 +61,7 @@ private:
     std::filesystem::path path_;
     std::filesystem::path temporary_path_;
     std::filesystem::path backup_path_;
+    std::uintmax_t max_bytes_;
 };
 
 }  // namespace vocroz::persistence

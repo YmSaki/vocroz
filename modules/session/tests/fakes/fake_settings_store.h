@@ -4,6 +4,8 @@
 #pragma once
 
 #include <optional>
+#include <span>
+#include <vector>
 
 #include "vocroz/session/ports/settings_store.h"
 
@@ -25,6 +27,23 @@ public:
     common::Result<void, SettingsError> save_host(const HostSettings& settings) override {
         host_ = settings;
         ++save_count_;
+        return {};
+    }
+
+    common::Result<std::vector<SavedPluginState>, SettingsError> load_plugin_states() override {
+        if (load_error_) {
+            return common::make_unexpected(*load_error_);
+        }
+        if (!plugin_states_) {
+            return common::make_unexpected(SettingsError::kNotFound);
+        }
+        return *plugin_states_;
+    }
+
+    common::Result<void, SettingsError> save_plugin_states(
+        std::span<const SavedPluginState> states) override {
+        plugin_states_.emplace(states.begin(), states.end());
+        ++plugin_state_save_count_;
         return {};
     }
 
@@ -57,15 +76,26 @@ public:
         return client_;
     }
 
+    std::optional<std::vector<SavedPluginState>>& plugin_states() noexcept {
+        return plugin_states_;
+    }
+
     [[nodiscard]] int save_count() const noexcept {
         return save_count_;
+    }
+
+    /// プラグインの状態を保存した回数。設定の保存（save_count()）とは別に数える。
+    [[nodiscard]] int plugin_state_save_count() const noexcept {
+        return plugin_state_save_count_;
     }
 
 private:
     std::optional<HostSettings> host_;
     std::optional<ClientSettings> client_;
+    std::optional<std::vector<SavedPluginState>> plugin_states_;
     std::optional<SettingsError> load_error_;
     int save_count_ = 0;
+    int plugin_state_save_count_ = 0;
 };
 
 }  // namespace vocroz::session

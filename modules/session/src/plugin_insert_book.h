@@ -21,6 +21,7 @@
 #include "vocroz/session/ports/mixer_control.h"
 #include "vocroz/session/ports/plugin_loader.h"
 #include "vocroz/session/ports/plugin_rack.h"
+#include "vocroz/session/settings.h"
 
 namespace vocroz::session {
 
@@ -64,10 +65,14 @@ public:
     /// 適用中の構成の挿入に合わせる。新しい挿入と、プラグインを替えた挿入は読み込みを依頼し、
     /// なくなった挿入とプラグインを替えた挿入の前のインスタンスは破棄を依頼する。
     /// 構成を適用してから呼ぶ。グラフが前の処理を手放してから破棄されるようにするため。
+    /// 読み込む挿入に保存した状態があれば（entity_id
+    /// とプラグインが同じもの）、読み込みと一緒に渡す。
     /// @param inserts 適用中の構成の挿入
     /// @param plugins 使えるプラグインの一覧。一覧にないプラグインの挿入は kNotFound で失敗にする
+    /// @param saved   保存してあるプラグインの状態
     void reconcile(std::span<const control_protocol::RoutingInsert> inserts,
-                   std::span<const PluginDescription> plugins);
+                   std::span<const PluginDescription> plugins,
+                   std::span<const SavedPluginState> saved = {});
 
     /// 読み込みの結果を受け取る。今の依頼の結果でなければ（外したか挿し直した挿入の、遅れて
     /// 届いた結果）捨てる。
