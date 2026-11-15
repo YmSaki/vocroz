@@ -1430,9 +1430,9 @@ TEST_F(HostSessionTest, RestoresSavedPluginStatesWhenLoadingSavedInserts) {
     settings_.plugin_states() = std::vector<SavedPluginState>{{"fx-verb", "VST3-Verb-2", {7, 8}},
                                                               {"fx-eq", "VST3-Other", {9}}};
     session_.emplace(
-        config_,
-        HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_, random_, clock_,
-                           logger_, playout_, external_output_, secrets_, plugins_, plugin_scan_});
+        config_, HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_, random_,
+                                    clock_, logger_, playout_, external_output_, secrets_, plugins_,
+                                    plugin_scan_, recorder_, media_player_, media_library_});
     session_->set_available_plugins(insert_plugins());
     session_->start();
 
