@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "vocroz/audio_core/minus_me.h"
@@ -20,6 +21,37 @@ namespace cp = control_protocol;
 
 /// メインの出力（Master の出力先）が書く先頭のチャンネル。
 constexpr std::size_t kMainOutputChannel = 0;
+
+/// FNV-1a（64 ビット）の定数。
+constexpr std::uint64_t kFnvOffsetBasis = 14695981039346656037ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+// ノードの HistoryKey を、ノードの役割（"strip" など）と entity_id から作る。
+// NodeId は組み立てのたびに振り直すが、entity_id はセッションの中で同じ経路を指し続けるので、
+// グラフを差し替えても手動ディレイや遅延ノードの音を引き継げる
+// （docs/adr/0045-audio-history-carry-over.md）。
+// 64 ビットのハッシュなので、別の経路と値が重なる確率は無視できる（数千の entity で 1e-12 未満）。
+[[nodiscard]] ac::HistoryKey history_key(std::string_view role, std::string_view entity_id) {
+    std::uint64_t hash = kFnvOffsetBasis;
+    const auto mix = [&hash](std::string_view text) {
+        for (const char c : text) {
+            hash ^= static_cast<unsigned char>(c);
+            hash *= kFnvPrime;
+        }
+    };
+    mix(role);
+    // 区切りを入れて、役割と entity_id の境目が違う組が同じ文字列にならないようにする。
+    mix(std::string_view("\0", 1));
+    mix(entity_id);
+    return ac::HistoryKey{hash};
+}
+
+// spec に HistoryKey を付けて返す。
+[[nodiscard]] ac::NodeSpec with_history(ac::NodeSpec spec, std::string_view role,
+                                        std::string_view entity_id) {
+    spec.history_key = history_key(role, entity_id);
+    return spec;
+}
 
 /// ノードの識別子を振りながらグラフを組み立てる。
 class GraphWriter {
@@ -108,8 +140,9 @@ InsertChain add_insert_chain(GraphWriter& writer, const cp::RoutingConfig& confi
     }
     InsertChain result;
     for (const auto* plugin : chain) {
-        const auto node =
-            writer.add(ac::NodeSpec::make_plugin(ac::NodeId{}, plugin->processor, plugin->fault));
+        const auto node = writer.add(
+            with_history(ac::NodeSpec::make_plugin(ac::NodeId{}, plugin->processor, plugin->fault),
+                         "insert", plugin->entity_id));
         if (result.last) {
             writer.connect(*result.last, node);
         } else {
@@ -248,7 +281,9 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     const auto master_chain = add_insert_chain(writer, config, master_entity_id, plugins);
     const auto master = add_bus_stage(
         writer,
-        writer.add(ac::NodeSpec::make_bus(ac::NodeId{}, assignments.master_fader, std::nullopt)),
+        writer.add(with_history(
+            ac::NodeSpec::make_bus(ac::NodeId{}, assignments.master_fader, std::nullopt), "bus",
+            master_entity_id)),
         master_chain);
     const auto main_limiter = writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}));
     const auto main_output = writer.add(
@@ -270,9 +305,10 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         const auto chain = add_insert_chain(writer, config, strip.strip_id, plugins);
         const std::size_t channels = strip_channel_count(strip, config, plugins);
         channels_of.emplace(strip.strip_id, channels);
-        const auto node =
-            writer.add(ac::NodeSpec::make_strip(ac::NodeId{}, strip.fader, strip.meter,
-                                                input_delay_of(config, strip.strip_id), channels));
+        const auto node = writer.add(
+            with_history(ac::NodeSpec::make_strip(ac::NodeId{}, strip.fader, strip.meter,
+                                                  input_delay_of(config, strip.strip_id), channels),
+                         "strip", strip.strip_id));
         if (chain.last) {
             writer.connect(*chain.last, node);
         }
@@ -298,10 +334,12 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         const auto chain = add_insert_chain(writer, config, bus.entity_id, plugins);
         const auto stage = add_bus_stage(
             writer,
-            writer.add(ac::NodeSpec::make_bus(ac::NodeId{}, fader->second,
-                                              meter == assignments.bus_meters.end()
-                                                  ? std::nullopt
-                                                  : std::optional<ac::MeterId>{meter->second})),
+            writer.add(with_history(
+                ac::NodeSpec::make_bus(ac::NodeId{}, fader->second,
+                                       meter == assignments.bus_meters.end()
+                                           ? std::nullopt
+                                           : std::optional<ac::MeterId>{meter->second}),
+                "bus", bus.entity_id)),
             chain);
         sources_of_sends.emplace(bus.entity_id, stage.output);
         targets_of_sends.emplace(bus.entity_id, stage.input);
@@ -312,7 +350,8 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     // 追加の出力にも安全リミッターを通す。キューの返しも出演者の耳に届く出力なので、
     // メインの出力と同じく過大な音を出さない。
     for (const auto& output : config.outputs) {
-        const auto limiter = writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}));
+        const auto limiter = writer.add(
+            with_history(ac::NodeSpec::make_limiter(ac::NodeId{}), "output", output.entity_id));
         const auto node = writer.add(ac::NodeSpec::make_output(
             ac::NodeId{}, std::nullopt, static_cast<std::size_t>(output.device_channel)));
         writer.connect(limiter, node);
@@ -320,8 +359,9 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     }
 
     for (const auto& delay : config.delays) {
-        const auto node = writer.add(
-            ac::NodeSpec::make_delay(ac::NodeId{}, session::delay_samples(delay.delay_ms)));
+        const auto node = writer.add(with_history(
+            ac::NodeSpec::make_delay(ac::NodeId{}, session::delay_samples(delay.delay_ms)), "delay",
+            delay.entity_id));
         sources_of_sends.emplace(delay.entity_id, node);
         targets_of_sends.emplace(delay.entity_id, node);
     }
@@ -329,7 +369,8 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     BuiltMixerGraph built;
     std::vector<ac::MinusMeReturn> returns;
     for (const auto& assignment : assignments.returns) {
-        ac::MinusMeReturn minus_me{{}, assignment.sink};
+        ac::MinusMeReturn minus_me{
+            {}, assignment.sink, history_key("return", std::to_string(assignment.key))};
         for (const auto& strip_id : assignment.own_strip_ids) {
             // ストリップの削除と返送の付け替えの間の組み立てでは、なくなったストリップを指しうる。
             if (const auto node = find(sources_of_sends, strip_id)) {

@@ -70,11 +70,22 @@ public:
     /// スレッド安全性: オーディオスレッドから呼び出し可能。
     void adopt_midi_state(const RenderGraph& previous) noexcept VOCROZ_NONBLOCKING;
 
+    /// 差し替え前のグラフから、音声の履歴（手動ディレイ、遅延ノード、結線の遅延補正の
+    /// ディレイラインの中身）を引き継ぐ。対応は NodeSpec::history_key で決め、遅延の長さと
+    /// チャンネル数が同じものだけを引き継ぐ。バッファを交換するだけで、確保もコピーもしない
+    /// （DelayLine::adopt()）。previous には無音のバッファが残るので、これ以降 previous を
+    /// 処理に使わない。グラフを取り込んだ直後、最初の process() の前に呼ぶ
+    /// （docs/adr/0045-audio-history-carry-over.md）。
+    /// @param previous 差し替え前のグラフ
+    /// スレッド安全性: オーディオスレッドから呼び出し可能。
+    void adopt_audio_history(RenderGraph& previous) noexcept VOCROZ_NONBLOCKING;
+
 private:
     struct Input {
         std::size_t position = 0;      // 送り元のノードの nodes_ 上の位置
         bool pre_fader = false;        // 送り元のフェーダーの前から取り出す
         std::optional<FaderId> level;  // センドレベル
+        std::optional<HistoryKey> from_key;  // 送り元の HistoryKey（遅延補正の引き継ぎに使う）
         bool shares_level = false;  // level を別の結線と共有し、ランプを進めずに掛ける
         // プラグイン遅延補正。補正があるときだけ、送り元のチャンネルごとに 1 本ずつ確保する。
         std::vector<DelayLine> compensation;
@@ -82,6 +93,7 @@ private:
 
     struct Node {
         NodeKind kind = NodeKind::kOutput;
+        std::optional<HistoryKey> history_key;
         std::shared_ptr<AudioSource> source;
         std::optional<FaderId> fader;
         std::optional<MeterId> meter;
@@ -108,7 +120,17 @@ private:
         bool plugin_failed = false;
     };
 
+    // HistoryKey から nodes_ 上の位置を二分探索で引くための索引の 1 行。
+    struct KeyedNode {
+        HistoryKey key;
+        std::size_t position = 0;
+    };
+
     RenderGraph() = default;
+
+    void index_history_keys();
+    [[nodiscard]] Node* find_keyed(HistoryKey key) noexcept VOCROZ_NONBLOCKING;
+    static void adopt_node_history(Node& node, Node& previous) noexcept VOCROZ_NONBLOCKING;
 
     void mix_inputs(Node& node, std::size_t frames, FaderBank& faders) noexcept VOCROZ_NONBLOCKING;
     void process_node(std::size_t position, std::size_t frames, FaderBank& faders,
@@ -123,6 +145,8 @@ private:
     std::vector<Node> nodes_;               // 処理順
     std::vector<std::size_t> delay_nodes_;  // 遅延ノードの nodes_ 上の位置
     std::vector<OutputBlock> outputs_;
+    // HistoryKey を持つノードの索引（キーの昇順）。同じキーのノードが複数あれば載せない。
+    std::vector<KeyedNode> keyed_nodes_;
     MidiRouter midi_;
     std::array<float*, kStereoChannels> scratch_{};  // センドレベルを掛けた信号の作業領域
 };

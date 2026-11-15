@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <map>
 #include <set>
+#include <utility>
 #include <vector>
 
 namespace vocroz::audio_core {
@@ -70,7 +71,9 @@ common::Result<MinusMeReport, GraphError> add_minus_me_returns(
         const std::set<NodeId> own_voice = reachable_from(ret.own_inputs, edges);
         const NodeId limiter{next_id++};
         const NodeId tap{next_id++};
-        graph.nodes.push_back(NodeSpec::make_limiter(limiter));
+        NodeSpec mix = NodeSpec::make_limiter(limiter);
+        mix.history_key = ret.history_key;
+        graph.nodes.push_back(std::move(mix));
         graph.nodes.push_back(NodeSpec::make_return_tap(tap, ret.sink));
         std::set<NodeId> connected;
         for (const MinusMeInput& input : mix_inputs) {
