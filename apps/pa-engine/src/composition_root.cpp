@@ -363,6 +363,12 @@ void CompositionRoot::on_tick() {
     // メーターは UI がつながっていなくても送る。送信の失敗で UI の切断に気付くため
     // （ui_event_publisher.h）。
     ui_publisher_->publish(control_protocol::Meters{engine_mixer_.read_meters()});
+    if (now >= next_link_stats_) {
+        next_link_stats_ = now + kLinkStatsInterval;
+        // 受信しているストリップがなくても空の一覧を送る。UI は届いた一覧で置き換えるので、
+        // 子機が抜けたストリップの古い値が残らない。
+        ui_publisher_->publish(control_protocol::LinkStats{peer_links_->read_link_stats()});
+    }
 
     if (idle_timer_.should_exit(now, ui_publisher_->is_ui_connected(), session_exists_)) {
         logger_->log(common::LogLevel::kInfo, "セッションも UI もないため、エンジンを終了します");

@@ -159,6 +159,8 @@ struct BusStage {
     ac::NodeId input;
     /// 後段（センド、リミッター、出力、外部出力）の送り元。
     ac::NodeId output;
+    /// 経路を切ったため、output がバスではなく入力のない無音の段である。
+    bool cut = false;
 };
 
 // Master かバスの段を組み立てる。挿入があれば「前段 → 挿入の列 → バス → 後段」とつなぎ、
@@ -170,7 +172,7 @@ struct BusStage {
 // session の状態とずれるため。
 BusStage add_bus_stage(GraphWriter& writer, ac::NodeId bus, const InsertChain& chain) {
     if (chain.cut) {
-        return BusStage{bus, writer.add(ac::NodeSpec::make_limiter(ac::NodeId{}))};
+        return BusStage{bus, writer.add(ac::NodeSpec::make_limiter(ac::NodeId{})), true};
     }
     if (!chain.first) {
         return BusStage{bus, bus};
@@ -276,6 +278,8 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     NodeTable bus_outputs;
     NodeTable bus_inputs;
     std::map<std::string, std::size_t, std::less<>> channels_of;
+    // 経路を切った段の、後段の送り元（入力のない無音の段）。
+    std::vector<ac::NodeId> silent_stages;
 
     // Master と、メインの出力への暗黙の経路。安全リミッターを必ず通す。
     const auto master_chain = add_insert_chain(writer, config, master_entity_id, plugins);
@@ -291,6 +295,9 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
     writer.connect(master.output, main_limiter);
     writer.connect(main_limiter, main_output);
     sources_of_sends.emplace(master_entity_id, master.output);
+    if (master.cut) {
+        silent_stages.push_back(master.output);
+    }
     targets_of_sends.emplace(master_entity_id, master.input);
     bus_outputs.emplace(master_entity_id, master.output);
     bus_inputs.emplace(master_entity_id, master.input);
@@ -342,6 +349,9 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
                 "bus", bus.entity_id)),
             chain);
         sources_of_sends.emplace(bus.entity_id, stage.output);
+        if (stage.cut) {
+            silent_stages.push_back(stage.output);
+        }
         targets_of_sends.emplace(bus.entity_id, stage.input);
         bus_outputs.emplace(bus.entity_id, stage.output);
         bus_inputs.emplace(bus.entity_id, stage.input);
@@ -389,7 +399,14 @@ BuiltMixerGraph build_mixer_graph(const MixerAssignments& assignments,
         }
         // センドには必ずセンドレベルを付ける。新しいセンドはミュートで始まり（初期ミュート）、
         // プリフェーダーのセンドは送り元のミュートでは止まらないため。
-        writer.connect(*from, *to, to_graph_tap(send.tap), level->second);
+        // 経路を切った段からのプリフェーダーのセンドは、ポストフェーダーとして無音の段から取る。
+        // 無音の段はフェーダーを持たないので取り出し位置の違いはなく、プリフェーダーのまま
+        // 張るとグラフの検証（プリフェーダーの送り元はストリップかバスだけ）に通らず、
+        // 読み込みを待つ間のルーティング全体の適用が失敗するため。
+        const auto tap = std::ranges::find(silent_stages, *from) != silent_stages.end()
+                             ? ac::SendTap::kPostFader
+                             : to_graph_tap(send.tap);
+        writer.connect(*from, *to, tap, level->second);
     }
     if (const auto& external = assignments.external_stream; external && external->sink) {
         // 送り出せるのは Master かバスだけ（session が検証する）。ストリップや遅延ノードは

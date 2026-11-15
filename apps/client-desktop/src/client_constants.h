@@ -71,6 +71,12 @@ inline constexpr std::chrono::milliseconds kSessionTickInterval{100};
 /// 送信レベルのメーターを UI に送る間隔。仕様のメーターの頻度（10〜30 Hz）の中ほど。
 inline constexpr std::chrono::milliseconds kMeterInterval{50};
 
+/// 入力デバイスの一覧を数え直す間隔。WASAPI は抜去を開いているデバイスにしか知らせず、
+/// 挿し直しや新しいデバイスの接続は知らせないので、一覧を周期的に取り直して気付く。
+/// つないでから選べるまでの待ちとして気にならず、列挙の負荷も無視できる 1 秒にする
+/// （親機の MIDI 入力ポートの数え直しと同じ間隔）。
+inline constexpr std::chrono::milliseconds kInputDeviceScanInterval{1000};
+
 /// ランデブーサーバーの UDP のポート（docs/adr/0012-rendezvous-protocol.md）。
 inline constexpr std::uint16_t kRendezvousUdpPort = 3478;
 

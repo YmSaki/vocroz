@@ -629,6 +629,32 @@ TEST(MixerGraphBuilderTest, PlayerWithoutTargetIsPlacedButUnconnected) {
     EXPECT_TRUE(is_valid(built.graph));
 }
 
+TEST(MixerGraphBuilderTest, PreFaderSendsFromAStageWhoseInsertIsNotLoadedStayValid) {
+    auto a = two_strips();
+    a.route_faders.emplace("bus-1", ac::FaderId{3});
+    a.route_faders.emplace("bus-2", ac::FaderId{4});
+    a.route_faders.emplace("send-1", ac::FaderId{5});
+    a.route_faders.emplace("send-2", ac::FaderId{6});
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-1", "FX"});
+    config.buses.push_back(cp::RoutingBus{"bus-2", "録音"});
+    config.sends.push_back(cp::RoutingSend{"send-1", "bus-1", kMaster, cp::SendTap::kPreFader});
+    config.sends.push_back(cp::RoutingSend{"send-2", kMaster, "bus-2", cp::SendTap::kPreFader});
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "verb"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-2", kMaster, "comp"});
+    const auto built = build_mixer_graph(a, kMaster, config, false, {});
+
+    // 経路を切った段の後段は無音なので、プリフェーダーのセンドも外さずに無音の段から取る。
+    EXPECT_TRUE(built.dropped_sends.empty());
+    for (const auto& c : built.graph.connections) {
+        if (c.level == ac::FaderId{5} || c.level == ac::FaderId{6}) {
+            EXPECT_EQ(built.graph.nodes[c.from.value].kind, ac::NodeKind::kLimiter);
+            EXPECT_TRUE(inputs_of(built.graph, c.from).empty());
+        }
+    }
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
 TEST(MixerGraphBuilderTest, GivesEachEntityTheSameHistoryKeyInEveryBuild) {
     // グラフを組み立て直しても、同じストリップと遅延ノードは同じ HistoryKey になり、
     // 手動ディレイと遅延ノードの音を引き継げる（docs/adr/0045-audio-history-carry-over.md）。

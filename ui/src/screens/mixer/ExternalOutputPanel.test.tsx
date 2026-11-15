@@ -2,7 +2,7 @@
 // 外部出力のパネルの受け入れ。フェイクエンジンにつないだミキサー画面で、
 // 設定の保存、鍵の設定、開始と停止、接続テストがエンジンの状態どおりに表示されることを確かめる。
 // 鍵がなければ開始できないこと、設定した鍵が画面に残らないことも確かめる。
-import { act, fireEvent, render, screen } from "@testing-library/preact";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/preact";
 import { beforeEach, describe, expect, it } from "vitest";
 import { EngineClient } from "../../ipc/engine-client";
 import { FakeMixerEngine } from "../../ipc/fake-engine/fake-mixer-engine";
@@ -14,6 +14,7 @@ import { OptimisticStore } from "../../state/optimistic-store";
 import { ToastStore } from "../../state/toast-store";
 import { FakeTimers } from "../../utils/fake-timers";
 import { connectNotices } from "../shared/feedback";
+import { ExternalOutputPanel } from "./ExternalOutputPanel";
 import { MixerScreen } from "./MixerScreen";
 
 let timers: FakeTimers;
@@ -124,6 +125,62 @@ describe("外部出力のパネル", () => {
     await configure("192.0.2.10");
     fireEvent.input(screen.getByLabelText("ポート"), { target: { value: "6000" } });
     expect(button("送信を開始").disabled).toBe(true);
+  });
+
+  it("鍵だけを設定しても、保存していない宛先の変更を保ち、開始できないままにする", async () => {
+    await configure("192.0.2.10");
+    const host = screen.getByLabelText("宛先（ホスト名か IP アドレス）") as HTMLInputElement;
+    fireEvent.input(host, { target: { value: "192.0.2.20" } });
+    // 鍵の設定の結果は、設定の値が同じ external_output の更新として届く。
+    fireEvent.click(button("鍵を作る"));
+    fireEvent.click(button("鍵を設定"));
+    await advance(20);
+    expect(host.value).toBe("192.0.2.20");
+    expect(button("送信を開始").disabled).toBe(true);
+    expect(button("接続テスト").disabled).toBe(true);
+    expect(engine.snapshot().external_output.config.host).toBe("192.0.2.10");
+  });
+
+  it("新しく設定するとき、先に鍵を設定しても入力した宛先を失わない", async () => {
+    const host = screen.getByLabelText("宛先（ホスト名か IP アドレス）") as HTMLInputElement;
+    fireEvent.input(host, { target: { value: "192.0.2.30" } });
+    fireEvent.click(button("鍵を作る"));
+    fireEvent.click(button("鍵を設定"));
+    await advance(20);
+    expect(host.value).toBe("192.0.2.30");
+    expect(button("送信を開始").disabled).toBe(true);
+
+    // 保存すれば、エンジンの値と一致して開始できる。
+    fireEvent.click(button("設定を保存"));
+    await advance(20);
+    expect(engine.snapshot().external_output.config.host).toBe("192.0.2.30");
+    expect(host.value).toBe("192.0.2.30");
+    expect(button("送信を開始").disabled).toBe(false);
+  });
+
+  it("ほかの画面で設定の値が変わったら、下書きをエンジンの値に合わせる", () => {
+    cleanup();
+    const output = engine.snapshot().external_output;
+    const props = {
+      buses: [],
+      pending: false,
+      onSaveConfig: () => {},
+      onSetKey: () => {},
+      onSetRunning: () => {},
+      onTest: () => {},
+      onCopyKey: () => {},
+      onClose: () => {},
+    };
+    const { rerender } = render(<ExternalOutputPanel output={output} {...props} />);
+    const host = screen.getByLabelText("宛先（ホスト名か IP アドレス）") as HTMLInputElement;
+    fireEvent.input(host, { target: { value: "192.0.2.20" } });
+    rerender(
+      <ExternalOutputPanel
+        output={{ ...output, config: { ...output.config, host: "192.0.2.40" } }}
+        {...props}
+      />,
+    );
+    expect(host.value).toBe("192.0.2.40");
   });
 
   it("接続テストは数秒で終わり、結果を表示する", async () => {

@@ -47,6 +47,14 @@ cp::SignalState to_protocol(transport::SignalState state) {
     return cp::SignalState::kNoSignal;
 }
 
+// 画面に出す観測値の単位（ms）にする。値がなければそのまま。
+std::optional<double> to_ms(std::optional<std::chrono::microseconds> value) {
+    if (!value) {
+        return std::nullopt;
+    }
+    return std::chrono::duration<double, std::milli>(*value).count();
+}
+
 }  // namespace
 
 // 1 つの接続の送信方向。制御パケットと返送のメディアを送信待ちに積み、送信スレッドが暗号化して
@@ -259,6 +267,25 @@ void HostPeerLinks::set_latency_target(std::chrono::microseconds target) {
     }
 }
 
+std::vector<cp::LinkStat> HostPeerLinks::read_link_stats() const {
+    std::vector<cp::LinkStat> stats;
+    // strip_owners_ はストリップの entity_id の昇順なので、そのまま link_stats の順序になる。
+    for (const auto& [strip, handle] : strip_owners_) {
+        const auto peer = peers_.find(handle);
+        if (peer == peers_.end() || peer->second->closing) {
+            continue;
+        }
+        const auto source = peer->second->attached.find(strip);
+        if (source == peer->second->attached.end()) {
+            continue;
+        }
+        stats.push_back(cp::LinkStat{.entity_id = strip,
+                                     .jitter_ms = to_ms(source->second->jitter()),
+                                     .buffer_ms = to_ms(source->second->stream().buffer_delay())});
+    }
+    return stats;
+}
+
 bool HostPeerLinks::apply_routes(Peer& peer, const std::vector<session::StreamRoute>& routes) {
     bool connected = true;
     std::vector<Peer::Stream> next;
@@ -292,7 +319,7 @@ bool HostPeerLinks::apply_routes(Peer& peer, const std::vector<session::StreamRo
             }
             source = std::make_shared<PlayoutSource>(std::move(stream).value());
         }
-        table->slots[table->count++] = StreamTable::Slot{route.stream_id, &source->stream()};
+        table->slots[table->count++] = StreamTable::Slot{route.stream_id, source.get()};
         wanted[route.strip_id] = source;
         next.push_back(Peer::Stream{route.stream_id, route.channels, std::move(source)});
     }

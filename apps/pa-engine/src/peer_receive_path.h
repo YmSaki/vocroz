@@ -37,6 +37,7 @@
 
 #include "engine_constants.h"
 #include "peer_receive_listener.h"
+#include "playout_source.h"
 
 namespace vocroz::engine {
 
@@ -46,13 +47,13 @@ namespace vocroz::engine {
 struct StreamTable {
     struct Slot {
         std::uint16_t stream_id = 0;
-        transport::PlayoutStream* playout = nullptr;
+        PlayoutSource* source = nullptr;
     };
     std::array<Slot, control_protocol::kMaxInputStreams> slots{};
     std::size_t count = 0;
 
     /// ストリーム ID の流し込み先を返す。なければ null。
-    [[nodiscard]] transport::PlayoutStream* find(std::uint16_t stream_id) const noexcept;
+    [[nodiscard]] PlayoutSource* find(std::uint16_t stream_id) const noexcept;
 };
 
 /// 1 つの接続の、受信側の状態。

@@ -6,7 +6,7 @@
 // エンジンから届いた値だけを使う（エンジン主権）。鍵はエンジンから返ってこないので、入力欄は空から始め、
 // 送ったら消す。作った鍵を受信機へ貼るための写しは、この入力欄の中にだけ置く。
 
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { t, type MessageKey } from "../../i18n/i18n";
 import type {
   ExternalOutput,
@@ -99,8 +99,15 @@ export function ExternalOutputPanel({
   const [draft, setDraft] = useState<Draft>(() => draftOf(config));
   const [key, setKey] = useState("");
   const [showKey, setShowKey] = useState(false);
-  // エンジンの設定が変わったら（保存の ACK のあとや、ほかの画面からの変更）、下書きを合わせる。
-  useEffect(() => setDraft(draftOf(config)), [config]);
+  // エンジンの設定の値が変わったら（保存の ACK のあとや、ほかの画面からの変更）、下書きを合わせる。
+  // 通知は JSON で届き、鍵の設定や状態の変化でも値の同じ config が別のオブジェクトとして来る。
+  // 参照で比べると保存していない宛先の変更が旧設定に戻り、旧宛先へ送り出せてしまうので、値で比べる。
+  const appliedConfig = useRef(config);
+  useEffect(() => {
+    if (sameConfig(appliedConfig.current, config)) return;
+    appliedConfig.current = config;
+    setDraft(draftOf(config));
+  }, [config]);
 
   const stopped = state === "STOPPED";
   const editable = stopped && !pending;

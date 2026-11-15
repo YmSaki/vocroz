@@ -740,6 +740,48 @@ TEST_F(HostPeerLinksTest, LatencyTargetReachesCurrentAndLaterStreams) {
     }
 }
 
+TEST_F(HostPeerLinksTest, LinkStatsListAdmittedStripsWithoutValuesBeforeMedia) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    // 承認前の接続はストリップにつながっていないので、一覧に出ない。
+    EXPECT_TRUE(links_.read_link_stats().empty());
+    admit_audible(peer, "ch-1");
+    // まだ 1 フレームも届いていないので、ジッターもバッファも値がない。
+    EXPECT_EQ(links_.read_link_stats(),
+              (std::vector<cp::LinkStat>{cp::LinkStat{"ch-1", std::nullopt, std::nullopt}}));
+}
+
+TEST_F(HostPeerLinksTest, LinkStatsReportJitterAndBufferOfReceivingStrips) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    admit_audible(peer, "ch-1");
+    links_.apply_send_mute(peer, false, 1);
+    // 5 ms ごとのフレームが、交互に 0 ms と 4 ms 遅れて届く回線。到着の間隔は 9 ms と 1 ms
+    // なので、間隔の差の絶対値は毎回 4 ms で、推定は 4 ms に近づく。
+    for (int i = 0; i < 200; ++i) {
+        clock_.advance(i % 2 == 0 ? 1ms : 9ms);
+        deliver(kClientAddress, client->media_packet(1));
+        static_cast<void>(render_peak(tp::kSampleRate / 200));
+    }
+    const auto stats = links_.read_link_stats();
+    ASSERT_EQ(stats.size(), 1U);
+    EXPECT_EQ(stats[0].entity_id, "ch-1");
+    ASSERT_TRUE(stats[0].jitter_ms);
+    EXPECT_NEAR(*stats[0].jitter_ms, 4.0, 0.5);
+    // 再生中は目標の深さが入る（下限 10 ms から、上限の既定 20 ms まで）。
+    ASSERT_TRUE(stats[0].buffer_ms);
+    EXPECT_GE(*stats[0].buffer_ms, 10.0);
+    EXPECT_LE(*stats[0].buffer_ms, 20.0);
+}
+
+TEST_F(HostPeerLinksTest, LinkStatsDropStripsOfClosedConnections) {
+    auto client = make_client();
+    const auto peer = connect(*client);
+    admit_audible(peer, "ch-1");
+    links_.close(peer);
+    EXPECT_TRUE(links_.read_link_stats().empty());
+}
+
 TEST_F(HostPeerLinksTest, ReplacingRoutesMovesStreamAndReportsEstablishedOnce) {
     auto client = make_client();
     const auto peer = connect(*client);

@@ -25,4 +25,21 @@ void PlayoutSource::pull(float* const* channels, std::size_t frames) noexcept VO
     }
 }
 
+bool PlayoutSource::receive(const transport::MediaFrame& frame,
+                            common::Clock::TimePoint arrival) noexcept {
+    estimator_.on_frame(frame.timestamp, frame.mute_epoch, arrival);
+    if (const auto jitter = estimator_.jitter()) {
+        jitter_us_.store(jitter->count(), std::memory_order_relaxed);
+    }
+    return stream_->enqueue(frame);
+}
+
+std::optional<std::chrono::microseconds> PlayoutSource::jitter() const noexcept {
+    const std::int64_t us = jitter_us_.load(std::memory_order_relaxed);
+    if (us == kNoJitter) {
+        return std::nullopt;
+    }
+    return std::chrono::microseconds{us};
+}
+
 }  // namespace vocroz::engine

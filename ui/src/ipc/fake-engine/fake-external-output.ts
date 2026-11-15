@@ -73,9 +73,12 @@ export class FakeExternalOutput {
     };
   }
 
-  /** 現在の状態。 */
+  /**
+   * 現在の状態。本物のエンジンからは JSON で届き、通知のたびに別のオブジェクトになるので、
+   * フェイクも毎回写しを返す。値が同じでも参照が変わる通知を、画面のテストで再現するため。
+   */
   info(): ExternalOutput {
-    return this.state;
+    return { ...this.state, config: { ...this.state.config } };
   }
 
   /**
