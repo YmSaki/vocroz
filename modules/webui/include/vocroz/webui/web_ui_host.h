@@ -21,11 +21,12 @@ enum class UiMode {
     kClient,  ///< 子機
 };
 
-/// 窓に表示する画面。親機モードでは、ミキサーの窓とルーティングの窓を別のホストで開く
-/// （docs/adr/0038-routing-window.md）。
+/// 窓に表示する画面。親機モードでは、ミキサーの窓、ルーティングの窓、メディアの窓を別のホストで
+/// 開く（docs/adr/0038-routing-window.md、docs/adr/0043-recording-and-media-player.md）。
 enum class UiScreen {
     kMain,  ///< モードの主画面（親機はミキサー画面、子機は子機の画面）
     kRouting,  ///< 親機のルーティング画面
+    kMedia,    ///< 親機のメディア画面（録音とメディアプレイヤー）
 };
 
 /// ウィンドウの大きさ。単位は論理ピクセル（OS の表示倍率を掛ける前の値）。
@@ -64,6 +65,9 @@ struct WebUiHostOptions {
     /// UI がルーティング画面を開くよう求めたときに、メッセージスレッドで呼ばれる関数。
     /// 空なら求めを無視する（子機モードなど）。
     std::function<void()> on_open_routing;
+    /// UI がメディア画面を開くよう求めたときに、メッセージスレッドで呼ばれる関数。
+    /// 空なら求めを無視する（子機モードなど）。
+    std::function<void()> on_open_media;
 };
 
 /// UI をホストするウィンドウと、UI とのメッセージの経路。

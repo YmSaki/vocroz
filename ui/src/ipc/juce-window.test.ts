@@ -13,9 +13,11 @@ describe("JuceWindowControl", () => {
     };
     const control = new JuceWindowControl(backend);
     control.openRouting();
+    control.openMedia();
     control.close();
     expect(backend.emitEvent.mock.calls).toEqual([
       [kWindowEventId, "open_routing"],
+      [kWindowEventId, "open_media"],
       [kWindowEventId, "close"],
     ]);
   });

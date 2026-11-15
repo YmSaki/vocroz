@@ -143,11 +143,26 @@ TEST_F(ClientCaptureTest, ReopensTheAppAudioOnceAfterItsDeviceIsLost) {
     app_audio_.last->simulate_device_lost();
     // アプリ音声の抜去は、マイクの抜去としては知らせない。
     EXPECT_FALSE(capture_.take_device_lost());
+    EXPECT_FALSE(capture_.take_app_audio_reopened());
     capture_.flush_params();
     EXPECT_EQ(app_audio_.opened.size(), 2U);
     EXPECT_TRUE(capture_.capturing_app_audio());
+    // 開き直したことを 1 回だけ知らせ、session に送信の新しい区間を始めさせる。
+    EXPECT_TRUE(capture_.take_app_audio_reopened());
+    EXPECT_FALSE(capture_.take_app_audio_reopened());
     capture_.flush_params();
     EXPECT_EQ(app_audio_.opened.size(), 2U);
+    EXPECT_FALSE(capture_.take_app_audio_reopened());
+}
+
+TEST_F(ClientCaptureTest, AppAudioThatCannotBeReopenedIsNotReportedAsReopened) {
+    capture_.set_streams(
+        {{0, InputSourceKind::kMicrophone, 1}, {1, InputSourceKind::kApplicationAudio, 2}});
+    app_audio_.missing[""] = true;
+    app_audio_.last->simulate_device_lost();
+    capture_.flush_params();
+    EXPECT_FALSE(capture_.capturing_app_audio());
+    EXPECT_FALSE(capture_.take_app_audio_reopened());
 }
 
 }  // namespace

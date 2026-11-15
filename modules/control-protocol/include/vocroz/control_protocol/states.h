@@ -156,4 +156,62 @@ enum class ExternalOutputResult {
     kSendFailed,     ///< SEND_FAILED: ソケットを開けないか、送信に失敗した
 };
 
+/// スキャンで読み込み不可にしたプラグインファイルの理由（docs/adr/0041-plugin-editor-and-failure-notice.md）。
+enum class BlockedPluginReason {
+    kCrashed,        ///< CRASHED: スキャン中にヘルパーが異常終了した
+    kTimedOut,       ///< TIMED_OUT: スキャンが制限時間内に終わらなかった
+    kInvalidOutput,  ///< INVALID_OUTPUT: スキャンの結果を読めなかった
+};
+
+/// 挿入のプラグインの読み込みの状態（docs/adr/0042-plugin-insert.md）。
+enum class PluginInsertState {
+    kLoading,  ///< LOADING: 読み込み中。その挿入を通る経路は無音
+    kReady,    ///< READY: 読み込みが済み、経路をつないでいる
+    kFailed,  ///< FAILED: 読み込みか処理に失敗した。挿入を外して挿し直すまで経路は無音のまま
+};
+
+/// 挿入のプラグインが失敗した理由。
+enum class PluginInsertFailure {
+    kNotFound,           ///< NOT_FOUND: プラグインが見つからない
+    kInstantiateFailed,  ///< INSTANTIATE_FAILED: インスタンスを作れなかった
+    kUnsupportedLayout,  ///< UNSUPPORTED_LAYOUT: チャンネル構成が合わない
+    kProcessingFailed,   ///< PROCESSING_FAILED: 処理中に失敗した（例外か NaN）
+};
+
+/// 録音で書き出すファイルの形式（docs/adr/0043-recording-and-media-player.md）。
+enum class RecordingFormat {
+    kWav,   ///< WAV: 48 kHz、24 bit の WAV（4 GiB を超えたら RF64）
+    kFlac,  ///< FLAC: 48 kHz、24 bit の FLAC
+};
+
+/// 録音の状態。起動時は必ず STOPPED から始める。
+enum class RecorderState {
+    kStopped,    ///< STOPPED: 録音していない
+    kRecording,  ///< RECORDING: 録音中
+};
+
+/// 録音の開始か、録音中の書き出しの結果。
+enum class RecorderResult {
+    kOk,        ///< OK: 録音できた
+    kDiskFull,  ///< DISK_FULL: 保存先の空き容量が足りない
+    kIoError,   ///< IO_ERROR: ファイルを作れないか、書き出しに失敗した
+    /// FOLDER_UNAVAILABLE: メディアフォルダを作れないか、テイクのフォルダを作れない
+    kFolderUnavailable,
+};
+
+/// メディアプレイヤーの再生の状態。起動時とファイルを読み込んだ直後は STOPPED。
+enum class MediaTransport {
+    kStopped,  ///< STOPPED: 止まっている（位置は先頭）
+    kPlaying,  ///< PLAYING: 再生中
+    kPaused,   ///< PAUSED: 一時停止中
+};
+
+/// メディアプレイヤーのファイルの読み込みの結果。
+enum class MediaResult {
+    kOk,                 ///< OK: 読み込めた
+    kNotFound,           ///< NOT_FOUND: ファイルがなくなっていた
+    kUnsupportedFormat,  ///< UNSUPPORTED_FORMAT: 読めない形式か、壊れたファイル
+    kIoError,            ///< IO_ERROR: 読み込みに失敗した
+};
+
 }  // namespace vocroz::control_protocol

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // DelayLine の単体テスト。その場で遅らせる使い方と、読みと書きを分ける使い方の両方で、
-// 決まった数だけ遅れることを検証する。
+// 決まった数だけ遅れることを検証する。グラフの差し替えで中身を引き継ぐ adopt() も検証する。
 
 #include "delay_line.h"
 
@@ -65,6 +65,42 @@ TEST(DelayLineTest, ReadsSilenceBeyondDelay) {
     std::vector<float> out(4, 1.0F);
     line.read(out);
     EXPECT_EQ(out, (std::vector<float>{0.0F, 0.0F, 0.0F, 0.0F}));
+}
+
+TEST(DelayLineTest, AdoptContinuesFromPreviousLine) {
+    DelayLine previous(5);
+    std::vector<float> first = ramp(3, 1.0F);  // 1 2 3
+    previous.process(first);
+
+    DelayLine next(5);
+    EXPECT_TRUE(next.adopt(previous));
+    // 差し替え前に書いた 1 2 3 が、続きの位置から出る。
+    std::vector<float> second = ramp(6, 4.0F);  // 4 5 6 7 8 9
+    next.process(second);
+    EXPECT_EQ(second, (std::vector<float>{0.0F, 0.0F, 1.0F, 2.0F, 3.0F, 4.0F}));
+}
+
+TEST(DelayLineTest, AdoptLeavesSilenceInPreviousLine) {
+    DelayLine previous(3);
+    std::vector<float> samples = ramp(3, 1.0F);
+    previous.process(samples);
+    DelayLine next(3);
+    ASSERT_TRUE(next.adopt(previous));
+    std::vector<float> out(3, 1.0F);
+    previous.read(out);
+    EXPECT_EQ(out, (std::vector<float>{0.0F, 0.0F, 0.0F}));
+}
+
+TEST(DelayLineTest, AdoptIgnoresLineWithDifferentDelay) {
+    DelayLine previous(4);
+    std::vector<float> samples = ramp(4, 1.0F);
+    previous.process(samples);
+    DelayLine next(5);
+    EXPECT_FALSE(next.adopt(previous));
+    // 長さを変えたら無音から始める。
+    std::vector<float> out = ramp(5, 10.0F);
+    next.process(out);
+    EXPECT_EQ(out, (std::vector<float>(5, 0.0F)));
 }
 
 }  // namespace

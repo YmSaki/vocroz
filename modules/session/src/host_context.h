@@ -18,8 +18,10 @@
 
 #include "external_output_book.h"
 #include "invite_book.h"
+#include "media_desk.h"
 #include "participant_registry.h"
 #include "plugin_insert_book.h"
+#include "plugin_status_book.h"
 #include "routing_book.h"
 #include "session_constants.h"
 #include "state/connection_state_machine.h"
@@ -83,7 +85,8 @@ struct HostContext {
     /// 新しい招待を作り、ランデブーサーバーへ登録を要求する。
     void issue_invite();
 
-    /// 招待を失効させ、すべての子機を切断し、ストリップを片付けて設定を保存する。
+    /// 招待を失効させ、すべての子機を切断し、ストリップを片付けて設定を保存する。挿入のプラグインの
+    /// 状態も取って保存する（セッションの終了時の保存、docs/adr/0042-plugin-insert.md）。
     void teardown();
 
     /// Master をミュートする。理由が変わるだけでも revision を進め、古い表示に基づく解除を
@@ -104,6 +107,16 @@ struct HostContext {
 
     /// 設定を保存する。失敗はログに残して続行する。
     void save_settings();
+
+    /// 保存するルーティング（settings.routing）の挿入のうち、読み込みの済んだものの状態を取るよう
+    /// PluginRack に依頼する。結果は store_plugin_states() で保存する。save_settings() の後に呼ぶ。
+    /// 取る挿入がなくても、保存しなくなった挿入の状態はここで消す。
+    void capture_plugin_states();
+
+    /// 取ったプラグインの状態を、保存してある状態に重ねて保存する。保存するルーティングにない挿入の
+    /// 状態と、上限より大きい状態は保存しない。変わらなければ書かない。
+    /// @param captured PluginRack::capture_states() の結果
+    void store_plugin_states(std::vector<SavedPluginState> captured);
 
     /// 申請を拒否して接続を閉じる。
     void deny(PeerHandle peer, control_protocol::ErrorCode reason);
@@ -144,8 +157,8 @@ struct HostContext {
     /// @param context 失敗したときにログに残す場面
     void reapply_routing(const char* context);
 
-    /// 適用中のルーティングの挿入に合わせて、プラグインの読み込みと破棄を依頼する。
-    /// 適用中の構成を変えてミキサーへ適用したあとに呼ぶ。
+    /// 適用中のルーティングの挿入に合わせて、プラグインの読み込みと破棄を依頼し、挿入の状態を
+    /// UI に知らせる。適用中の構成を変えてミキサーへ適用したあとに呼ぶ。
     void reconcile_inserts();
 
     /// 保存したルーティングの構成を起動時に戻す。問題のない構成はそのまま適用し、バスとセンドは
@@ -158,6 +171,9 @@ struct HostContext {
     /// @param target_ms 目標（ms）。範囲は検証済みであること
     void apply_latency_target(double target_ms);
 
+    /// プラグインの表示名。一覧になければ識別子を返す。
+    [[nodiscard]] std::string plugin_name(const std::string& plugin_id) const;
+
     /// 今あるチャンネルストリップの entity_id。ルーティングの検証に使う。
     [[nodiscard]] std::vector<std::string> strip_ids() const;
 
@@ -167,8 +183,15 @@ struct HostContext {
     /// 承認と再接続で接続を受け付けたとき（JoinApproved
     /// より前）と、ミュートを切り替えたときに呼ぶ。 接続がなければ何もしない。
     void sync_return(const Participant& participant);
+    /// Master か、適用中のルーティングのバスなら true。
+    [[nodiscard]] bool is_master_or_bus(const std::string& entity_id) const;
     /// 送り出すバスとして使える entity_id（Master か、適用中のルーティングのバス）なら true。
     [[nodiscard]] bool is_external_output_source(const std::string& entity_id) const;
+    /// 録れる対象（ストリップ、Master、適用中のルーティングのバス）の表示名。録れなければ
+    /// std::nullopt。録音のファイル名に使う。
+    [[nodiscard]] std::optional<std::string> recording_label(const std::string& entity_id) const;
+    /// 適用中のルーティングが変わったあと、メディアプレイヤーの流す先と録音の対象を確かめ直す。
+    void sync_media_with_routing();
     /// 保存した SRTP 外部出力の設定と鍵を戻す。送信は止めたまま。起動時に 1 回だけ呼ぶ。
     void restore_external_output();
     /// SRTP 外部出力の送り出すバスがルーティングから消えていたら、送信を止めて知らせる。
@@ -186,6 +209,10 @@ struct HostContext {
     void publish_routing();
     void publish_route_level(const control_protocol::RouteLevel& level);
     void publish_external_output();
+    /// プラグインのスキャンと挿入の状態を送る（plugins_updated）。
+    void publish_plugins();
+    /// プラグインの一覧のページを、今の世代で先頭から順に送る（plugin_catalog_page）。
+    void publish_plugin_catalog();
     void notice(control_protocol::NoticeSeverity severity, const char* code,
                 const std::string& name);
     void log(common::LogLevel level, const char* message);
@@ -196,6 +223,8 @@ struct HostContext {
     HostSession::Config config;
     HostSession::Ports ports;
     HostSettings settings;
+    /// 保存してある挿入のプラグインの状態。読み込むときに戻す（docs/adr/0042-plugin-insert.md）。
+    std::vector<SavedPluginState> plugin_states;
     control_protocol::SessionInfo session;
     control_protocol::MasterStrip master;
     RendezvousId rendezvous_id{};
@@ -205,7 +234,9 @@ struct HostContext {
     ParticipantRegistry registry;
     RoutingBook routing;
     PluginInsertBook inserts;
+    PluginStatusBook plugin_status;
     ExternalOutputBook external_output;
+    MediaDesk media;
 };
 
 }  // namespace vocroz::session

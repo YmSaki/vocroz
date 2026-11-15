@@ -42,7 +42,8 @@ inline constexpr std::size_t kMixerMeterCapacity = 256;
 inline constexpr std::size_t kCrashDumpsKeptAtStartup = 4;
 
 /// 同時に持つ子機との接続の上限。ストリップの上限（64 本）と同じにする。張り直しの途中の古い接続も
-/// 数えるので、上限に達したら新しい鍵交換を受け付けない（古い接続が閉じれば空く）。
+/// 数えるので、上限に達したら新しい鍵交換を受け付けない（古い接続が閉じれば空く）。閉じている途中の
+/// 接続と、同じ送信元が張り直した承認前の接続（置き換えて閉じる）は数えない。
 inline constexpr std::size_t kMaxPeerConnections = 64;
 
 /// コントロールスレッドからネットワーク受信スレッドへの指示（接続の追加、承認、送信ミュート、
@@ -61,8 +62,27 @@ inline constexpr std::chrono::milliseconds kReceiveWakeInterval{100};
 /// 演奏の途中で挿し直したときに、待たされたと感じない程度にする。
 inline constexpr std::chrono::milliseconds kMidiDeviceScanInterval{1000};
 
+/// 回線の観測値（link_stats）を UI へ送る間隔。オペレーターが値を読んで目標レイテンシーを
+/// 判断するには十分で、メーター（10〜30 Hz）ほど IPC と再描画の負荷をかけない約 1 Hz にする
+/// （docs/adr/0037-latency-target-and-link-stats.md）。
+inline constexpr std::chrono::milliseconds kLinkStatsInterval{1000};
+
 /// ランデブーサーバーの UDP のポート。infra/rendezvous の既定値で、
 /// 子機の client_constants.h と同じ値。
 inline constexpr std::uint16_t kRendezvousUdpPort = 3478;
+
+/// Master とバスを録るトラックのチャンネル数。Master とバスはステレオで鳴らすので、そのまま録る
+/// （docs/adr/0043-recording-and-media-player.md）。
+inline constexpr std::size_t kBusRecordingChannels = 2;
+
+/// ディスク I/O スレッドが録音の書き出しと再生の先読みを回す間隔。録音トラックのリングバッファ
+/// （audio-core の既定で 4 秒）と再生の先読み（2 秒）に対して十分に短く、1
+/// 周期のファイルの読み書きが まとまった量になる長さにする。
+inline constexpr std::chrono::milliseconds kDiskIoInterval{10};
+
+/// 録音を止めてから、オーディオスレッドが録音タップを使い終えるのを待つ上限。出力デバイスが
+/// 回っていれば 1 回のコールバック（数 ms）で落ち着くので、それより十分に長くする。過ぎたら
+/// 出力デバイスが止まっている（録音タップに書くスレッドがない）とみなしてファイルを閉じる。
+inline constexpr std::chrono::seconds kRecordingFinishTimeout{1};
 
 }  // namespace vocroz::engine

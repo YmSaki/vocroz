@@ -24,6 +24,14 @@ inline constexpr std::string_view kPluginCatalogFileName = "plugin-catalog.json"
 /// スキャンの記録のファイルの形式のバージョン。
 inline constexpr std::int64_t kPluginCatalogSchemaVersion = 1;
 
+/// 挿入のプラグインの状態のファイルの名前。親機だけが使う。状態は設定の数百倍の大きさになることが
+/// あるので、設定のファイルとは分け、設定を保存するたびに書き直さないようにする
+/// （docs/adr/0042-plugin-insert.md）。
+inline constexpr std::string_view kPluginStatesFileName = "plugin-states.json";
+
+/// プラグインの状態のファイルの形式のバージョン。
+inline constexpr std::int64_t kPluginStatesSchemaVersion = 1;
+
 /// 秘密情報を置くサブフォルダの名前（--data-dir の下）。
 inline constexpr std::string_view kSecretsDirectoryName = "secrets";
 
@@ -42,6 +50,11 @@ inline constexpr std::int64_t kSettingsSchemaVersion = 1;
 /// 読み込む設定ファイルと秘密情報のファイルの大きさの上限（バイト）。実際の大きさは数百バイトなので、
 /// 壊れて巨大になったファイルや別のファイルを丸ごとメモリに読まないための上限として 1 MiB にする。
 inline constexpr std::uintmax_t kMaxSmallFileBytes = std::uintmax_t{1024} * 1024;
+
+/// 読み込むプラグインの状態のファイルの大きさの上限（バイト）。保存する挿入は多くても 32 で、
+/// 状態 1 つは session::kMaxPluginStateBytes（1 MiB）までなので、Base64 にして（4/3 倍）
+/// JSON の識別子を足しても収まる 48 MiB にする。壊れて巨大になったファイルを丸ごと読まないため。
+inline constexpr std::uintmax_t kMaxPluginStatesFileBytes = std::uintmax_t{48} * 1024 * 1024;
 
 /// 診断レポートに入れるログの合計の上限（バイト）。メールの添付の上限（多くは 10MB 前後）に
 /// 収まるよう、新しいログから 8 MiB までを入れる。

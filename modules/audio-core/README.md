@@ -8,7 +8,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 - 内部フォーマット（48kHz、Float32、標準ブロック 128 サンプル）。デバイスのコールバック長が違っても 128 サンプル以下に分けて処理する
 - 音声グラフ（ソース → ストリップ → バス → リミッター → 出力）の記述、検証（ループの検出を含む）、レンダーグラフの構築
 - ルーティング（Beta1、`docs/adr/0018-routing-graph.md`）: プリフェーダー / ポストフェーダーのセンドとセンドレベル、キュー / モニターバス、入力ごとの手動ディレイ、遅延ノードを通るフィードバック経路（承認があるときだけ）、1 台の出力デバイスの複数のチャンネルの組への出力
-- グラフのスワップ（オーディオスレッド外で構築し、アトミックなポインター交換で差し替え、古いグラフはオーディオスレッド外で破棄）
+- グラフのスワップ（オーディオスレッド外で構築し、アトミックなポインター交換で差し替え、古いグラフはオーディオスレッド外で破棄）。`NodeSpec::history_key` の同じノードは、差し替えても手動ディレイ、遅延ノード、遅延補正の音を引き継ぐ（`docs/adr/0045-audio-history-carry-over.md`）
 - ミキサー（Alpha はモノラル 8 チャンネル以上 + Master の固定構成を、グラフの 1 構成として記述する）
 - プラグインノードとプラグイン遅延補正（PDC、Beta4、`docs/adr/0024-plugin-node-and-pdc.md`）: `PluginProcessor` ポートを呼ぶノード（入力 0〜2、出力 1〜2。入力 0 は VSTi）、合流する経路にだけ遅延を足す補正、処理の失敗や NaN でそのノードを無音にする扱い。失敗の印（`PluginFault`）を渡せば、グラフを差し替えても無音を保ち、コントロールスレッドから失敗を読める（`docs/adr/0041-plugin-editor-and-failure-notice.md`）
 - 録音タップと再生ノード（Beta2、`docs/adr/0031-recording-and-playback-nodes.md`）: オーディオスレッドはロックフリーのリングバッファを読み書きするだけで、ファイルへの書き出しと先読みはディスク I/O スレッドが行う。書き込みが遅れたら欠落として数えて無音で埋め、ライブ音声を止めない。音声ファイルの書き出しと読み込みのポート（`AudioFileWriter`、`AudioFileReader`）
@@ -28,7 +28,7 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/constants.h` | `kSampleRate`、`kBlockSize`、`kMaxFaderGainDb`、遅延と出力チャンネルの上限 | 対象外 |
 | `vocroz/audio_core/mixer.h` | `Mixer`、`MixerConfig`、`MixerError` | `render()` だけ呼び出し可能 |
 | `vocroz/audio_core/graph_description.h` | `GraphDescription`、`NodeSpec`、`Connection`、`SendTap`、`NodeId`、`FaderId`、`MeterId`、`GraphError` | 対象外（コントロールスレッドで記述する） |
-| `vocroz/audio_core/minus_me.h` | `add_minus_me_returns()`、`MinusMeReturn`、`MinusMeReport`（子機ごとの返送をグラフに足す） | 対象外（コントロールスレッドで記述する） |
+| `vocroz/audio_core/minus_me.h` | `add_minus_me_returns()`、`MinusMeInput`、`MinusMeReturn`、`MinusMeReport`（子機ごとの返送をグラフに足す） | 対象外（コントロールスレッドで記述する） |
 | `vocroz/audio_core/feedback_analysis.h` | `analyze_feedback()`、`FeedbackReport`（ループに含まれるノードと、遅延のないループ） | 対象外 |
 | `vocroz/audio_core/latency_compensation.h` | `analyze_latency()`、`LatencyReport`（ノードごとの遅延と結線ごとの補正） | 対象外 |
 | `vocroz/audio_core/midi_event.h` | `MidiEvent`（ブロック内の MIDI メッセージ） | 呼び出し可能 |
@@ -61,7 +61,8 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/playback_track.h` | `PlaybackTrack`（再生ノードの読み込み元。ディスク I/O スレッドが `fill()` で先読みする） | `render()` だけ呼び出し可能 |
 | `vocroz/audio_core/audio_file_error.h` | `AudioFileError` | 対象外 |
 | `vocroz/audio_core/ports/audio_file_writer.h` | `AudioFileWriter`（`media` が実装） | 対象外（ディスク I/O スレッド） |
-| `vocroz/audio_core/ports/audio_file_reader.h` | `AudioFileReader`（`media` が実装） | 対象外（ディスク I/O スレッド） |
+| `vocroz/audio_core/ports/audio_file_reader.h` | `AudioFileReader`（`media` が実装。長さは 48 kHz に換算したフレーム数） | 対象外（ディスク I/O スレッド） |
+| `vocroz/audio_core/audio_file_format.h` | 録音で書き出す形式 `AudioFileFormat`（WAV、FLAC。`docs/adr/0043-recording-and-media-player.md`） | 対象外 |
 
 ### 使い方（親機の固定ミキサー）
 
@@ -123,7 +124,7 @@ if (auto valid = mixer.validate_graph(graph); !valid) { /* GraphError を UI へ
 ```cpp
 using namespace vocroz::audio_core;
 
-// チャンネルへの挿入: ソース → プラグイン → ストリップ。バスへの挿入: バス → プラグイン → 後段。
+// チャンネルへの挿入: ソース → プラグイン → ストリップ。バスへの挿入: 前段 → プラグイン → バス → 後段。
 std::shared_ptr<PluginProcessor> eq = ...;  // plugin-host が準備済みのものを返す
 GraphDescription graph;
 graph.nodes = {NodeSpec::make_source(NodeId{1}, source),
@@ -210,13 +211,16 @@ using namespace vocroz::audio_core;
 // 候補は Master へ入る信号。A の返送には A のストリップと、A を含むバスが入らない。
 std::shared_ptr<AudioSink> to_a = ...;  // transport の MediaStreamEncoder
 std::shared_ptr<AudioSink> to_b = ...;
-const std::vector<NodeId> mix_inputs = {NodeId{11}, NodeId{12}, NodeId{13}};
+// 候補は Master へ入る結線の送り元と取り出し方。センドで Master へ入るバス 30 は、そのセンドの
+// フェーダー（ここでは 6）も渡すと、返送もそのセンドのミュートと音量に従う。
+const std::vector<MinusMeInput> mix_inputs = {
+    NodeId{11}, NodeId{12}, NodeId{13}, MinusMeInput{NodeId{30}, SendTap::kPostFader, FaderId{6}}};
 const std::vector<MinusMeReturn> returns = {{{NodeId{11}}, to_a}, {{NodeId{12}}, to_b}};
 if (auto added = add_minus_me_returns(graph, mix_inputs, returns); !added) { /* GraphError */ }
 (void)mixer.apply_graph(graph);
 ```
 
-返送はポストフェーダーで取るので、チャンネルミュートしたチャンネルは返送にも入りません。返送タップはステレオの入力を L と R の平均でモノラルにして、1 ブロックごとに `AudioSink::push()` を呼びます。
+返送はポストフェーダーで取るので、チャンネルミュートしたチャンネルは返送にも入りません。Master へ入るセンドのフェーダーは返送の結線が共有する（`Connection::shares_level`）ので、センドをミュートすれば返送からも消え、下げれば返送も同じだけ下がります。返送タップはステレオの入力を L と R の平均でモノラルにして、1 ブロックごとに `AudioSink::push()` を呼びます。
 
 ### 使い方（SRTP 外部出力へのストリームタップ）
 

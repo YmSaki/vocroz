@@ -1,0 +1,206 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* メディア画面のレイアウト。上に閉じる操作と題、その下に録音とプレイヤーの区画を縦に並べる
+   （縦スクロール）。窓の最小の大きさは remote-pa の kMediaWindowMinWidth と kMediaWindowMinHeight。 */
+.media-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-width: 640px;
+    min-height: 520px;
+}
+
+.media-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 52px;
+    padding: 0 12px;
+    flex-shrink: 0;
+    background: var(--color-panel-raised);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.media-header__title {
+    margin: 0;
+    font-size: 16px;
+}
+
+.media-screen button,
+.media-screen select,
+.media-screen input {
+    font: inherit;
+    color: var(--color-text);
+}
+
+.media-screen button {
+    padding: 4px 10px;
+    background: var(--color-button);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.media-screen button:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.media-screen select,
+.media-screen input[type="text"] {
+    padding: 3px 6px;
+    background: var(--color-field);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+}
+
+.media-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.media-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 12px 12px;
+    background: var(--color-panel);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+}
+
+.media-section h2 {
+    margin: 0;
+    font-size: 14px;
+}
+
+.media-section__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.media-section__hint {
+    margin: 0;
+    font-size: 12px;
+    color: var(--color-text-dim);
+}
+
+.media-section__warning,
+.media-section__error {
+    margin: 0;
+    color: var(--color-warning);
+}
+
+.media-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+
+.media-row__label {
+    min-width: 96px;
+    color: var(--color-text-dim);
+}
+
+.media-row__grow {
+    flex: 1;
+    min-width: 0;
+}
+
+.media-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 12px;
+}
+
+.media-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 0;
+    margin: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+}
+
+.media-sources legend {
+    padding: 0 4px;
+    color: var(--color-text-dim);
+}
+
+/* 録音中は録音のボタンを目立たせ、止め忘れに気づけるようにする。 */
+.media-screen button.media-record--on {
+    background: var(--color-warning);
+}
+
+.media-record__time,
+.media-player__time {
+    font-variant-numeric: tabular-nums;
+}
+
+.media-record__state {
+    color: var(--color-text-dim);
+}
+
+.media-tracks {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+}
+
+.media-tracks li {
+    display: flex;
+    gap: 8px;
+}
+
+.media-tracks__source {
+    color: var(--color-text-dim);
+}
+
+.media-library {
+    max-height: 200px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+}
+
+.media-screen button.media-library__item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.media-screen button.media-library__item--loaded {
+    background: var(--color-panel-raised);
+    font-weight: 700;
+}
+
+.media-player__file {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.media-screen button.media-transport__play:not(:disabled) {
+    background: var(--color-live);
+}
+
+.media-seek {
+    width: 100%;
+}

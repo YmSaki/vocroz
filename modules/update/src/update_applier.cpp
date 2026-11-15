@@ -5,6 +5,8 @@
 
 #include "vocroz/update/update_applier.h"
 
+#include <algorithm>
+#include <optional>
 #include <utility>
 #include <variant>
 
@@ -52,7 +54,7 @@ ApplyOutcome UpdateApplier::apply(std::string_view manifest_text, bool user_requ
     const ApplyDecision decision = decide_apply({
         .session_active = ports_.session_monitor.is_session_active(),
         .user_requested = user_requested,
-        .current = running_version_,
+        .current = installed_current(),
         .candidate = manifest.version,
     });
     if (decision != ApplyDecision::kApply) {
@@ -123,6 +125,23 @@ ApplyOutcome UpdateApplier::apply(std::string_view manifest_text, bool user_requ
     return ApplyOutcome::kAborted;
 }
 
+std::optional<InstallPointer> UpdateApplier::read_install_pointer() {
+    const auto text = ports_.install_layout.read_pointer();
+    return text ? parse_install_pointer(*text) : std::nullopt;
+}
+
+SemanticVersion UpdateApplier::installed_current() {
+    // 動いている pa-updater が現行版とは限らない（以前の版のフォルダに残った pa-updater を
+    // 直接実行した場合など）。ポインターの現行版と自分の版の新しいほうと比べれば、
+    // 同じ版の再適用（失敗時の後始末で現行版のフォルダを消す）もダウングレードも防げる。
+    // ポインターが壊れているかない場合（インストーラーが入れた初期状態）は自分の版だけで判断する。
+    const auto pointer = read_install_pointer();
+    if (!pointer) {
+        return running_version_;
+    }
+    return std::max(pointer->current, running_version_);
+}
+
 bool UpdateApplier::verify_package(const UpdateManifest& manifest) {
     return package_matches_manifest(ports_.package, manifest);
 }
@@ -139,8 +158,7 @@ bool UpdateApplier::verify_signature(const UpdateManifest& manifest) {
 bool UpdateApplier::switch_to(const SemanticVersion& version) {
     // ポインターが壊れているかない場合（インストーラーが入れた初期状態）は、
     // 動いている版を直前の版として記録する。
-    const auto existing_text = ports_.install_layout.read_pointer();
-    const auto existing = existing_text ? parse_install_pointer(*existing_text) : std::nullopt;
+    const auto existing = read_install_pointer();
     const SemanticVersion previous = existing ? existing->current : running_version_;
     if (!ports_.install_layout.write_pointer(
             serialize_install_pointer(InstallPointer{version, previous}))) {
@@ -163,7 +181,15 @@ void UpdateApplier::prune_old_versions(const SemanticVersion& current,
 void UpdateApplier::roll_back(const SemanticVersion& version) {
     // ポインターは切り替えに成功したときだけ書き換わるので、ここで戻す必要はない。
     // 展開したフォルダを消し、設定を退避した内容に戻せば、旧版がそのまま起動できる。
-    ports_.install_layout.remove_version(version);
+    // ただし、ポインターが指す版と動いている pa-updater の版は更新の前から使える版なので、
+    // 候補と同じ版であっても消さない（消すと起動スタブが起動できる版を失う）。
+    const auto pointer = read_install_pointer();
+    const bool referenced =
+        version == running_version_ ||
+        (pointer && (version == pointer->current || version == pointer->previous));
+    if (!referenced) {
+        ports_.install_layout.remove_version(version);
+    }
     // 復元に失敗しても、旧版の設定ファイルは更新の手順で書き換えていないので、起動はできる。
     static_cast<void>(ports_.settings_backup.restore());
 }

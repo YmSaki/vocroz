@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -18,11 +19,15 @@
 #include "fakes/fake_external_output_control.h"
 #include "fakes/fake_host_link.h"
 #include "fakes/fake_logger.h"
+#include "fakes/fake_media_library.h"
+#include "fakes/fake_media_player_control.h"
 #include "fakes/fake_mixer_control.h"
 #include "fakes/fake_output_device_control.h"
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_playout_control.h"
 #include "fakes/fake_plugin_rack.h"
+#include "fakes/fake_plugin_scan_control.h"
+#include "fakes/fake_recorder_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
@@ -94,6 +99,30 @@ TEST_F(JsonSettingsStoreTest, HostAndClientUseSeparateFiles) {
     ASSERT_TRUE(store_.save_host(host_settings(0.0)));
     EXPECT_TRUE(std::filesystem::exists(host_path()));
     EXPECT_FALSE(std::filesystem::exists(client_path()));
+}
+
+TEST_F(JsonSettingsStoreTest, SavesPluginStatesInTheirOwnFile) {
+    const std::vector<session::SavedPluginState> states{{"fx-1", "VST3-EQ", {1, 2, 3}}};
+    ASSERT_TRUE(store_.save_host(host_settings(0.0)));
+    ASSERT_TRUE(store_.save_plugin_states(states));
+    EXPECT_TRUE(std::filesystem::exists(dir_.path() / "plugin-states.json"));
+
+    JsonSettingsStore reopened{dir_.path(), logger_};
+    const auto loaded = reopened.load_plugin_states();
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded.value(), states);
+    // 設定のファイルには状態を入れない。
+    EXPECT_EQ(reopened.load_host().value(), host_settings(0.0));
+}
+
+TEST_F(JsonSettingsStoreTest, ReadsPluginStateFilesLargerThanTheSettingsLimit) {
+    // 設定のファイルの上限（1 MiB）を超えても、状態のファイルは読める。
+    const std::vector<session::SavedPluginState> states{
+        {"fx-1", "VST3-EQ", std::vector<std::uint8_t>(session::kMaxPluginStateBytes, 0x5A)}};
+    ASSERT_TRUE(store_.save_plugin_states(states));
+    const auto loaded = store_.load_plugin_states();
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded.value(), states);
 }
 
 TEST_F(JsonSettingsStoreTest, RestoresFromBackupWhenMainFileIsCorrupted) {
@@ -168,11 +197,16 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedFromBackup) {
     session::FakeSecureRandom random;
     session::FakePlayoutControl playout;
     session::FakeExternalOutputControl external_output;
+    session::FakeRecorderControl recorder;
+    session::FakeMediaPlayerControl media_player;
+    session::FakeMediaLibrary media_library;
     session::FakeSecretStore secrets;
     session::FakePluginRack plugins;
-    session::HostSession host{{},
-                              {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_,
-                               logger_, playout, external_output, secrets, plugins}};
+    session::FakePluginScanControl plugin_scan;
+    session::HostSession host{
+        {},
+        {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_, logger_, playout,
+         external_output, secrets, plugins, plugin_scan, recorder, media_player, media_library}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());
@@ -190,11 +224,16 @@ TEST_F(SettingsCorruptionStartupTest, HostStartsWithMasterMutedAndDefaultsWhenNo
     session::FakeSecureRandom random;
     session::FakePlayoutControl playout;
     session::FakeExternalOutputControl external_output;
+    session::FakeRecorderControl recorder;
+    session::FakeMediaPlayerControl media_player;
+    session::FakeMediaLibrary media_library;
     session::FakeSecretStore secrets;
     session::FakePluginRack plugins;
-    session::HostSession host{{},
-                              {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_,
-                               logger_, playout, external_output, secrets, plugins}};
+    session::FakePluginScanControl plugin_scan;
+    session::HostSession host{
+        {},
+        {ui_, mixer, outputs, peers, rendezvous, store_, random, clock_, logger_, playout,
+         external_output, secrets, plugins, plugin_scan, recorder, media_player, media_library}};
     host.start();
 
     EXPECT_TRUE(mixer.master_muted());

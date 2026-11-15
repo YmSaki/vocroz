@@ -45,6 +45,15 @@ struct MeterId {
     friend constexpr auto operator<=>(MeterId, MeterId) = default;
 };
 
+/// グラフを差し替えても音声の履歴を引き継ぐための、ノードの識別子（docs/adr/0045-audio-history-carry-over.md）。
+/// NodeId はグラフごとに振り直してよいが、HistoryKey はグラフをまたいで同じ音の経路
+/// （同じ入力チャンネル、同じバス、同じ遅延ノードなど）を指すときだけ同じ値にする。
+/// 別の経路に同じ値を付けると、前の経路で遅らせていた音が新しい経路から出る。
+struct HistoryKey {
+    std::uint64_t value = 0;  ///< 識別子の値
+    friend constexpr auto operator<=>(HistoryKey, HistoryKey) = default;
+};
+
 /// ノードの種類。チャンネル数は種類で決まる。
 enum class NodeKind {
     /// AudioSource からサンプルを取り出す。入力を持たない。チャンネル数は
@@ -77,7 +86,14 @@ enum class NodeKind {
 
 /// ノードの記述。各種類のファクトリー関数で作る。
 struct NodeSpec {
-    NodeId id;                            ///< ノードの識別子
+    NodeId id;  ///< ノードの識別子
+    /// 差し替え前のグラフから音声の履歴を引き継ぐための識別子（任意）。差し替え前のグラフに
+    /// 同じ種類で同じ値のノードがあり、遅延の長さとチャンネル数が同じなら、手動ディレイと
+    /// 遅延ノードのディレイライン、このノードへの結線の遅延補正（送り元にも値があり、取り出す
+    /// 位置が同じもの）の中身を引き継ぐ。遅延の長さが変わったものは無音から始める。
+    /// 同じグラフの中で同じ値を複数のノードに付けたら、それらのノードは引き継がない。
+    /// std::nullopt なら引き継がない（無音から始める）。
+    std::optional<HistoryKey> history_key;
     NodeKind kind = NodeKind::kOutput;    ///< ノードの種類
     std::shared_ptr<AudioSource> source;  ///< kSource のときのサンプルの取り出し先
     std::optional<FaderId> fader;         ///< kStrip、kBus のフェーダー
@@ -151,7 +167,8 @@ struct NodeSpec {
     /// プラグインノードを作る。チャンネル数と遅延は、この時点の plugin の値を写す。
     /// 挿入位置の結線の間に置く。挿入の判断は session が持つ。
     /// チャンネルストリップへの挿入は「ソース → プラグイン → ストリップ」。
-    /// バスへの挿入は「バス → プラグイン → 後段」。
+    /// バスへの挿入は「前段 → プラグイン → バス → 後段」。バスのフェーダーとミュートを
+    /// プラグインの後ろに置き、ミュートの後にプラグインに残った音を後段へ流さない。
     /// @param id ノードの識別子
     /// @param plugin 処理の呼び出し先（null にしない）
     /// @param fault 失敗の印。グラフを差し替えても失敗を引き継ぎ、コントロールスレッドから
@@ -211,6 +228,11 @@ struct Connection {
     /// プリフェーダーのセンドは、新規参加時の初期ミュートをチャンネルのフェーダーで守れないので、
     /// 必ずセンドレベルを付ける（フェーダーはミュートで始まる）。
     std::optional<FaderId> level;
+    /// true なら level を、同じフェーダーを持つ別の結線かノードと共有する。共有する側はランプを
+    /// 進めず、同じブロックの持ち主と同じゲインを掛ける。子機への返送（Minus-Me）が、Master へ
+    /// 入るセンドのミュートと音量をそのまま通るようにするため（docs/adr/0036-return-monitor.md）。
+    /// level が必要で、そのフェーダーを共有しないノードか結線が同じグラフに 1 つあること。
+    bool shares_level = false;
 };
 
 /// グラフ内の MIDI ソースの識別子。1 つのグラフの中で一意にする。NodeId とは別の名前空間。
@@ -253,8 +275,10 @@ enum class GraphError {
     kChannelMismatch,  ///< ステレオの出力をモノラルの入力（モノラルのストリップなど）へつないでいる
     kCycle,  ///< 遅延ノードを通らないループ（発振経路）がある。承認があっても適用できない
     kUnapprovedFeedback,  ///< 遅延ノードを通るループがあるが、オペレーターが承認していない
-    kMissingSource,    ///< ソースノードに AudioSource がない
-    kMissingFader,     ///< ストリップかバスにフェーダーがない
+    kMissingSource,  ///< ソースノードに AudioSource がない
+    /// ストリップかバスにフェーダーがない。共有するセンドレベル（Connection::shares_level）に
+    /// フェーダーがないか、そのフェーダーの持ち主がグラフにない
+    kMissingFader,
     kFaderOutOfRange,  ///< フェーダーの識別子が容量を超えている
     kMeterOutOfRange,  ///< メーターの識別子が容量を超えている
     kDuplicateFader,   ///< 同じフェーダーを複数のノードが使っている

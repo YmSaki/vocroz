@@ -6,13 +6,15 @@
     "type": "set_gain",
     "entity_id": "ch1",
     "seq": 42,
-    "gain_db": -6.5
+    "gain_db": -6.5,
+    "origin": "m-3f9a0c1d"
   },
   {
     "type": "set_gain",
     "entity_id": "master",
     "seq": 0,
-    "gain_db": null
+    "gain_db": null,
+    "origin": "m-3f9a0c1d"
   },
   {
     "type": "create_session",
@@ -267,9 +269,79 @@
     "expected_revision": 3
   },
   {
+    "type": "rescan_plugins",
+    "request_id": "r-34",
+    "entity_id": "plugins",
+    "expected_revision": 1
+  },
+  {
+    "type": "open_plugin_editor",
+    "request_id": "r-35",
+    "entity_id": "plugins",
+    "expected_revision": 1,
+    "insert_id": "fx-1"
+  },
+  {
+    "type": "set_recorder_config",
+    "request_id": "r-40",
+    "entity_id": "recorder",
+    "expected_revision": 0,
+    "config": {
+      "format": "FLAC",
+      "folder": "D:\\Recordings",
+      "sources": [
+        "master",
+        "bus-1",
+        "ch-2"
+      ]
+    }
+  },
+  {
+    "type": "set_recording",
+    "request_id": "r-41",
+    "entity_id": "recorder",
+    "expected_revision": 1,
+    "recording": true
+  },
+  {
+    "type": "load_media",
+    "request_id": "r-42",
+    "entity_id": "media_player",
+    "expected_revision": 0,
+    "path": "bgm/opening.flac"
+  },
+  {
+    "type": "set_media_transport",
+    "request_id": "r-43",
+    "entity_id": "media_player",
+    "expected_revision": 1,
+    "transport": "PLAYING"
+  },
+  {
+    "type": "seek_media",
+    "request_id": "r-44",
+    "entity_id": "media_player",
+    "expected_revision": 2,
+    "position_ms": 15000
+  },
+  {
+    "type": "set_media_target",
+    "request_id": "r-45",
+    "entity_id": "media_player",
+    "expected_revision": 3,
+    "target": "bus-1"
+  },
+  {
+    "type": "refresh_media_library",
+    "request_id": "r-46",
+    "entity_id": "media_player",
+    "expected_revision": 4
+  },
+  {
     "type": "set_gain",
     "entity_id": "send-1",
     "seq": 7,
-    "gain_db": -6.0
+    "gain_db": -6.0,
+    "origin": "rt-77e2b410"
   }
 ]

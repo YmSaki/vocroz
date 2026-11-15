@@ -16,9 +16,12 @@
 // JUCE の型は使わないので、Linux の CI でフェイクのローダーと即時実行の post で単体テストできる。
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 #include "vocroz/audio_core/ports/plugin_processor.h"
 #include "vocroz/common/ports/logger.h"
@@ -26,12 +29,14 @@
 #include "vocroz/session/ports/plugin_editor_host.h"
 #include "vocroz/session/ports/plugin_loader.h"
 #include "vocroz/session/ports/plugin_rack.h"
+#include "vocroz/session/settings.h"
 
 namespace vocroz::engine {
 
 /// メッセージスレッドで読み込む PluginRack。
-/// スレッド安全性: load() と release() はコントロールスレッドから呼ぶ。destroy_all() は
-/// メッセージスレッドから呼ぶ。グラフに渡した処理は、どのスレッドで手放してもよい
+/// スレッド安全性: load()、capture_states()、release()、open_editor() はコントロールスレッドから
+/// 呼ぶ。capture_all() と destroy_all()
+/// はメッセージスレッドから呼ぶ。グラフに渡した処理は、どのスレッドで手放してもよい
 /// （オーディオスレッドを除く。古いグラフはオーディオスレッドの外で破棄する）。
 class EnginePluginRack final : public session::PluginRack {
 public:
@@ -54,6 +59,13 @@ public:
         std::function<void(const std::string& insert_id, session::PluginLoadTicket ticket,
                            LoadResult result)>
             deliver;
+        /// エディターを開けなかったことを返す。メッセージスレッドから呼ぶので、受け取る側が
+        /// コントロールスレッドへ移して HostSession::on_plugin_editor_failed() に渡す。
+        std::function<void(const std::string& insert_id)> editor_failed;
+        /// 取った状態を返す（capture_states()
+        /// の結果）。メッセージスレッドから呼ぶので、受け取る側が コントロールスレッドへ移して
+        /// HostSession::on_plugin_states_captured() に渡す。
+        std::function<void(std::vector<session::SavedPluginState> states)> captured;
         common::Logger& logger;
     };
 
@@ -63,8 +75,19 @@ public:
     EnginePluginRack& operator=(const EnginePluginRack&) = delete;
 
     void load(const std::string& insert_id, session::PluginLoadTicket ticket,
-              const session::PluginDescription& description) override;
+              const session::PluginDescription& description,
+              std::span<const std::uint8_t> state) override;
+    void capture_states(std::vector<std::string> insert_ids) override;
     void release(const std::string& insert_id) override;
+    void open_editor(const std::string& insert_id, const std::string& title) override;
+
+    /// 読み込んでいるすべての挿入の状態を、その場で取る。終了の前に、destroy_all() の直前に
+    /// メッセージスレッドの最後の処理から呼び、結果はメッセージスレッドを止めた後で
+    /// HostSession::on_plugin_states_captured() に渡す。終了時にはコントロールスレッドのループが
+    /// もう止まっていて、capture_states() の結果を受け取れないため。
+    /// スレッド安全性: メッセージスレッドから呼ぶ。
+    /// @return 取れた状態
+    [[nodiscard]] std::vector<session::SavedPluginState> capture_all();
 
     /// エディターをすべて閉じ、すべてのインスタンスとローダーを破棄する。以降に手放された
     /// 処理はメッセージスレッドへ知らせない。JUCE を終える前に、メッセージスレッドの最後の

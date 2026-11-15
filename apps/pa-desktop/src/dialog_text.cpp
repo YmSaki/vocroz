@@ -84,6 +84,16 @@ std::string_view routing_window_title(DialogLanguage language) noexcept {
     return routing_window_title(DialogLanguage::kEnglish);
 }
 
+std::string_view media_window_title(DialogLanguage language) noexcept {
+    switch (language) {
+        case DialogLanguage::kJapanese:
+            return "VOCROZ - メディア";
+        case DialogLanguage::kEnglish:
+            return "VOCROZ - Media";
+    }
+    return media_window_title(DialogLanguage::kEnglish);
+}
+
 DialogLanguage dialog_language_from_tag(std::string_view lang) noexcept {
     return lang == "ja" ? DialogLanguage::kJapanese : DialogLanguage::kEnglish;
 }

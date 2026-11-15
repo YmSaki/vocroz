@@ -5,8 +5,8 @@
 // （AGENTS.md 5.4）。
 // エンジンの起動と再アタッチは EngineAttacher の手順で行い、
 // 接続が切れたら同じ手順でつなぎ直す（docs/adr/0030-remote-pa-assembly.md）。
-// ルーティング画面は別の窓で開き、ミキサーの窓と ChannelGroup でまとめてパイプを共有する
-// （docs/adr/0038-routing-window.md）。
+// ルーティング画面とメディア画面は別の窓で開き、ミキサーの窓と ChannelGroup でまとめてパイプを
+// 共有する（docs/adr/0038-routing-window.md、docs/adr/0043-recording-and-media-player.md）。
 //
 // スレッド:
 // - JUCE のメッセージスレッド: 生成、破棄、接続の手順、閉じるときの確認
@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <string_view>
 
 #include "vocroz/common/ports/logger.h"
 #include "vocroz/common/result.h"
@@ -85,8 +86,21 @@ private:
     class AttachTimer;
 
     void open_window();
+    // ルーティングとメディアの窓の設定。どちらも同じ手順で開き、閉じる。
+    struct SubWindow {
+        std::string_view title;
+        int width;
+        int height;
+        int min_width;
+        int min_height;
+        webui::UiScreen screen;
+        const char* request_id_prefix;
+    };
+
     void open_routing_window();
-    void close_routing_window();
+    void open_media_window();
+    void open_sub_window(std::unique_ptr<webui::WebUiHost>& slot, const SubWindow& window);
+    void close_sub_window(std::unique_ptr<webui::WebUiHost>& slot);
     void on_relay_closed(control_protocol::ChannelRelay::Side side);
     void on_engine_lost();
     void ask_to_retry();
@@ -103,6 +117,8 @@ private:
     std::unique_ptr<webui::WebUiHost> web_ui_;
     // ルーティングの窓。開いている間だけある。
     std::unique_ptr<webui::WebUiHost> routing_ui_;
+    // メディアの窓（docs/adr/0043-recording-and-media-player.md）。開いている間だけある。
+    std::unique_ptr<webui::WebUiHost> media_ui_;
     // 開いている窓の経路をまとめたもの。窓より後に宣言し、窓より先に破棄されるようにする。
     control_protocol::ChannelGroup windows_;
     // エンジンとの経路。tap_ が engine_ を包み、relay_ が windows_ と tap_ をつなぐ。

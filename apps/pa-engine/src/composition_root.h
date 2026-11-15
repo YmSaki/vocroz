@@ -51,17 +51,22 @@
 #include "device_loss_relay.h"
 #include "device_midi_inputs.h"
 #include "device_midi_relay.h"
+#include "disk_io_worker.h"
 #include "engine_activity.h"
+#include "engine_media_player.h"
 #include "engine_mixer.h"
 #include "engine_output_devices.h"
 #include "engine_plugin_rack.h"
+#include "engine_recorder.h"
 #include "external_output_driver.h"
+#include "filesystem_media_library.h"
 #include "host_peer_links.h"
 #include "host_rendezvous_driver.h"
 #include "invite_result_relay.h"
 #include "launch_options.h"
 #include "network_external_socket_opener.h"
 #include "no_plugin_rack.h"
+#include "no_plugin_scan_control.h"
 #include "offline_rendezvous_client.h"
 #include "peer_receive_path.h"
 #include "peer_receive_relay.h"
@@ -152,6 +157,12 @@ private:
     // スキャンの記録の保存先とスキャナー。スキャンのスレッド（plugin_scan_）より前に宣言する。
     std::unique_ptr<session::PluginCatalogStore> plugin_catalog_store_;
     std::unique_ptr<session::PluginScanner> plugin_scanner_;
+    // スキャンのスレッド。session にスキャンし直しの依頼先として渡すので session_ より前に宣言する
+    // （後に破棄する）。結果は loop_ に積んで session_ に渡すので、shutdown() で session_ より先に
+    // 止める。なければ（JUCE を使わないビルド）no_plugin_scan_ を渡す。
+    std::unique_ptr<PluginScanWorker> plugin_scan_;
+    NoPluginScanControl no_plugin_scan_;
+    session::PluginScanControl* plugin_scan_control_ = &no_plugin_scan_;
     // ランデブーサーバーとの通信。https_rendezvous_ があればそれを、なければ offline_rendezvous_
     // を session に渡す。https_rendezvous_ は破棄時に残りの要求（失効）を送り終えるまで待つので、
     // それが使う https_transport_ と invite_relay_ より後に宣言する（先に破棄する）。
@@ -198,12 +209,16 @@ private:
     // ドライバーは engine_mixer_ にタップをつなぐので、それより後に宣言する（先に破棄する）。
     std::unique_ptr<NetworkExternalSocketOpener> external_sockets_;
     std::unique_ptr<ExternalOutputDriver> external_output_;
+    // --- 録音とメディアプレイヤー（docs/adr/0043-recording-and-media-player.md） ---
+    // ディスク I/O スレッドは録音と再生の仕事を回すので、それらより前に宣言する（後に破棄する）。
+    // 破棄の前の最後の周期で、止めた録音のファイルを閉じる。
+    DiskIoWorker disk_io_{kDiskIoInterval};
+    std::unique_ptr<EngineRecorder> recorder_;
+    std::unique_ptr<EngineMediaPlayer> media_player_;
+    FilesystemMediaLibrary media_library_;
     std::unique_ptr<UiEventPublisher> ui_publisher_;
     std::unique_ptr<session::HostSession> session_;
     std::unique_ptr<UiMessageReceiver> ui_receiver_;
-    // スキャンのスレッド。結果は loop_ に積んで session_ に渡すので、session_ より後に宣言する
-    // （先に破棄する）。shutdown() で先に止める。
-    std::unique_ptr<PluginScanWorker> plugin_scan_;
 
 #if defined(VOCROZ_PA_ENGINE_HAS_JUCE)
     // --- MIDI デバイス（docs/adr/0039-pa-engine-juce-message-thread.md） ---
@@ -217,6 +232,7 @@ private:
     IdleShutdownTimer idle_timer_;
     common::Clock::TimePoint next_session_tick_{};
     common::Clock::TimePoint next_midi_scan_{};
+    common::Clock::TimePoint next_link_stats_{};
     bool session_exists_ = false;
     int exit_code_ = 0;
 };

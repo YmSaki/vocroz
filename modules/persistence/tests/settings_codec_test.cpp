@@ -32,6 +32,9 @@ session::HostSettings sample_host() {
     s.external_output.profile = cp::ExternalOutputProfile::kOpusMono;
     s.external_output.payload_type = 96;
     s.external_output.crypto_suite = cp::SrtpSuite::kAesCm128HmacSha1_32;
+    s.recorder.format = cp::RecordingFormat::kFlac;
+    s.recorder.folder = "D:/録音";
+    s.recorder.sources = {"master", "bus-2"};
     return s;
 }
 
@@ -173,6 +176,23 @@ TEST(SettingsCodecTest, RejectsMalformedExternalOutput) {
         broken.replace(broken.find(from), std::string(from).size(), to);
         EXPECT_FALSE(decode_host_settings(head + broken + "}")) << broken;
     }
+}
+
+TEST(SettingsCodecTest, ReadsHostSettingsSavedBeforeRecorderAsDefault) {
+    const auto decoded = decode_host_settings(
+        R"({"schema_version":1,"session_name":"a","output_device_id":null,"master_gain_db":-3})");
+    ASSERT_TRUE(decoded);
+    EXPECT_EQ(decoded->recorder, control_protocol::RecorderConfig{});
+}
+
+TEST(SettingsCodecTest, RejectsMalformedRecorder) {
+    const std::string head =
+        R"({"schema_version":1,"session_name":"a","output_device_id":null,"master_gain_db":-3,"recorder":)";
+    EXPECT_TRUE(decode_host_settings(head + R"({"format":"wav","folder":"","sources":[]}})"));
+    EXPECT_FALSE(decode_host_settings(head + R"("x"})"));
+    EXPECT_FALSE(decode_host_settings(head + R"({"format":"mp3","folder":"","sources":[]}})"));
+    EXPECT_FALSE(decode_host_settings(head + R"({"format":"wav","folder":"","sources":[1]}})"));
+    EXPECT_FALSE(decode_host_settings(head + R"({"format":"wav","sources":[]}})"));
 }
 
 TEST(SettingsCodecTest, RejectsLatencyTargetOfWrongType) {

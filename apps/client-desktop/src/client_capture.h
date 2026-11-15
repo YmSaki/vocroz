@@ -82,6 +82,11 @@ public:
     /// 落ちる。古い設定のまま再開しないよう、届くまで渡し直す。
     void flush_params();
 
+    /// flush_params() がアプリ音声を開き直したら、その後に 1 回だけ true を返す。
+    /// 呼び出し側は session に知らせ、送信の新しい区間を始めさせる
+    /// （session::ClientSession::on_capture_restarted()）。
+    [[nodiscard]] bool take_app_audio_reopened() noexcept;
+
     /// マイクのデバイスが抜去されたら、その後に 1 回だけ true を返す。
     [[nodiscard]] bool take_device_lost() noexcept;
 
@@ -128,6 +133,7 @@ private:
     std::optional<std::string> mic_device_;
     SendParams params_;
     std::array<Lane, kCaptureLaneCount> lanes_;
+    bool app_audio_reopened_ = false;
 };
 
 }  // namespace vocroz::client

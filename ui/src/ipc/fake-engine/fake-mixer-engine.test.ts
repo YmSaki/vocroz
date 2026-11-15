@@ -126,6 +126,7 @@ describe("FakeMixerEngine", () => {
     timers.advance(100);
     expect(engine.snapshot().routing.applied).toEqual(config);
     expect(engine.snapshot().routing.levels.every((l) => l.muted)).toBe(true);
-    expect(received.at(-1)).toMatchObject({ type: "routing_updated" });
+    // 適用すると挿入の読み込みの状態も変わるので、ルーティングに続けてプラグインの状態を送る。
+    expect(received.slice(-2).map((m) => m.type)).toEqual(["routing_updated", "plugins_updated"]);
   });
 });

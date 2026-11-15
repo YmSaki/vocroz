@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <map>
 #include <set>
+#include <utility>
 #include <vector>
 
 namespace vocroz::audio_core {
@@ -37,7 +38,7 @@ std::set<NodeId> reachable_from(const std::vector<NodeId>& from,
 }  // namespace
 
 common::Result<MinusMeReport, GraphError> add_minus_me_returns(
-    GraphDescription& graph, std::span<const NodeId> mix_inputs,
+    GraphDescription& graph, std::span<const MinusMeInput> mix_inputs,
     std::span<const MinusMeReturn> returns) {
     std::set<NodeId> known;
     std::uint32_t next_id = 0;
@@ -46,7 +47,8 @@ common::Result<MinusMeReport, GraphError> add_minus_me_returns(
         next_id = std::max(next_id, node.id.value + 1);
     }
     const auto is_known = [&known](NodeId id) { return known.contains(id); };
-    if (!std::all_of(mix_inputs.begin(), mix_inputs.end(), is_known)) {
+    if (!std::all_of(mix_inputs.begin(), mix_inputs.end(),
+                     [&is_known](const MinusMeInput& input) { return is_known(input.node); })) {
         return make_unexpected(GraphError::kUnknownNode);
     }
     for (const MinusMeReturn& ret : returns) {
@@ -69,15 +71,22 @@ common::Result<MinusMeReport, GraphError> add_minus_me_returns(
         const std::set<NodeId> own_voice = reachable_from(ret.own_inputs, edges);
         const NodeId limiter{next_id++};
         const NodeId tap{next_id++};
-        graph.nodes.push_back(NodeSpec::make_limiter(limiter));
+        NodeSpec mix = NodeSpec::make_limiter(limiter);
+        mix.history_key = ret.history_key;
+        graph.nodes.push_back(std::move(mix));
         graph.nodes.push_back(NodeSpec::make_return_tap(tap, ret.sink));
         std::set<NodeId> connected;
-        for (const NodeId input : mix_inputs) {
+        for (const MinusMeInput& input : mix_inputs) {
             // 同じ候補が 2 回あっても 1 本だけつなぐ。重なった結線は 2 倍（+6 dB）で加算される。
-            if (!own_voice.contains(input) && connected.insert(input).second) {
-                // ポストフェーダーで取り、オペレーターが作ったメインのバランスのまま返す。
-                graph.connections.emplace_back(input, limiter);
+            if (own_voice.contains(input.node) || !connected.insert(input.node).second) {
+                continue;
             }
+            // Master へ入る結線と同じ位置から同じセンドレベルで取り、オペレーターが作った
+            // メインのバランスのまま返す。センドレベルを外すと、Master へのセンドをミュート
+            // しても返送にだけ音が漏れ、音量を下げても返送だけ下がらない。
+            Connection connection(input.node, limiter, input.tap, input.level);
+            connection.shares_level = input.level.has_value();
+            graph.connections.push_back(connection);
         }
         graph.connections.emplace_back(limiter, tap);
         report.taps.push_back(tap);

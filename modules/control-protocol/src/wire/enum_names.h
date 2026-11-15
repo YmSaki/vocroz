@@ -193,6 +193,79 @@ struct EnumNames<ExternalOutputResult> {
     }};
 };
 
+template <>
+struct EnumNames<BlockedPluginReason> {
+    static constexpr std::array<EnumName<BlockedPluginReason>, 3> kTable{{
+        {BlockedPluginReason::kCrashed, "CRASHED"},
+        {BlockedPluginReason::kTimedOut, "TIMED_OUT"},
+        {BlockedPluginReason::kInvalidOutput, "INVALID_OUTPUT"},
+    }};
+};
+
+template <>
+struct EnumNames<RecordingFormat> {
+    static constexpr std::array<EnumName<RecordingFormat>, 2> kTable{{
+        {RecordingFormat::kWav, "WAV"},
+        {RecordingFormat::kFlac, "FLAC"},
+    }};
+};
+
+template <>
+struct EnumNames<PluginInsertState> {
+    static constexpr std::array<EnumName<PluginInsertState>, 3> kTable{{
+        {PluginInsertState::kLoading, "LOADING"},
+        {PluginInsertState::kReady, "READY"},
+        {PluginInsertState::kFailed, "FAILED"},
+    }};
+};
+
+template <>
+struct EnumNames<RecorderState> {
+    static constexpr std::array<EnumName<RecorderState>, 2> kTable{{
+        {RecorderState::kStopped, "STOPPED"},
+        {RecorderState::kRecording, "RECORDING"},
+    }};
+};
+
+template <>
+struct EnumNames<PluginInsertFailure> {
+    static constexpr std::array<EnumName<PluginInsertFailure>, 4> kTable{{
+        {PluginInsertFailure::kNotFound, "NOT_FOUND"},
+        {PluginInsertFailure::kInstantiateFailed, "INSTANTIATE_FAILED"},
+        {PluginInsertFailure::kUnsupportedLayout, "UNSUPPORTED_LAYOUT"},
+        {PluginInsertFailure::kProcessingFailed, "PROCESSING_FAILED"},
+    }};
+};
+
+template <>
+struct EnumNames<RecorderResult> {
+    static constexpr std::array<EnumName<RecorderResult>, 4> kTable{{
+        {RecorderResult::kOk, "OK"},
+        {RecorderResult::kDiskFull, "DISK_FULL"},
+        {RecorderResult::kIoError, "IO_ERROR"},
+        {RecorderResult::kFolderUnavailable, "FOLDER_UNAVAILABLE"},
+    }};
+};
+
+template <>
+struct EnumNames<MediaTransport> {
+    static constexpr std::array<EnumName<MediaTransport>, 3> kTable{{
+        {MediaTransport::kStopped, "STOPPED"},
+        {MediaTransport::kPlaying, "PLAYING"},
+        {MediaTransport::kPaused, "PAUSED"},
+    }};
+};
+
+template <>
+struct EnumNames<MediaResult> {
+    static constexpr std::array<EnumName<MediaResult>, 4> kTable{{
+        {MediaResult::kOk, "OK"},
+        {MediaResult::kNotFound, "NOT_FOUND"},
+        {MediaResult::kUnsupportedFormat, "UNSUPPORTED_FORMAT"},
+        {MediaResult::kIoError, "IO_ERROR"},
+    }};
+};
+
 /// 対応表が列挙子の宣言順（0, 1, 2, ...）に並んでいるかを確かめる。
 /// 列挙子を追加したのに表を更新し忘れると、途中の抜けはここで、末尾の抜けは往復のテストで見つかる。
 template <typename E>
@@ -222,6 +295,14 @@ static_assert(is_in_declaration_order<ExternalOutputState>());
 static_assert(is_in_declaration_order<ExternalOutputProfile>());
 static_assert(is_in_declaration_order<SrtpSuite>());
 static_assert(is_in_declaration_order<ExternalOutputResult>());
+static_assert(is_in_declaration_order<BlockedPluginReason>());
+static_assert(is_in_declaration_order<PluginInsertState>());
+static_assert(is_in_declaration_order<PluginInsertFailure>());
+static_assert(is_in_declaration_order<RecordingFormat>());
+static_assert(is_in_declaration_order<RecorderState>());
+static_assert(is_in_declaration_order<RecorderResult>());
+static_assert(is_in_declaration_order<MediaTransport>());
+static_assert(is_in_declaration_order<MediaResult>());
 
 /// 列挙子の JSON での名前を返す。
 template <typename E>

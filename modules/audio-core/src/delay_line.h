@@ -41,6 +41,16 @@ public:
     /// @param in 入力（read() で読んだ数と同じ長さ）
     void write(std::span<const float> in) noexcept VOCROZ_NONBLOCKING;
 
+    /// 差し替え前のグラフのディレイラインから、遅延中のサンプルと読み書きの位置を引き継ぐ。
+    /// バッファを交換するだけなので、確保も解放もしない。previous にはこのディレイラインの
+    /// （無音の）バッファが残り、previous を破棄するときに解放される。
+    /// 遅延の長さが違えば何もしない。長さを変えたのはオペレーターの操作なので、
+    /// 前の長さで遅らせていた音を新しい長さの途中から出さず、無音から始める。
+    /// @param previous 差し替え前のディレイライン（これ以降は処理に使わない）
+    /// @return 引き継いだら true
+    /// スレッド安全性: オーディオスレッドから呼び出し可能。
+    bool adopt(DelayLine& previous) noexcept VOCROZ_NONBLOCKING;
+
 private:
     std::vector<float> buffer_;
     std::size_t position_ = 0;  // 次に読み、書く位置（最も古いサンプル）

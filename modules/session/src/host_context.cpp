@@ -43,7 +43,13 @@ bool has_route_level(const cp::RoutingConfig& config, const std::string& entity_
 }  // namespace
 
 HostContext::HostContext(HostSession::Config config_value, HostSession::Ports ports_value)
-    : config(std::move(config_value)), ports(ports_value), inserts(ports_value.plugins) {
+    : config(std::move(config_value)),
+      ports(ports_value),
+      inserts(ports_value.plugins),
+      media(MediaDesk::Ports{ports_value.recorder, ports_value.media_player,
+                             ports_value.media_library, ports_value.clock, ports_value.ui,
+                             ports_value.logger},
+            config.default_media_folder) {
     session.entity_id = kSessionEntityId;
     session.revision = 1;
     master.entity_id = kMasterEntityId;
@@ -63,6 +69,9 @@ cp::MixerSnapshot HostContext::snapshot() const {
     snapshot.pending = registry.pending_entries();
     snapshot.routing = routing.info();
     snapshot.external_output = external_output.info();
+    snapshot.recorder = media.recorder();
+    snapshot.media_player = media.player();
+    snapshot.media_library = media.library();
     return snapshot;
 }
 
@@ -75,6 +84,14 @@ std::vector<std::string> HostContext::strip_ids() const {
     return ids;
 }
 
+std::string HostContext::plugin_name(const std::string& plugin_id) const {
+    const auto& plugins = routing.plugins();
+    const auto it = std::find_if(plugins.begin(), plugins.end(), [&](const PluginDescription& d) {
+        return d.identifier == plugin_id;
+    });
+    return it == plugins.end() || it->name.empty() ? plugin_id : it->name;
+}
+
 void HostContext::reapply_routing(const char* context) {
     const auto& info = routing.info();
     // 構成は変わらないか、参照を取り除いただけなのでループは増えず、承認の状態はそのまま引き継げる。
@@ -85,7 +102,8 @@ void HostContext::reapply_routing(const char* context) {
 }
 
 void HostContext::reconcile_inserts() {
-    inserts.reconcile(routing.info().applied.inserts, routing.plugins());
+    inserts.reconcile(routing.info().applied.inserts, routing.plugins(), plugin_states);
+    publish_plugins();
 }
 
 void HostContext::forget_strip_in_routing(const std::string& strip_id) {
@@ -94,6 +112,8 @@ void HostContext::forget_strip_in_routing(const std::string& strip_id) {
         reconcile_inserts();
     }
     publish_routing();
+    // 片付けたストリップを録音の対象から外す（録音中のトラックは無音を録り続ける）。
+    media.prune_sources([this](const std::string& id) { return recording_label(id); });
 }
 
 common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_feedback) {
@@ -113,16 +133,43 @@ common::Result<void, ErrorCode> HostContext::commit_staged_routing(bool approve_
     // 外した挿入の破棄は、グラフを差し替えてから依頼する。
     reconcile_inserts();
     stop_external_output_without_source();
+    sync_media_with_routing();
     return {};
 }
 
-bool HostContext::is_external_output_source(const std::string& entity_id) const {
+bool HostContext::is_master_or_bus(const std::string& entity_id) const {
     if (entity_id == kMasterEntityId) {
         return true;
     }
     const auto& buses = routing.info().applied.buses;
     return std::any_of(buses.begin(), buses.end(),
                        [&](const cp::RoutingBus& bus) { return bus.entity_id == entity_id; });
+}
+
+bool HostContext::is_external_output_source(const std::string& entity_id) const {
+    return is_master_or_bus(entity_id);
+}
+
+std::optional<std::string> HostContext::recording_label(const std::string& entity_id) const {
+    if (entity_id == kMasterEntityId) {
+        return std::string{"Master"};
+    }
+    for (const auto& bus : routing.info().applied.buses) {
+        if (bus.entity_id == entity_id) {
+            return bus.name.empty() ? bus.entity_id : bus.name;
+        }
+    }
+    for (const auto& p : registry.participants()) {
+        if (p.strip.entity_id == entity_id) {
+            return label(p.strip);
+        }
+    }
+    return std::nullopt;
+}
+
+void HostContext::sync_media_with_routing() {
+    media.on_routing_applied([this](const std::string& id) { return is_master_or_bus(id); });
+    media.prune_sources([this](const std::string& id) { return recording_label(id); });
 }
 
 void HostContext::restore_external_output() {
@@ -423,6 +470,7 @@ void HostContext::teardown() {
         forget_strip_in_routing(strip_id);
     }
     save_settings();
+    capture_plugin_states();
 }
 
 // Master をミュートする。理由が変わるだけでも revision を進め、古い表示に基づく解除を
@@ -447,8 +495,66 @@ void HostContext::save_settings() {
             settings.route_gains.push_back(SavedRouteGain{level.entity_id, level.gain_db});
         }
     }
+    // ストリップの entity_id はセッションごとに振り直すので、録る対象は Master とバスだけ保存する。
+    settings.recorder =
+        media.saved_config([this](const std::string& id) { return is_master_or_bus(id); });
     if (const auto saved = ports.settings.save_host(settings); !saved) {
         log(common::LogLevel::kWarning, "親機の設定を保存できませんでした");
+    }
+}
+
+void HostContext::capture_plugin_states() {
+    // ストリップへの挿入は保存しない。保存するルーティング（settings.routing）にはもう入っていない。
+    auto ready = inserts.ready_for(settings.routing.inserts);
+    if (ready.empty()) {
+        store_plugin_states({});
+        return;
+    }
+    std::vector<std::string> ids;
+    ids.reserve(ready.size());
+    for (auto& plugin : ready) {
+        ids.push_back(std::move(plugin.entity_id));
+    }
+    ports.plugins.capture_states(std::move(ids));
+}
+
+void HostContext::store_plugin_states(std::vector<SavedPluginState> captured) {
+    const auto& saved_inserts = settings.routing.inserts;
+    const auto is_saved_insert = [&](const SavedPluginState& state) {
+        return std::any_of(
+            saved_inserts.begin(), saved_inserts.end(), [&](const cp::RoutingInsert& insert) {
+                return insert.entity_id == state.insert_id && insert.plugin_id == state.plugin_id;
+            });
+    };
+    auto next = plugin_states;
+    // 状態を取っている間に外したかプラグインを替えた挿入と、保存しなくなった挿入を除く。
+    std::erase_if(next, [&](const SavedPluginState& state) { return !is_saved_insert(state); });
+    for (auto& state : captured) {
+        if (!is_saved_insert(state)) {
+            continue;
+        }
+        if (state.state.size() > kMaxPluginStateBytes) {
+            log(common::LogLevel::kWarning,
+                "プラグインの状態が大きすぎるため保存しません。次の起動では既定の状態から始めます");
+            std::erase_if(
+                next, [&](const SavedPluginState& s) { return s.insert_id == state.insert_id; });
+            continue;
+        }
+        const auto it = std::find_if(next.begin(), next.end(), [&](const SavedPluginState& s) {
+            return s.insert_id == state.insert_id;
+        });
+        if (it == next.end()) {
+            next.push_back(std::move(state));
+        } else {
+            *it = std::move(state);
+        }
+    }
+    if (next == plugin_states) {
+        return;
+    }
+    plugin_states = std::move(next);
+    if (const auto saved = ports.settings.save_plugin_states(plugin_states); !saved) {
+        log(common::LogLevel::kWarning, "プラグインの状態を保存できませんでした");
     }
 }
 
@@ -480,6 +586,17 @@ void HostContext::publish_route_level(const cp::RouteLevel& level) {
 
 void HostContext::publish_external_output() {
     ports.ui.publish(cp::ExternalOutputUpdated{external_output.info()});
+}
+
+void HostContext::publish_plugins() {
+    ports.ui.publish(
+        cp::PluginsUpdated{plugin_status.info(routing.info().applied.inserts, inserts)});
+}
+
+void HostContext::publish_plugin_catalog() {
+    for (auto& page : plugin_status.pages()) {
+        ports.ui.publish(std::move(page));
+    }
 }
 
 void HostContext::notice(cp::NoticeSeverity severity, const char* code, const std::string& name) {

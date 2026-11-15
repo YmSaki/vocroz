@@ -7,6 +7,11 @@
 // 連続値（フェーダーなど）はドラッグ中に大量に発生するため、entity ごとに 60 Hz に間引いて送る。
 // 送ってから 500 ms 以内に ACK が来なければ、エンジンに届いていないとみなして呼び出し側に知らせる。
 // 呼び出し側は楽観的に更新した表示を元に戻し、警告を出す。
+//
+// request_id と seq はクライアントごとに 1 から数えるので、画面を開き直すと同じ番号をもう一度使う。
+// エンジンは UI の再表示にまたがって動き続け、前の画面の request_id と seq を覚えているため、
+// クライアントごとに新しい送り元の ID（origin）を振り、request_id の頭と set_gain に付ける
+// （docs/adr/0044-ui-instance-namespace.md）。
 
 import type {
   DiscreteCommandBody,
@@ -41,6 +46,21 @@ export const kContinuousAckTimeoutMs = 500;
  */
 export const kDiscreteAckTimeoutMs = 2000;
 
+/** 送り元の ID のうち、クライアントごとにランダムに振る部分のバイト数。8 バイト（64 ビット）あれば、
+ * 開き直した画面どうしで偶然に重なることは実際には起きない。 */
+const kInstanceIdBytes = 8;
+
+/**
+ * クライアントのインスタンスを見分けるランダムな ID を作る。
+ * 時刻から作ると、時計の巻き戻りで前の画面の ID と重なりうるので、乱数を使う。
+ * @returns 16 進の文字列
+ */
+export function newInstanceId(): string {
+  const bytes = new Uint8Array(kInstanceIdBytes);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** entity ごとの連続値の送信状態。 */
 interface ContinuousChannel {
   /** 次に送るシーケンス番号。 */
@@ -65,6 +85,8 @@ interface PendingRequest {
 
 /** エンジンへのコマンドの送信と、ACK の待ち合わせを行うクライアント。 */
 export class EngineClient {
+  /** このクライアントが送る request_id の頭と set_gain の origin。 */
+  readonly origin: string;
   private nextRequestId = 1;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly continuous = new Map<string, ContinuousChannel>();
@@ -75,12 +97,15 @@ export class EngineClient {
    * @param timers タイマー（テストではフェイクを渡す）
    * @param requestPrefix request_id の接頭辞。1 本の接続を複数の窓で共有するときは、エンジンの応答が
    *   すべての窓に届くので、窓ごとに違う値にして自分の応答だけを受け取る（docs/adr/0038-routing-window.md）
+   * @param instanceId このクライアントのインスタンスの ID（テストでは固定の値を渡す）
    */
   constructor(
     private readonly transport: Transport,
     private readonly timers: Timers = kBrowserTimers,
-    private readonly requestPrefix = "r",
+    requestPrefix = "r",
+    instanceId: string = newInstanceId(),
   ) {
+    this.origin = `${requestPrefix}-${instanceId}`;
     transport.subscribe((message) => this.handle(message));
   }
 
@@ -109,7 +134,7 @@ export class EngineClient {
     expectedRevision: number,
     body: DiscreteCommandBody,
   ): Promise<CommandResult> {
-    const requestId = `${this.requestPrefix}${this.nextRequestId++}`;
+    const requestId = `${this.origin}.${this.nextRequestId++}`;
     return new Promise((resolve) => {
       const timer = this.timers.setTimeout(() => {
         this.pending.delete(requestId);
@@ -196,7 +221,13 @@ export class EngineClient {
     channel.lastSentAt = now;
     channel.unacked.push({ seq, sentAt: now });
     if (channel.timeoutTimer === undefined) this.scheduleTimeout(entityId, channel);
-    this.transport.send({ type: "set_gain", entity_id: entityId, seq, gain_db: value });
+    this.transport.send({
+      type: "set_gain",
+      entity_id: entityId,
+      seq,
+      gain_db: value,
+      origin: this.origin,
+    });
   }
 
   /** 最も古い未 ACK の送信の期限にタイマーを合わせる。 */
@@ -237,6 +268,8 @@ export class EngineClient {
         this.settle(message.request_id, { ok: false, error_code: message.error_code });
         return;
       case "gain_ack":
+        // 接続を共有するほかの窓が送った値への応答は、このクライアントの seq とは関係がない。
+        if (message.origin !== this.origin) return;
         this.acknowledgeContinuous(message.entity_id, message.seq);
         return;
       case "mixer_snapshot":

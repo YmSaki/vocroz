@@ -17,6 +17,7 @@ import {
   removeInputDelay,
   removeNode,
   removeSend,
+  rowClassOf,
   updateBus,
   updateDelay,
   updateInputDelay,
@@ -81,12 +82,7 @@ export function RoutingEditor({
   onChange,
 }: RoutingEditorProps) {
   // 問題のある項目とループに含まれる項目は、色だけでなく印の文字でも示す（色覚に頼らないため）。
-  const rowClass = (entityId: string) => {
-    if (check?.issue_entity_id === entityId) return "routing-row routing-row--issue";
-    if (check?.looped_entity_ids.includes(entityId) === true)
-      return "routing-row routing-row--loop";
-    return "routing-row";
-  };
+  const rowClass = (entityId: string) => rowClassOf(check, entityId);
   const marker = (entityId: string) => {
     if (check?.issue_entity_id === entityId) return <span class="routing-row__mark">!</span>;
     if (check?.looped_entity_ids.includes(entityId) === true) {

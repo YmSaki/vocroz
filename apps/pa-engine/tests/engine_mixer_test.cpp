@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -18,6 +19,7 @@
 #include "fakes/fake_audio_source.h"
 #include "fakes/fake_logger.h"
 #include "fakes/fake_midi_source.h"
+#include "fakes/fake_plugin_processor.h"
 
 namespace vocroz::engine {
 namespace {
@@ -28,6 +30,44 @@ namespace cp = control_protocol;
 // ゲインランプ（10ms = 480 サンプル）を確実に越えるフレーム数。
 constexpr std::size_t kAfterRamp = 1024;
 constexpr float kInput = 0.1F;
+// 入力ディレイ（500 ms = 24000 サンプル）を満たし、さらに 1 回ぶん余裕を見るコールバックの数。
+constexpr double kInputDelayMs = 500.0;
+constexpr std::size_t kInputDelaySamples = 24000;
+constexpr std::size_t kCallbacksToFillDelay = kInputDelaySamples / kAfterRamp + 2;
+
+// 入力に関わらず一定の値を出すプラグイン。無音の入力から音を作るプラグイン（発振するディレイ、
+// ノイズを足すエフェクトなど）の代わり。
+class ConstantPluginProcessor final : public ac::PluginProcessor {
+public:
+    explicit ConstantPluginProcessor(float value) : value_(value) {}
+
+    [[nodiscard]] ac::PluginBusLayout layout() const noexcept override {
+        return {};
+    }
+    [[nodiscard]] std::size_t latency_samples() const noexcept override {
+        return 0;
+    }
+    [[nodiscard]] ac::PluginProcessStatus process(const ac::PluginProcessContext& context) noexcept
+        VOCROZ_NONBLOCKING override {
+        for (std::size_t ch = 0; ch < layout().output_channels; ++ch) {
+            std::fill_n(context.channels[ch], context.frames, value_);
+        }
+        return ac::PluginProcessStatus::kOk;
+    }
+
+private:
+    float value_;
+};
+
+// 実際に音を保持する遅延（0.5 秒）のプラグインを挿す。ミュートの後もプラグインの中に音が残る。
+session::InsertedPlugin delaying_insert(const std::string& id) {
+    return session::InsertedPlugin{
+        id, std::make_shared<ac::FakePluginProcessor>(ac::PluginBusLayout{}, 24000),
+        std::make_shared<ac::PluginFault>()};
+}
+
+// 遅延のプラグインの中を音で満たすのに十分なコールバックの回数（30 × 1024 > 24000）。
+constexpr int kFillDelayCallbacks = 30;
 
 class EngineMixerTest : public ::testing::Test {
 protected:
@@ -41,6 +81,36 @@ protected:
         mixer_.render(ac::InterleavedBuffer{out, 2});
         engine_.collect();
         return out[out.size() - 2];
+    }
+
+    // callbacks 回のコールバックぶんを描画し、L が無音だったフレームの数を返す。
+    std::size_t count_silent_left_frames(std::size_t callbacks) {
+        std::size_t silent = 0;
+        for (std::size_t c = 0; c < callbacks; ++c) {
+            std::vector<float> out(kAfterRamp * 2, 1.0F);
+            mixer_.render(ac::InterleavedBuffer{out, 2});
+            engine_.collect();
+            for (std::size_t i = 0; i < out.size(); i += 2) {
+                silent += out[i] == 0.0F ? 1 : 0;
+            }
+        }
+        return silent;
+    }
+
+    // ch-1 に入力ディレイを付けて音を流し、ディレイが満たされて音が安定するまで描画する。
+    void play_delayed_strip(const cp::RoutingConfig& config) {
+        add_audible_strip("ch-1");
+        ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+        for (std::size_t i = 0; i < kCallbacksToFillDelay; ++i) {
+            (void)render_last_left();
+        }
+        ASSERT_NEAR(render_last_left(), kInput, 1e-5F);
+    }
+
+    static cp::RoutingConfig delayed_ch1(double delay_ms) {
+        cp::RoutingConfig config;
+        config.input_delays.push_back({"ch-1", delay_ms});
+        return config;
     }
 
     std::shared_ptr<ac::AudioSource> constant_source() {
@@ -63,6 +133,25 @@ protected:
         config.sends.push_back(
             cp::RoutingSend{"send-2", "bus-1", "master", cp::SendTap::kPostFader});
         return config;
+    }
+
+    // ch-1 →（プリフェーダー）→ bus-1 →（tap）→ Master。bus-1 から Master へのセンドの
+    // 取り出し位置を tap で選ぶ。
+    static cp::RoutingConfig bus_send_to_master(cp::SendTap tap) {
+        cp::RoutingConfig config;
+        config.buses.push_back(cp::RoutingBus{"bus-1", "A"});
+        config.sends.push_back(cp::RoutingSend{"send-1", "ch-1", "bus-1", cp::SendTap::kPreFader});
+        config.sends.push_back(cp::RoutingSend{"send-2", "bus-1", "master", tap});
+        return config;
+    }
+
+    // ストリップから Master への直接の経路を止め、バスを通る音だけを聞けるようにする。
+    // ch-1 のプリフェーダーのセンドはストリップのミュートで止まらない。
+    void listen_only_through_bus() {
+        for (const char* id : {"send-1", "send-2", "bus-1"}) {
+            engine_.set_route_muted(id, false);
+        }
+        engine_.set_channel_muted("ch-1", true);
     }
 
     common::FakeLogger logger_;
@@ -265,11 +354,99 @@ TEST_F(EngineMixerTest, ReturnOfAClientWithSeveralInputsCarriesOnlyTheOthers) {
     EXPECT_NEAR(sink->last(), 2.0F * kInput, 1e-5F);
 }
 
+TEST_F(EngineMixerTest, ReturnFollowsTheMuteAndGainOfTheBusToMasterSend) {
+    // ch-1 は Master へ直接は聞こえないようにミュートし、プリフェーダーのセンドで bus-1 へ送る。
+    // ch-2 の子機（キー 2）の返送に、bus-1 → Master のセンドのミュートと音量が効くことを確かめる。
+    engine_.add_channel("ch-1");
+    ASSERT_TRUE(engine_.attach_source("ch-1", constant_source()));
+    engine_.add_channel("ch-2");
+    engine_.set_master_muted(false);
+    ASSERT_TRUE(engine_.apply_routing(prefader_send_through_bus(), false, {}));
+    engine_.set_route_muted("send-1", false);
+    engine_.set_route_muted("bus-1", false);
+    auto sink = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(2, {"ch-2"}, sink));
+
+    // bus-1 → Master のセンドがミュートの間は、ハウスにも返送にも出ない。
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_EQ(sink->last(), 0.0F);
+
+    // センドを解除して -20 dB にすると、ハウスと返送が同じ 1/10 になる。
+    engine_.set_route_muted("send-2", false);
+    engine_.set_route_gain("send-2", -20.0);
+    EXPECT_NEAR(render_last_left(), kInput * 0.1F, 1e-5F);
+    EXPECT_NEAR(sink->last(), kInput * 0.1F, 1e-5F);
+
+    // Master をミュートしても、返送はセンドの音量のまま続く（Master は返送に効かない）。
+    engine_.set_master_muted(true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_NEAR(sink->last(), kInput * 0.1F, 1e-5F);
+}
+
+TEST_F(EngineMixerTest, ReturnOfTheBusOwnerStillExcludesItsOwnVoice) {
+    // ch-1 の子機（キー 1）の返送には、ch-1 を含む bus-1 が入らない。
+    engine_.add_channel("ch-1");
+    ASSERT_TRUE(engine_.attach_source("ch-1", constant_source()));
+    engine_.set_master_muted(false);
+    ASSERT_TRUE(engine_.apply_routing(prefader_send_through_bus(), false, {}));
+    for (const char* id : {"send-1", "bus-1", "send-2"}) {
+        engine_.set_route_muted(id, false);
+    }
+    auto sink = std::make_shared<ac::FakeAudioSink>();
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-1"}, sink));
+    EXPECT_NEAR(render_last_left(), kInput, 1e-5F);
+    EXPECT_EQ(sink->last(), 0.0F);
+}
+
 TEST_F(EngineMixerTest, AttachReturnFailsForUnknownStripOrNullSink) {
     engine_.add_channel("ch-1");
     EXPECT_FALSE(engine_.attach_return(1, {"ch-unknown"}, std::make_shared<ac::FakeAudioSink>()));
     EXPECT_FALSE(engine_.attach_return(1, {}, std::make_shared<ac::FakeAudioSink>()));
     EXPECT_FALSE(engine_.attach_return(1, {"ch-1"}, nullptr));
+}
+
+// グラフを組み立て直す操作の後も、入力ディレイで遅らせていた音が途切れないこと。
+// 操作の後、ディレイの長さより長く描画して、L の無音のフレームを数える。
+TEST_F(EngineMixerTest, AddingAnotherStripKeepsExistingInputDelayHistory) {
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    engine_.add_channel("ch-2");
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, AttachingSourceToAnotherStripKeepsExistingInputDelayHistory) {
+    engine_.add_channel("ch-2");
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    ASSERT_TRUE(engine_.attach_source("ch-2", constant_source()));
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, RemovingAnotherStripKeepsExistingInputDelayHistory) {
+    engine_.add_channel("ch-2");
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    engine_.remove_channel("ch-2");
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, AttachingReturnKeepsExistingInputDelayHistory) {
+    engine_.add_channel("ch-2");
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-2"}, std::make_shared<ac::FakeAudioSink>()));
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, UnrelatedRoutingEditKeepsExistingInputDelayHistory) {
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    cp::RoutingConfig edited = delayed_ch1(kInputDelayMs);
+    edited.buses.push_back(cp::RoutingBus{"bus-1", "A"});
+    ASSERT_TRUE(engine_.apply_routing(edited, false, {}));
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, ChangingTheInputDelayRestartsItFromSilence) {
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    // オペレーターが長さを変えたら、前の長さで遅らせていた音は出さず、新しい長さぶん無音にする。
+    ASSERT_TRUE(engine_.apply_routing(delayed_ch1(kInputDelayMs / 2), false, {}));
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), kInputDelaySamples / 2);
 }
 
 }  // namespace
@@ -317,6 +494,124 @@ TEST_F(EngineMixerTest, RemovingAStripNotifiesAndDetachesItsMidi) {
     const auto pulled = midi->pull_count();
     static_cast<void>(render_last_left());
     EXPECT_EQ(midi->pull_count(), pulled);
+}
+
+TEST_F(EngineMixerTest, MasterMuteSilencesTheSoundLeftInAMasterInsert) {
+    add_audible_strip("ch-1");
+    cp::RoutingConfig config;
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "master", "delay"});
+    const std::vector<session::InsertedPlugin> plugins{delaying_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    for (int i = 0; i < kFillDelayCallbacks; ++i) {
+        (void)render_last_left();
+    }
+    ASSERT_NEAR(render_last_left(), kInput, 1e-5F);
+
+    engine_.set_master_muted(true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_EQ(render_last_left(), 0.0F);
+}
+
+TEST_F(EngineMixerTest, MasterStaysMutedAgainstAnInsertThatMakesSoundFromSilence) {
+    cp::RoutingConfig config;
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "master", "gen"});
+    const std::vector<session::InsertedPlugin> plugins{
+        session::InsertedPlugin{"fx-1", std::make_shared<ConstantPluginProcessor>(kInput),
+                                std::make_shared<ac::PluginFault>()}};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+
+    // ストリップがなく、Master は初期ミュートのまま。プラグインが作る音も出さない。
+    EXPECT_EQ(render_last_left(), 0.0F);
+    engine_.set_master_muted(false);
+    EXPECT_NEAR(render_last_left(), kInput, 1e-5F);
+    engine_.set_master_muted(true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+}
+
+TEST_F(EngineMixerTest, BusMuteSilencesTheSoundLeftInABusInsert) {
+    add_audible_strip("ch-1");
+    auto config = prefader_send_through_bus();
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "delay"});
+    const std::vector<session::InsertedPlugin> plugins{delaying_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    for (const char* id : {"send-1", "send-2", "bus-1"}) {
+        engine_.set_route_muted(id, false);
+    }
+    // ストリップから Master への直接の経路を止め、バスを通る音だけを聞く（プリフェーダーの
+    // センドはストリップのミュートで止まらない）。
+    engine_.set_channel_muted("ch-1", true);
+    for (int i = 0; i < kFillDelayCallbacks; ++i) {
+        (void)render_last_left();
+    }
+    ASSERT_GT(render_last_left(), 0.0F);
+
+    engine_.set_route_muted("bus-1", true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_EQ(render_last_left(), 0.0F);
+}
+
+// 入力を半分の大きさにして通す、遅延のないプラグイン。出力の値で、音がプラグインを通ったかを確かめる。
+session::InsertedPlugin halving_insert(const std::string& id) {
+    return session::InsertedPlugin{
+        id, std::make_shared<ac::FakePluginProcessor>(ac::PluginBusLayout{}, 0, 0.5F),
+        std::make_shared<ac::PluginFault>()};
+}
+
+TEST_F(EngineMixerTest, BusInsertAcceptsAPreFaderSendFromTheBus) {
+    add_audible_strip("ch-1");
+    auto config = bus_send_to_master(cp::SendTap::kPreFader);
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "pass"});
+    const std::vector<session::InsertedPlugin> plugins{halving_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    listen_only_through_bus();
+
+    // プリフェーダーのセンドは挿入を通った音を、バスのフェーダーの手前で取る。
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+    // バスのフェーダーとミュートはプリフェーダーのセンドに効かない。
+    engine_.set_route_gain("bus-1", -20.0);
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+    engine_.set_route_muted("bus-1", true);
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+}
+
+TEST_F(EngineMixerTest, PostFaderSendFromABusWithAnInsertFollowsTheBusFader) {
+    add_audible_strip("ch-1");
+    auto config = bus_send_to_master(cp::SendTap::kPostFader);
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "pass"});
+    const std::vector<session::InsertedPlugin> plugins{halving_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    listen_only_through_bus();
+
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+    engine_.set_route_gain("bus-1", -20.0);
+    EXPECT_NEAR(render_last_left(), kInput * 0.05F, 1e-5F);
+    engine_.set_route_muted("bus-1", true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+}
+
+TEST_F(EngineMixerTest, PreFaderSendFromABusSurvivesAddingLoadingAndRemovingAnInsert) {
+    add_audible_strip("ch-1");
+    auto config = bus_send_to_master(cp::SendTap::kPreFader);
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+    listen_only_through_bus();
+    engine_.set_route_muted("bus-1", true);
+    EXPECT_NEAR(render_last_left(), kInput, 1e-5F);
+
+    // 読み込みの済んでいない挿入を足すと、バスを通る経路を切って無音にする。適用は失敗しない。
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "pass"});
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+    EXPECT_EQ(render_last_left(), 0.0F);
+
+    // 読み込みが済むと、挿入を通った音がプリフェーダーのセンドで届く。
+    const std::vector<session::InsertedPlugin> plugins{halving_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    EXPECT_NEAR(render_last_left(), kInput * 0.5F, 1e-5F);
+
+    // 挿入を外すと、もとの音に戻る。バスのミュートは保たれ、プリフェーダーのセンドに効かない。
+    config.inserts.clear();
+    ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+    EXPECT_NEAR(render_last_left(), kInput, 1e-5F);
 }
 
 }  // namespace

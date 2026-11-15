@@ -26,6 +26,11 @@ public:
     /// スレッド安全性: どのスレッドからも呼び出し可能（開いた後は変わらない）。
     [[nodiscard]] virtual std::size_t channel_count() const noexcept = 0;
 
+    /// ファイルの長さを返す。
+    /// @return kSampleRate に換算したフレーム数
+    /// スレッド安全性: どのスレッドからも呼び出し可能（開いた後は変わらない）。
+    [[nodiscard]] virtual std::uint64_t length_frames() const noexcept = 0;
+
     /// 現在の位置から、インターリーブ形式のサンプルを読む。
     /// @param interleaved 書き込み先（フレーム数 × チャンネル数）
     /// @return 読んだフレーム数。ファイルの終わりなら 0。失敗なら kIoError か kUnsupportedFormat

@@ -18,6 +18,7 @@
 #include "detail/revision_utils.h"
 #include "detail/text_utils.h"
 #include "detail/token_utils.h"
+#include "gain_sequence_gate.h"
 #include "request_deduplicator.h"
 #include "session_constants.h"
 #include "state/client_state_machine.h"
@@ -243,6 +244,10 @@ public:
         }
     }
 
+    void on_capture_restarted() {
+        begin_send_segment();
+    }
+
     void on_output_device_lost() {
         // 抜けたデバイスの後始末。閉じるのは冪等なので、状態にかかわらず閉じておく。
         ports_.outputs.close_output();
@@ -374,6 +379,12 @@ private:
         snapshot_.selected_input_id = device_id;
         settings_.selected_input_id = device_id;
         ports_.capture.select_input(device_id);
+        if (device_id) {
+            // 開き直してから世代番号を進める。先に進めると、止める前の古いデバイスが新しい世代の
+            // フレームを送り、親機がそれで区間を始めてしまう（開き直しの間にまた遅れる）。
+            // 開き直した直後の数ブロックは古い世代で届くが、親機は遅れたフレームとして捨てる。
+            begin_send_segment();
+        }
         const bool missing = selected_device_missing();
         const bool changed = missing != snapshot_.input_missing;
         snapshot_.input_missing = missing;
@@ -424,6 +435,23 @@ private:
         const bool opened = ports_.outputs.open_output(device_id).has_value();
         snapshot_.output_missing = !opened;
         return opened;
+    }
+
+    // キャプチャを開き直したときに、送信の新しい区間を始める。
+    // 開き直したキャプチャのタイムスタンプは、入力が止まっていた間の分だけ実時間より遅れる。
+    // 親機の再生側は途絶の間も再生の下限を実時間で進めるので、同じ区間のままだと再開後のフレームを
+    // すべて遅れたフレームとして捨て、無音が続く。解除のときと同じ規則で世代番号を進め、親機に
+    // ジッターバッファを初期化させる。停止前の古いフレームは古い世代として捨てられる。
+    // ミュート中はフレームを送らず、次の解除で世代番号が進むので、ここでは何もしない。
+    void begin_send_segment() {
+        if (snapshot_.send_muted) {
+            return;
+        }
+        ++epoch_;
+        ports_.capture.set_send_muted(false, epoch_);
+        if (link_usable()) {
+            send(wire::SendMuteReport{false, epoch_});
+        }
     }
 
     CommandResult set_send_mute(bool muted) {
@@ -494,15 +522,15 @@ private:
         if (command.entity_id != kClientEntityId) {
             return;
         }
-        if (last_gain_seq_ && command.seq < *last_gain_seq_) {
+        if (!gain_order_.admit(command.origin, command.seq)) {
             return;
         }
-        last_gain_seq_ = command.seq;
         snapshot_.send_level_db = clamp_send_level(command.gain_db);
         settings_.send_level_db = snapshot_.send_level_db;
         ports_.capture.set_send_level(snapshot_.send_level_db);
         publish();
-        ports_.ui.publish(cp::GainAck{command.entity_id, command.seq, snapshot_.revision});
+        ports_.ui.publish(
+            cp::GainAck{command.entity_id, command.seq, snapshot_.revision, command.origin});
     }
 
     // --- 親機からの制御メッセージ ---
@@ -675,7 +703,8 @@ private:
     cp::ClientSnapshot snapshot_;
     // 送信ミュートの世代番号。0 は起動時のミュートの世代。
     std::uint32_t epoch_ = 0;
-    std::optional<cp::Sequence> last_gain_seq_;
+    // 送信レベルの SetGain の順序の判定。
+    GainSequenceGate gain_order_;
     std::optional<InviteCode> pending_code_;
     std::optional<ResolvedInvite> resolved_;
     // 再接続トークンはメモリにだけ置き、設定ファイルやログに書かない。
@@ -728,6 +757,10 @@ void ClientSession::on_media_established() {
 
 void ClientSession::on_input_devices_changed(std::vector<control_protocol::InputDevice> devices) {
     impl_->on_input_devices_changed(std::move(devices));
+}
+
+void ClientSession::on_capture_restarted() {
+    impl_->on_capture_restarted();
 }
 
 void ClientSession::on_output_device_lost() {

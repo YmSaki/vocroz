@@ -171,5 +171,50 @@ TEST_F(UpdateApplierTest, RefusesToReapplySameVersion) {
     EXPECT_EQ(applier.apply(manifest(), true), ApplyOutcome::kNotNewer);
 }
 
+// 残っていた旧版の pa-updater（kRunning）を直接実行しても、ポインターの現行版と同じ候補は
+// 新しい版として扱わず、展開にも進まない。
+TEST_F(UpdateApplierTest, StaleUpdaterRefusesCandidateEqualToInstalledCurrent) {
+    layout_.versions = {kRunning, kNext};
+    layout_.pointer = serialize_install_pointer({kNext, kRunning});
+    package_.fail_extract = true;
+    EXPECT_EQ(apply(manifest()), ApplyOutcome::kNotNewer);
+    EXPECT_EQ(package_.extract_calls, 0);
+    EXPECT_EQ(backup_.backup_calls, 0);
+    EXPECT_TRUE(layout_.has(kNext));
+    EXPECT_EQ(pointer(), (InstallPointer{kNext, kRunning}));
+}
+
+// 旧版の pa-updater から、ポインターの現行版より古い候補へのダウングレードを受け付けない。
+TEST_F(UpdateApplierTest, StaleUpdaterRefusesDowngradeBelowInstalledCurrent) {
+    const SemanticVersion installed{0, 1, 0, "alpha.3"};
+    layout_.versions = {kRunning, installed};
+    layout_.pointer = serialize_install_pointer({installed, kRunning});
+    EXPECT_EQ(apply(manifest()), ApplyOutcome::kNotNewer);
+    EXPECT_EQ(package_.extract_calls, 0);
+    EXPECT_TRUE(layout_.has(installed));
+    EXPECT_EQ(pointer(), (InstallPointer{installed, kRunning}));
+}
+
+// ポインターが壊れているときは、これまでどおり動いている pa-updater の版と比べる。
+TEST_F(UpdateApplierTest, FallsBackToRunningVersionWhenPointerIsBroken) {
+    layout_.pointer = "broken";
+    EXPECT_EQ(apply(manifest()), ApplyOutcome::kApplied);
+    EXPECT_EQ(pointer(), (InstallPointer{kNext, kRunning}));
+}
+
+// 起動確認に失敗しても、ポインターが指す現行版と直前の版のフォルダは消さない。
+// 候補の版のフォルダが（以前の失敗などで）すでにあっても、ポインターが指していなければ消す。
+TEST_F(UpdateApplierTest, RollbackNeverRemovesVersionsThePointerReferences) {
+    const SemanticVersion older{0, 0, 9, ""};
+    layout_.versions = {older, kRunning};
+    layout_.pointer = serialize_install_pointer({kRunning, older});
+    health_.healthy = false;
+    EXPECT_EQ(apply(manifest()), ApplyOutcome::kRolledBack);
+    EXPECT_FALSE(layout_.has(kNext));
+    EXPECT_TRUE(layout_.has(kRunning));
+    EXPECT_TRUE(layout_.has(older));
+    EXPECT_EQ(pointer(), (InstallPointer{kRunning, older}));
+}
+
 }  // namespace
 }  // namespace vocroz::update

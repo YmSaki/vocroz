@@ -22,6 +22,7 @@ TEST(DialogTextTest, EveryLanguageHasEveryText) {
         EXPECT_FALSE(engine_unavailable_text(language).message.empty());
         EXPECT_FALSE(startup_failed_text(language).message.empty());
         EXPECT_FALSE(routing_window_title(language).empty());
+        EXPECT_FALSE(media_window_title(language).empty());
     }
     EXPECT_NE(host_close_text(DialogLanguage::kJapanese).message,
               host_close_text(DialogLanguage::kEnglish).message);

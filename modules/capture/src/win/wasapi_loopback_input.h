@@ -2,7 +2,8 @@
 //
 // WASAPI のループバックによる AudioInput の実装。
 // 生成は factories.h の make_wasapi_loopback_input() から行う。
-// 既定の再生デバイスの音（伴奏の再生アプリなど）を、子機のアプリ音声として集める。
+// ほかのアプリが再生する音（伴奏の再生アプリなど）を、子機のアプリ音声として集める。
+// このプロセスの音（返送モニター）はプロセスループバックの除外モードで集めない。
 // 子機の入力としての扱いは docs/adr/0035-client-input-expansion.md にある。
 #pragma once
 
@@ -30,7 +31,7 @@
 
 namespace vocroz::capture::win {
 
-/// 既定の再生デバイスのループバック。
+/// このプロセスの音を除いたループバック。無音の再生ストリームは既定の再生デバイスに開く。
 /// ストリームの COM オブジェクトは、すべて専用のオーディオスレッドで作って使う。
 /// スレッド安全性: start() と stop() はコントロールスレッドから呼ぶ。
 /// channel_count() はどのスレッドからも呼び出し可能。
@@ -68,7 +69,7 @@ private:
     // オーディオスレッドの本体。開始の結果を promise で返し、停止か抜去までループする。
     void run(audio_core::AudioCaptureCallback& callback, audio_core::AudioDeviceListener& listener,
              StartPromise& started) noexcept;
-    // 既定の再生デバイスをループバックで開き、無音の再生ストリームも開く。
+    // このプロセスの音を除いたループバックを開き、無音の再生ストリームを device に開く。
     [[nodiscard]] common::Result<void, audio_core::AudioDeviceError> open(IMMDevice& device,
                                                                           HANDLE audio_event,
                                                                           Streams& streams);

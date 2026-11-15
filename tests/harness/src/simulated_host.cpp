@@ -146,10 +146,10 @@ SimulatedHost::SimulatedHost(const common::Clock& clock, netsim::SimulatedNetwor
     outputs_.add("harness-output", "Harness output");
     settings_.host() = session::HostSettings{.output_device_id = "harness-output"};
     session_ = std::make_unique<session::HostSession>(
-        std::move(config),
-        session::HostSession::Ports{ui_, mixer_, outputs_, *this, rendezvous_, settings_, random_,
-                                    clock_, logger_, playout_control_, external_output_, secrets_,
-                                    plugins_});
+        std::move(config), session::HostSession::Ports{
+                               ui_, mixer_, outputs_, *this, rendezvous_, settings_, random_,
+                               clock_, logger_, playout_control_, external_output_, secrets_,
+                               plugins_, plugin_scan_, recorder_, media_player_, media_library_});
     session_->start();
     network_.attach(
         address_, [this](const netsim::NodeAddress& from, std::span<const std::uint8_t> datagram) {

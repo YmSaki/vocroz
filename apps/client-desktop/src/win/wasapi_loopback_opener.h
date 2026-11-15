@@ -16,14 +16,14 @@
 
 namespace vocroz::client::win {
 
-/// 既定の再生デバイスのループバックを開く InputDeviceOpener。
+/// アプリ音声のループバック（このプロセスの音を除く）を開く InputDeviceOpener。
 /// スレッド安全性: コントロールスレッドから呼ぶ。
 class WasapiLoopbackOpener final : public InputDeviceOpener {
 public:
     /// @param logger デバイスのエラーの出力先。このオブジェクトより長く生存させる
     explicit WasapiLoopbackOpener(common::Logger& logger) noexcept : logger_(logger) {}
 
-    /// 既定の再生デバイスを集める入力を返す。
+    /// ほかのアプリが再生する音を集める入力を返す（返送モニターの音は集めない）。
     /// device_id は使わない（ClientCapture は空文字列を渡す）。
     [[nodiscard]] common::Result<std::unique_ptr<audio_core::AudioInput>,
                                  audio_core::AudioDeviceError>

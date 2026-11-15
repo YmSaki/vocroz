@@ -15,6 +15,9 @@
 //   → 返送タップ（docs/adr/0036-return-monitor.md）
 //   SRTP 外部出力: 送り出すバス（Master かバス）のポストフェーダー → 安全リミッター
 //   → ストリームタップ（docs/adr/0040-srtp-external-output.md）
+//   録音: ストリップのプリフェーダー、Master とバスのポストフェーダー（挿入の後、リミッターの前）
+//   → 録音タップ。メディアプレイヤー: 再生ノード → 流す先（Master かバス）
+//   （docs/adr/0043-recording-and-media-player.md）
 // ストリップから Master と、Master からメインの出力は暗黙の結線として必ず加える。
 // フェーダーとメーターの識別子は EngineMixer が entity ごとに割り当て、ここでは使うだけにする。
 #pragma once
@@ -29,10 +32,12 @@
 #include <vector>
 
 #include "vocroz/audio_core/graph_description.h"
+#include "vocroz/audio_core/playback_track.h"
 #include "vocroz/audio_core/ports/audio_sink.h"
 #include "vocroz/audio_core/ports/audio_source.h"
 #include "vocroz/audio_core/ports/audio_stream_sink.h"
 #include "vocroz/audio_core/ports/midi_source.h"
+#include "vocroz/audio_core/recording_track.h"
 #include "vocroz/control_protocol/entities.h"
 #include "vocroz/session/ports/mixer_control.h"
 
@@ -89,6 +94,23 @@ struct ExternalStreamAssignment {
     std::shared_ptr<audio_core::AudioStreamSink> sink;
 };
 
+/// 録音トラック 1 本の録音タップの割り当て（docs/adr/0043-recording-and-media-player.md）。
+struct RecordTapAssignment {
+    /// 録る対象（ストリップ、Master、バスの entity_id）。見つからなければタップを置くが、
+    /// つながないので無音を録る（ほかのトラックと長さをそろえるため）。
+    std::string source_id;
+    /// 書き込み先（null にしない）。
+    std::shared_ptr<audio_core::RecordingTrack> track;
+};
+
+/// メディアプレイヤーの再生ノードの割り当て。
+struct PlayerAssignment {
+    /// 流す先（Master かバスの entity_id）。見つからなければノードを置くが、つながない。
+    std::string target_id;
+    /// 読み込み元（null にしない）。
+    std::shared_ptr<audio_core::PlaybackTrack> track;
+};
+
 /// グラフを組み立てるのに使う、フェーダーとメーターの割り当て。
 struct MixerAssignments {
     audio_core::FaderId master_fader;
@@ -102,6 +124,10 @@ struct MixerAssignments {
     std::vector<MidiSourceAssignment> midi_sources;
     /// SRTP 外部出力。送っていなければ std::nullopt。
     std::optional<ExternalStreamAssignment> external_stream;
+    /// 録音中の録音タップ。録音していなければ空。
+    std::vector<RecordTapAssignment> record_taps;
+    /// メディアプレイヤー。ファイルを読み込んでいなければ std::nullopt。
+    std::optional<PlayerAssignment> player;
     /// バスとセンドの entity_id ごとのフェーダー。
     std::map<std::string, audio_core::FaderId, std::less<>> route_faders;
     /// バスの entity_id ごとのポストフェーダーのメーター。
@@ -116,6 +142,16 @@ struct BuiltMixerGraph {
     /// 呼び出し側はこれらのセンドのフェーダーをミュートする（フェイルセーフ）。
     std::vector<std::string> dropped_sends;
 };
+
+/// ストリップのチャンネル数を返す。挿入があれば末尾のプラグインの出力、なければ受信ストリームの
+/// チャンネル数、ストリームがまだなければモノラル。録音のトラックのチャンネル数にも使う。
+/// @param strip   ストリップの割り当て
+/// @param config  ルーティングの構成
+/// @param plugins 読み込みの済んだ挿入
+/// スレッド安全性: 純粋関数。コントロールスレッドから呼ぶ。
+[[nodiscard]] std::size_t strip_channel_count(const StripAssignment& strip,
+                                              const control_protocol::RoutingConfig& config,
+                                              std::span<const session::InsertedPlugin> plugins);
 
 /// グラフを組み立てる。
 /// 構成は session が検証済みとして扱うが、存在しないノードを指すセンドは外し、

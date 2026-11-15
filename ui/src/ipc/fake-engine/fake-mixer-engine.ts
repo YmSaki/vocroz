@@ -19,6 +19,8 @@ import type {
 } from "../messages";
 import { FakeEngineBase, type FakeEngineOptions } from "./fake-engine-base";
 import { FakeExternalOutput, kFakeExternalOutputTestMs } from "./fake-external-output";
+import { FakeMedia } from "./fake-media";
+import { FakePlugins } from "./fake-plugins";
 import { FakeRouting } from "./fake-routing";
 
 /** フェイクエンジンの初期状態の種類。demo は画面を一通り確かめられる参加者をあらかじめ置く。 */
@@ -32,7 +34,12 @@ export interface FakeMixerEngineOptions extends FakeEngineOptions {
 const kSessionId = "session";
 const kMasterId = "master";
 const kRoutingId = "routing";
+const kPluginsId = "plugins";
+/** 再スキャンにかかる時間（ms）。スキャン中の表示を画面で確かめられる長さにする。 */
+const kFakeScanMs = 1500;
 const kExternalOutputId = "external_output";
+const kRecorderId = "recorder";
+const kMediaPlayerId = "media_player";
 /** 招待 URL の例。HTTPS の /join#<コード> の形（docs/adr/0006-invite-url-scheme.md）。 */
 const kInviteUrl = "https://vocroz.example/join#7KQ2-M9XD";
 
@@ -85,8 +92,11 @@ const kOutputDevices: OutputDevice[] = [
   { id: "broken", name: "HDMI (開けないデバイス)" },
 ];
 
-/** フェイクエンジンが自分で持つ部分。ルーティングと外部出力は別のクラスが持つ。 */
-type OwnState = Omit<MixerSnapshot, "routing" | "external_output">;
+/** フェイクエンジンが自分で持つ部分。ルーティング、外部出力、録音とメディアプレイヤーは別のクラスが持つ。 */
+type OwnState = Omit<
+  MixerSnapshot,
+  "routing" | "external_output" | "recorder" | "media_player" | "media_library"
+>;
 
 function initialSnapshot(scenario: MixerScenario): OwnState {
   const master: MasterStrip = {
@@ -149,6 +159,12 @@ export class FakeMixerEngine extends FakeEngineBase {
   private readonly routing = new FakeRouting(kRoutingId);
   /** 外部出力は停止から始める。 */
   private readonly externalOutput = new FakeExternalOutput(kExternalOutputId);
+  /** プラグインは開発用の一覧から始める。 */
+  private readonly plugins = new FakePlugins(kPluginsId);
+  /** 録音は止まり、プレイヤーはファイルなしから始める。 */
+  private readonly media = new FakeMedia(kRecorderId, kMediaPlayerId);
+  /** 次の録音の開始で、空き容量が足りない状況を再現するか。 */
+  private nextRecordingDiskFull = false;
   private nextIndex: number;
   private sinceLinkStatsMs = 0;
 
@@ -164,7 +180,28 @@ export class FakeMixerEngine extends FakeEngineBase {
       ...this.state,
       routing: this.routing.info(),
       external_output: this.externalOutput.info(),
+      recorder: this.media.recorder(),
+      media_player: this.media.player(),
+      media_library: this.media.library(),
     };
+  }
+
+  /** 次の録音の開始を、空き容量の不足で失敗させる。 */
+  simulateDiskFullOnStart(): void {
+    this.nextRecordingDiskFull = true;
+  }
+
+  /** 録音中にディスクがいっぱいになったことを再現する。録音は止まり、ライブの音声は流れ続ける。 */
+  simulateRecordingFailed(): void {
+    if (!this.media.failRecording()) return;
+    this.emitRecorder();
+    this.emitMediaLibrary();
+    this.emit({ type: "notice", severity: "warning", code: "recording_failed", params: {} });
+  }
+
+  /** 録音の書き込みの遅れによる欠落を再現する。 */
+  simulateDroppedFrames(ms: number): void {
+    if (this.media.dropFrames(ms)) this.emitRecorder();
   }
 
   /** 出力デバイスの抜去を再現する。エンジンは別のデバイスに切り替えず、Master を安全ミュートにする。 */
@@ -174,6 +211,12 @@ export class FakeMixerEngine extends FakeEngineBase {
     this.updateSession({ output_device_state: "LOST", output_device_name: null }, false);
     this.updateMaster({ master_muted: true, master_mute_reason: "SAFETY" });
     this.emit({ type: "notice", severity: "warning", code: "output_lost", params: {} });
+  }
+
+  /** 挿入のプラグインが処理中に失敗したことを再現する。経路は無音になり、読み込み直すまで戻らない。 */
+  simulatePluginFailure(insertId: string): void {
+    this.plugins.fail(insertId);
+    this.emitPlugins();
   }
 
   /** 参加の申請を再現する。 */
@@ -232,6 +275,9 @@ export class FakeMixerEngine extends FakeEngineBase {
   }
 
   protected override onMeterTick(intervalMs: number): void {
+    const tick = this.media.tick(intervalMs);
+    if (tick.recorder) this.emitRecorder();
+    if (tick.player) this.emitMediaPlayer();
     this.sinceLinkStatsMs += intervalMs;
     if (this.sinceLinkStatsMs < kLinkStatsIntervalMs) return;
     this.sinceLinkStatsMs = 0;
@@ -242,6 +288,9 @@ export class FakeMixerEngine extends FakeEngineBase {
     switch (message.type) {
       case "hello":
         this.emit({ type: "mixer_snapshot", snapshot: this.snapshot() });
+        // プラグインの状態と一覧はスナップショットに入らないので、続けて送る（pa-engine と同じ順）。
+        this.emitPlugins();
+        this.emitPluginCatalog();
         return;
       case "set_gain":
         this.applyGain(message);
@@ -264,6 +313,15 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "set_external_output_key":
       case "set_external_output_running":
       case "test_external_output":
+      case "rescan_plugins":
+      case "open_plugin_editor":
+      case "set_recorder_config":
+      case "set_recording":
+      case "load_media":
+      case "set_media_transport":
+      case "seek_media":
+      case "set_media_target":
+      case "refresh_media_library":
         this.applyCommand(message);
         return;
       case "join":
@@ -317,6 +375,7 @@ export class FakeMixerEngine extends FakeEngineBase {
       entity_id: message.entity_id,
       seq: message.seq,
       applied_revision: target.revision,
+      origin: message.origin,
     });
   }
 
@@ -330,6 +389,7 @@ export class FakeMixerEngine extends FakeEngineBase {
       entity_id: message.entity_id,
       seq: message.seq,
       applied_revision: level.revision,
+      origin: message.origin,
     });
   }
 
@@ -367,6 +427,7 @@ export class FakeMixerEngine extends FakeEngineBase {
           for (const id of removed)
             routingChanged = this.routing.forgetStrip(id, []) || routingChanged;
           if (routingChanged) this.emitRouting();
+          this.syncMediaWithRouting();
           this.emit({ type: "pending_updated", pending: [] });
           this.updateMaster({ master_muted: true, master_mute_reason: "OPERATOR" });
           this.updateSession({ state: "IDLE", name: "" }, false);
@@ -410,6 +471,7 @@ export class FakeMixerEngine extends FakeEngineBase {
         this.ack(command, revision + 1);
         this.emit({ type: "channel_removed", entity_id: command.entity_id });
         if (this.routing.forgetStrip(command.entity_id, this.stripIds())) this.emitRouting();
+        this.syncMediaWithRouting();
         this.refreshSessionState();
         return;
       }
@@ -434,7 +496,10 @@ export class FakeMixerEngine extends FakeEngineBase {
         }
         this.ack(command, result.revision);
         this.emitRouting();
+        // 適用した挿入の読み込みの状態が変わる。
+        if (command.type === "commit_routing") this.emitPlugins();
         this.stopExternalOutputWithoutSource();
+        this.syncMediaWithRouting();
         return;
       }
       case "set_route_mute": {
@@ -456,6 +521,41 @@ export class FakeMixerEngine extends FakeEngineBase {
       case "set_external_output_running":
       case "test_external_output":
         this.applyExternalOutput(command);
+        return;
+      case "rescan_plugins":
+        if (command.entity_id !== kPluginsId) return this.reject(command, "INVALID_STATE");
+        this.plugins.startScan();
+        this.ack(command, this.plugins.revision());
+        this.emitPlugins();
+        this.later(() => {
+          this.plugins.finishScan();
+          this.emitPlugins();
+          this.emitPluginCatalog();
+        }, kFakeScanMs);
+        return;
+      case "open_plugin_editor": {
+        if (command.entity_id !== kPluginsId) return this.reject(command, "INVALID_STATE");
+        const error = this.plugins.checkEditor(this.appliedInserts(), command.insert_id);
+        if (error !== null) return this.reject(command, error);
+        // ブラウザではウィンドウを開けないので、開けなかったときの通知を出す（pa-engine と同じ形）。
+        this.ack(command, this.plugins.revision());
+        const insert = this.appliedInserts().find((i) => i.entity_id === command.insert_id);
+        this.emit({
+          type: "notice",
+          severity: "warning",
+          code: "plugin_editor_failed",
+          params: { name: this.plugins.nameOf(insert?.plugin_id ?? command.insert_id) },
+        });
+        return;
+      }
+      case "set_recorder_config":
+      case "set_recording":
+      case "load_media":
+      case "set_media_transport":
+      case "seek_media":
+      case "set_media_target":
+      case "refresh_media_library":
+        this.applyMedia(command);
         return;
       case "join":
       case "leave":
@@ -518,6 +618,9 @@ export class FakeMixerEngine extends FakeEngineBase {
     if (entityId === kMasterId) return this.state.master.revision;
     if (entityId === kRoutingId) return this.routing.info().revision;
     if (entityId === kExternalOutputId) return this.externalOutput.info().revision;
+    if (entityId === kPluginsId) return this.plugins.revision();
+    if (entityId === kRecorderId) return this.media.recorder().revision;
+    if (entityId === kMediaPlayerId) return this.media.player().revision;
     return (
       this.state.channels.find((c) => c.entity_id === entityId)?.revision ??
       this.state.pending.find((p) => p.entity_id === entityId)?.revision ??
@@ -582,6 +685,106 @@ export class FakeMixerEngine extends FakeEngineBase {
     }
   }
 
+  private applyMedia(
+    command: Extract<
+      DiscreteCommand,
+      {
+        type:
+          | "set_recorder_config"
+          | "set_recording"
+          | "load_media"
+          | "set_media_transport"
+          | "seek_media"
+          | "set_media_target"
+          | "refresh_media_library";
+      }
+    >,
+  ): void {
+    const isRecorderCommand =
+      command.type === "set_recorder_config" || command.type === "set_recording";
+    if (command.entity_id !== (isRecorderCommand ? kRecorderId : kMediaPlayerId)) {
+      return this.reject(command, "INVALID_STATE");
+    }
+    const media = this.media;
+    const change = (() => {
+      switch (command.type) {
+        case "set_recorder_config":
+          return media.setConfig(command.config, (id) => this.isRecordingSource(id));
+        case "set_recording": {
+          const diskFull = command.recording && this.nextRecordingDiskFull;
+          if (diskFull) this.nextRecordingDiskFull = false;
+          return media.setRecording(command.recording, (id) => this.labelOf(id), diskFull);
+        }
+        case "load_media":
+          return media.load(command.path);
+        case "set_media_transport":
+          return media.setTransport(command.transport, this.isMediaTarget(media.player().target));
+        case "seek_media":
+          return media.seek(command.position_ms);
+        case "set_media_target":
+          return media.setTarget(command.target, (id) => this.isMediaTarget(id));
+        case "refresh_media_library":
+          return { ok: true as const, revision: media.player().revision };
+      }
+    })();
+    if (!change.ok) return this.reject(command, change.error);
+    this.ack(command, change.revision);
+    if (isRecorderCommand) {
+      this.emitRecorder();
+      // 録り終えたテイクはライブラリに足される。
+      if (command.type === "set_recording" && !command.recording) this.emitMediaLibrary();
+    } else if (command.type === "refresh_media_library") {
+      this.emitMediaLibrary();
+    } else {
+      this.emitMediaPlayer();
+    }
+  }
+
+  /** 録る対象として使えるか。ストリップ、Master、適用中のルーティングのバス。 */
+  private isRecordingSource(id: string): boolean {
+    return this.isMediaTarget(id) || this.state.channels.some((c) => c.entity_id === id);
+  }
+
+  /** メディアプレイヤーの流す先として使えるか。Master か、適用中のルーティングのバス。 */
+  private isMediaTarget(id: string): boolean {
+    return id === kMasterId || this.routing.info().applied.buses.some((b) => b.entity_id === id);
+  }
+
+  /** 録音のファイル名に使う表示名。Master は "Master"、バスは名前、ストリップは参加者名。 */
+  private labelOf(id: string): string {
+    if (id === kMasterId) return "Master";
+    const bus = this.routing.info().applied.buses.find((b) => b.entity_id === id);
+    if (bus !== undefined) return bus.name || bus.entity_id;
+    const strip = this.state.channels.find((c) => c.entity_id === id);
+    return strip?.name || strip?.short_id || id;
+  }
+
+  /** ルーティングの適用やストリップの削除の後に、録音とプレイヤーを追従させる。 */
+  private syncMediaWithRouting(): void {
+    if (this.media.pruneSources((id) => this.isRecordingSource(id))) this.emitRecorder();
+    if (this.media.onRoutingApplied((id) => this.isMediaTarget(id))) {
+      this.emitMediaPlayer();
+      this.emit({
+        type: "notice",
+        severity: "warning",
+        code: "media_player_target_removed",
+        params: {},
+      });
+    }
+  }
+
+  private emitRecorder(): void {
+    this.emit({ type: "recorder_updated", recorder: this.media.recorder() });
+  }
+
+  private emitMediaPlayer(): void {
+    this.emit({ type: "media_player_updated", media_player: this.media.player() });
+  }
+
+  private emitMediaLibrary(): void {
+    this.emit({ type: "media_library_updated", files: this.media.library() });
+  }
+
   /** 外部出力で送り出せるか。Master か、適用中のルーティングのバス。 */
   private isExternalOutputSource(sourceId: string): boolean {
     if (sourceId === kMasterId) return true;
@@ -611,6 +814,18 @@ export class FakeMixerEngine extends FakeEngineBase {
 
   private emitRouting(): void {
     this.emit({ type: "routing_updated", routing: this.routing.info() });
+  }
+
+  private appliedInserts() {
+    return this.routing.info().applied.inserts;
+  }
+
+  private emitPlugins(): void {
+    this.emit({ type: "plugins_updated", plugins: this.plugins.info(this.appliedInserts()) });
+  }
+
+  private emitPluginCatalog(): void {
+    for (const page of this.plugins.pages()) this.emit(page);
   }
 
   private emitRouteLevel(level: RouteLevel): void {

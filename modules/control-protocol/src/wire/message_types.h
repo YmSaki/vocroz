@@ -76,6 +76,24 @@ inline constexpr std::string_view kMessageType<SetExternalOutputRunning> =
     "set_external_output_running";
 template <>
 inline constexpr std::string_view kMessageType<TestExternalOutput> = "test_external_output";
+template <>
+inline constexpr std::string_view kMessageType<RescanPlugins> = "rescan_plugins";
+template <>
+inline constexpr std::string_view kMessageType<OpenPluginEditor> = "open_plugin_editor";
+template <>
+inline constexpr std::string_view kMessageType<SetRecorderConfig> = "set_recorder_config";
+template <>
+inline constexpr std::string_view kMessageType<SetRecording> = "set_recording";
+template <>
+inline constexpr std::string_view kMessageType<LoadMedia> = "load_media";
+template <>
+inline constexpr std::string_view kMessageType<SetMediaTransport> = "set_media_transport";
+template <>
+inline constexpr std::string_view kMessageType<SeekMedia> = "seek_media";
+template <>
+inline constexpr std::string_view kMessageType<SetMediaTarget> = "set_media_target";
+template <>
+inline constexpr std::string_view kMessageType<RefreshMediaLibrary> = "refresh_media_library";
 // エンジンから UI へ。
 template <>
 inline constexpr std::string_view kMessageType<MixerSnapshotEvent> = "mixer_snapshot";
@@ -99,6 +117,16 @@ template <>
 inline constexpr std::string_view kMessageType<RouteLevelUpdated> = "route_level_updated";
 template <>
 inline constexpr std::string_view kMessageType<ExternalOutputUpdated> = "external_output_updated";
+template <>
+inline constexpr std::string_view kMessageType<PluginsUpdated> = "plugins_updated";
+template <>
+inline constexpr std::string_view kMessageType<PluginCatalogPage> = "plugin_catalog_page";
+template <>
+inline constexpr std::string_view kMessageType<RecorderUpdated> = "recorder_updated";
+template <>
+inline constexpr std::string_view kMessageType<MediaPlayerUpdated> = "media_player_updated";
+template <>
+inline constexpr std::string_view kMessageType<MediaLibraryUpdated> = "media_library_updated";
 template <>
 inline constexpr std::string_view kMessageType<Ack> = "ack";
 template <>

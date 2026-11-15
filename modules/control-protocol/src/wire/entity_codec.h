@@ -21,6 +21,15 @@ namespace vocroz::control_protocol::wire {
 [[nodiscard]] nlohmann::json write_json(const RoutingInfo& routing);
 [[nodiscard]] nlohmann::json write_json(const ExternalOutputConfig& config);
 [[nodiscard]] nlohmann::json write_json(const ExternalOutput& output);
+[[nodiscard]] nlohmann::json write_json(const PluginEntry& entry);
+[[nodiscard]] nlohmann::json write_json(const BlockedPluginFile& file);
+[[nodiscard]] nlohmann::json write_json(const PluginInsertStatus& status);
+[[nodiscard]] nlohmann::json write_json(const PluginsInfo& plugins);
+[[nodiscard]] nlohmann::json write_json(const RecorderConfig& config);
+[[nodiscard]] nlohmann::json write_json(const RecordingTrackInfo& track);
+[[nodiscard]] nlohmann::json write_json(const Recorder& recorder);
+[[nodiscard]] nlohmann::json write_json(const MediaFile& file);
+[[nodiscard]] nlohmann::json write_json(const MediaPlayer& player);
 [[nodiscard]] nlohmann::json write_json(const MixerSnapshot& snapshot);
 [[nodiscard]] nlohmann::json write_json(const InputDevice& device);
 [[nodiscard]] nlohmann::json write_json(const ClientSnapshot& snapshot);
@@ -43,6 +52,18 @@ namespace vocroz::control_protocol::wire {
 [[nodiscard]] common::Result<ExternalOutputConfig, DecodeError> read_external_output_config(
     const nlohmann::json& value);
 [[nodiscard]] common::Result<ExternalOutput, DecodeError> read_external_output(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<PluginEntry, DecodeError> read_plugin_entry(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<PluginsInfo, DecodeError> read_plugins_info(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<RecorderConfig, DecodeError> read_recorder_config(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<RecordingTrackInfo, DecodeError> read_recording_track_info(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<Recorder, DecodeError> read_recorder(const nlohmann::json& value);
+[[nodiscard]] common::Result<MediaFile, DecodeError> read_media_file(const nlohmann::json& value);
+[[nodiscard]] common::Result<MediaPlayer, DecodeError> read_media_player(
     const nlohmann::json& value);
 [[nodiscard]] common::Result<MixerSnapshot, DecodeError> read_mixer_snapshot(
     const nlohmann::json& value);
