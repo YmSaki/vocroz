@@ -117,12 +117,15 @@ struct Reject {
     friend bool operator==(const Reject&, const Reject&) = default;
 };
 
-/// 連続値のコマンドを適用した（gain_ack）。seq 以下のコマンドはすべて適用済み。
+/// 連続値のコマンドを適用した（gain_ack）。同じ送り元の seq 以下のコマンドはすべて適用済み。
 struct GainAck {
     std::string entity_id;
     Sequence seq = 0;
     /// 適用時点の entity の revision（連続値では進まない）。
     Revision applied_revision = 0;
+    /// 適用した SetGain の送り元（SetGain の origin）。1 本の接続を複数の窓で共有するので、
+    /// 窓はこれで自分の送った値への応答だけを受け取る。
+    std::string origin;
     friend bool operator==(const GainAck&, const GainAck&) = default;
 };
 

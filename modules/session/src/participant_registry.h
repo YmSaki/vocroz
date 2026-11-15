@@ -20,6 +20,8 @@
 #include "vocroz/session/identifiers.h"
 #include "vocroz/session/input_stream.h"
 
+#include "gain_sequence_gate.h"
+
 namespace vocroz::session {
 
 /// 承認待ちの参加者。
@@ -45,8 +47,8 @@ struct Participant {
     bool input_missing = false;
     /// RECONNECTING に入った時刻。再接続の猶予（120 秒）の起点。
     std::optional<common::Clock::TimePoint> reconnecting_since;
-    /// 最後に適用したフェーダーのシーケンス番号。
-    std::optional<control_protocol::Sequence> last_gain_seq;
+    /// フェーダーの SetGain の順序の判定（最後に適用した送り元と seq）。
+    GainSequenceGate gain_order;
     /// 返送モニターのミュートの世代番号。解除のたびに 1 増やす。再接続しても続きから数え、
     /// 子機が古い接続の世代のフレームを新しいものと取り違えないようにする。
     std::uint32_t return_epoch = 0;

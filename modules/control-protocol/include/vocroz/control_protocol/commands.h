@@ -4,7 +4,8 @@
 //
 // 離散コマンド（ミュート、承認など）は request_id、entity_id、expected_revision を持ち、
 // エンジンは適用したら Ack、拒否したら Reject を返す。重複した request_id は無視される。
-// 連続値（フェーダー、送信レベル）は SetGain で送り、entity ごとのシーケンス番号で後勝ちにする。
+// 連続値（フェーダー、送信レベル）は SetGain で送り、送り元の UI と entity ごとのシーケンス番号で
+// 後勝ちにする。
 // SetGain は revision を進めず、expected_revision による競合の検出の対象外とする。
 #pragma once
 
@@ -225,9 +226,14 @@ struct DiscreteCommand {
 /// で送る。 エンジンは受け取るたびに 5〜20 ms のゲインランプで適用し、GainAck を返す。
 struct SetGain {
     std::string entity_id;
-    /// entity ごとのシーケンス番号。エンジンは適用済みより小さい番号を捨てる。
+    /// 送り元の UI の entity ごとのシーケンス番号。エンジンは、同じ送り元から届いた適用済みより
+    /// 小さい番号を捨てる。
     Sequence seq = 0;
     GainDb gain_db;
+    /// 送り元の UI のインスタンスの ID。UI は画面を作るたびに新しい値を振り、seq を 1
+    /// から数え直す。 開き直した画面の seq を、前の画面の seq と比べて捨てないため
+    /// （docs/adr/0044-ui-instance-namespace.md）。
+    std::string origin;
 
     friend bool operator==(const SetGain&, const SetGain&) = default;
 };

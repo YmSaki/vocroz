@@ -18,6 +18,7 @@
 #include "detail/revision_utils.h"
 #include "detail/text_utils.h"
 #include "detail/token_utils.h"
+#include "gain_sequence_gate.h"
 #include "request_deduplicator.h"
 #include "session_constants.h"
 #include "state/client_state_machine.h"
@@ -521,15 +522,15 @@ private:
         if (command.entity_id != kClientEntityId) {
             return;
         }
-        if (last_gain_seq_ && command.seq < *last_gain_seq_) {
+        if (!gain_order_.admit(command.origin, command.seq)) {
             return;
         }
-        last_gain_seq_ = command.seq;
         snapshot_.send_level_db = clamp_send_level(command.gain_db);
         settings_.send_level_db = snapshot_.send_level_db;
         ports_.capture.set_send_level(snapshot_.send_level_db);
         publish();
-        ports_.ui.publish(cp::GainAck{command.entity_id, command.seq, snapshot_.revision});
+        ports_.ui.publish(
+            cp::GainAck{command.entity_id, command.seq, snapshot_.revision, command.origin});
     }
 
     // --- 親機からの制御メッセージ ---
@@ -702,7 +703,8 @@ private:
     cp::ClientSnapshot snapshot_;
     // 送信ミュートの世代番号。0 は起動時のミュートの世代。
     std::uint32_t epoch_ = 0;
-    std::optional<cp::Sequence> last_gain_seq_;
+    // 送信レベルの SetGain の順序の判定。
+    GainSequenceGate gain_order_;
     std::optional<InviteCode> pending_code_;
     std::optional<ResolvedInvite> resolved_;
     // 再接続トークンはメモリにだけ置き、設定ファイルやログに書かない。

@@ -12,6 +12,7 @@
 #include "vocroz/common/result.h"
 #include "vocroz/control_protocol/commands.h"
 
+#include "gain_sequence_gate.h"
 #include "host_context.h"
 #include "request_deduplicator.h"
 #include "session_constants.h"
@@ -64,10 +65,10 @@ private:
 
     HostContext& ctx_;
     RequestDeduplicator requests_{kRememberedRequestIds};
-    /// Master の SetGain の最後に適用した seq。古い seq の値で戻さないため。
-    std::optional<control_protocol::Sequence> last_master_gain_seq_;
-    /// バスとセンドの SetGain の最後に適用した seq（entity_id ごと）。
-    std::map<std::string, control_protocol::Sequence> last_route_gain_seq_;
+    /// Master の SetGain の順序の判定。古い seq の値で戻さないため。
+    GainSequenceGate master_gain_order_;
+    /// バスとセンドの SetGain の順序の判定（entity_id ごと）。
+    std::map<std::string, GainSequenceGate> route_gain_order_;
 };
 
 }  // namespace vocroz::session
