@@ -72,6 +72,7 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
         const NodeSpec& spec = specs[spec_index];
         Node& node = graph->nodes_[position];
         node.kind = spec.kind;
+        node.history_key = spec.history_key;
         node.source = spec.source;
         node.fader = spec.fader;
         node.meter = spec.meter;
@@ -114,6 +115,7 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
             input.position = position_of[plan.from_of[c]];
             input.pre_fader = connection.tap == SendTap::kPreFader;
             input.level = connection.level;
+            input.from_key = specs[plan.from_of[c]].history_key;
             const std::size_t compensation = plan.latency.compensation_samples[c];
             if (compensation > 0) {
                 const std::size_t channels = output_channels_of(specs[plan.from_of[c]]);
@@ -125,7 +127,32 @@ common::Result<std::unique_ptr<RenderGraph>, GraphError> RenderGraph::build(
         }
     }
     graph->midi_.build(description, plan, position_of);
+    graph->index_history_keys();
     return graph;
+}
+
+void RenderGraph::index_history_keys() {
+    for (std::size_t position = 0; position < nodes_.size(); ++position) {
+        if (nodes_[position].history_key) {
+            keyed_nodes_.push_back({*nodes_[position].history_key, position});
+        }
+    }
+    std::ranges::sort(keyed_nodes_, {}, &KeyedNode::key);
+    // 同じキーのノードが複数あると、どれが差し替え前のどのノードに当たるかを決められない。
+    // 別の経路の音を出さないよう、そのキーのノードはすべて引き継がない（無音から始める）。
+    std::vector<KeyedNode> unique;
+    unique.reserve(keyed_nodes_.size());
+    for (std::size_t i = 0; i < keyed_nodes_.size();) {
+        std::size_t end = i + 1;
+        while (end < keyed_nodes_.size() && keyed_nodes_[end].key == keyed_nodes_[i].key) {
+            ++end;
+        }
+        if (end == i + 1) {
+            unique.push_back(keyed_nodes_[i]);
+        }
+        i = end;
+    }
+    keyed_nodes_ = std::move(unique);
 }
 
 void RenderGraph::mix_inputs(Node& node, std::size_t frames,
@@ -297,6 +324,50 @@ std::span<const OutputBlock> RenderGraph::process(
 
 void RenderGraph::adopt_midi_state(const RenderGraph& previous) noexcept VOCROZ_NONBLOCKING {
     midi_.adopt(previous.midi_);
+}
+
+RenderGraph::Node* RenderGraph::find_keyed(HistoryKey key) noexcept VOCROZ_NONBLOCKING {
+    const auto it = std::ranges::lower_bound(keyed_nodes_, key, {}, &KeyedNode::key);
+    if (it == keyed_nodes_.end() || it->key != key) {
+        return nullptr;
+    }
+    return &nodes_[it->position];
+}
+
+void RenderGraph::adopt_node_history(Node& node, Node& previous) noexcept VOCROZ_NONBLOCKING {
+    // チャンネル数が変わったら（モノラルからステレオなど）、チャンネルの対応が決まらないので
+    // 引き継がない。長さの違うディレイラインは DelayLine::adopt() が引き継がない。
+    if (node.delays.size() == previous.delays.size()) {
+        for (std::size_t ch = 0; ch < node.delays.size(); ++ch) {
+            (void)node.delays[ch].adopt(previous.delays[ch]);
+        }
+    }
+    for (Input& input : node.inputs) {
+        if (input.compensation.empty() || !input.from_key) {
+            continue;
+        }
+        // 結線は送り元と取り出す位置で区別する（同じ 2 ノード間の結線の重複は検証で弾く）。
+        // 1 つのノードの入力は少ないので線形に探す。
+        for (Input& old_input : previous.inputs) {
+            if (old_input.from_key == input.from_key && old_input.pre_fader == input.pre_fader &&
+                old_input.compensation.size() == input.compensation.size()) {
+                for (std::size_t ch = 0; ch < input.compensation.size(); ++ch) {
+                    (void)input.compensation[ch].adopt(old_input.compensation[ch]);
+                }
+                break;
+            }
+        }
+    }
+}
+
+void RenderGraph::adopt_audio_history(RenderGraph& previous) noexcept VOCROZ_NONBLOCKING {
+    for (const KeyedNode& keyed : keyed_nodes_) {
+        Node* const old_node = previous.find_keyed(keyed.key);
+        // 種類の違うノードは、同じキーでも同じ経路ではない。
+        if (old_node != nullptr && old_node->kind == nodes_[keyed.position].kind) {
+            adopt_node_history(nodes_[keyed.position], *old_node);
+        }
+    }
 }
 
 }  // namespace vocroz::audio_core

@@ -23,6 +23,9 @@ struct MinusMeReturn {
     std::vector<NodeId> own_inputs;
     /// 返送のサンプルの渡し先（null にしない）。
     std::shared_ptr<AudioSink> sink;
+    /// 返送のミックス（安全リミッター）の HistoryKey（任意）。グラフを差し替えても、ミックスへの
+    /// 結線の遅延補正の中身を引き継ぐときに付ける（graph_description.h の NodeSpec::history_key）。
+    std::optional<HistoryKey> history_key;
 };
 
 /// 返送を組んだ結果。

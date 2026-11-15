@@ -482,5 +482,40 @@ TEST(MixerGraphBuilderTest, CutsWhatFollowsABusWhileItsInsertIsNotLoaded) {
     EXPECT_TRUE(is_valid(built.graph));
 }
 
+TEST(MixerGraphBuilderTest, GivesEachEntityTheSameHistoryKeyInEveryBuild) {
+    // グラフを組み立て直しても、同じストリップと遅延ノードは同じ HistoryKey になり、
+    // 手動ディレイと遅延ノードの音を引き継げる（docs/adr/0045-audio-history-carry-over.md）。
+    cp::RoutingConfig config;
+    config.delays.push_back(cp::RoutingDelay{"delay-1", 100.0});
+    const auto first = build_mixer_graph(two_strips(), kMaster, config, false, {});
+    MixerAssignments more = two_strips();
+    more.strips.push_back(StripAssignment{"ch-3", ac::FaderId{3}, ac::MeterId{3}, nullptr});
+    const auto second = build_mixer_graph(more, kMaster, config, false, {});
+
+    const auto key_of = [](const ac::GraphDescription& g, ac::NodeKind kind, std::size_t nth) {
+        std::size_t seen = 0;
+        for (const auto& node : g.nodes) {
+            if (node.kind == kind && seen++ == nth) {
+                return node.history_key;
+            }
+        }
+        return std::optional<ac::HistoryKey>{};
+    };
+    const auto ch1 = node_with_fader(first.graph, ac::FaderId{1});
+    const auto ch1_again = node_with_fader(second.graph, ac::FaderId{1});
+    const auto ch2 = node_with_fader(first.graph, ac::FaderId{2});
+    ASSERT_NE(ch1, nullptr);
+    ASSERT_NE(ch1_again, nullptr);
+    ASSERT_NE(ch2, nullptr);
+    ASSERT_TRUE(ch1->history_key.has_value());
+    EXPECT_EQ(ch1->history_key, ch1_again->history_key);
+    EXPECT_NE(ch1->history_key, ch2->history_key);
+
+    const auto delay = key_of(first.graph, ac::NodeKind::kDelay, 0);
+    ASSERT_TRUE(delay.has_value());
+    EXPECT_EQ(delay, key_of(second.graph, ac::NodeKind::kDelay, 0));
+    EXPECT_NE(delay, ch1->history_key);
+}
+
 }  // namespace
 }  // namespace vocroz::engine

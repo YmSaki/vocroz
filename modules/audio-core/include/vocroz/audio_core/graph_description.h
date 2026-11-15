@@ -45,6 +45,15 @@ struct MeterId {
     friend constexpr auto operator<=>(MeterId, MeterId) = default;
 };
 
+/// グラフを差し替えても音声の履歴を引き継ぐための、ノードの識別子（docs/adr/0045-audio-history-carry-over.md）。
+/// NodeId はグラフごとに振り直してよいが、HistoryKey はグラフをまたいで同じ音の経路
+/// （同じ入力チャンネル、同じバス、同じ遅延ノードなど）を指すときだけ同じ値にする。
+/// 別の経路に同じ値を付けると、前の経路で遅らせていた音が新しい経路から出る。
+struct HistoryKey {
+    std::uint64_t value = 0;  ///< 識別子の値
+    friend constexpr auto operator<=>(HistoryKey, HistoryKey) = default;
+};
+
 /// ノードの種類。チャンネル数は種類で決まる。
 enum class NodeKind {
     /// AudioSource からサンプルを取り出す。入力を持たない。チャンネル数は
@@ -77,7 +86,14 @@ enum class NodeKind {
 
 /// ノードの記述。各種類のファクトリー関数で作る。
 struct NodeSpec {
-    NodeId id;                            ///< ノードの識別子
+    NodeId id;  ///< ノードの識別子
+    /// 差し替え前のグラフから音声の履歴を引き継ぐための識別子（任意）。差し替え前のグラフに
+    /// 同じ種類で同じ値のノードがあり、遅延の長さとチャンネル数が同じなら、手動ディレイと
+    /// 遅延ノードのディレイライン、このノードへの結線の遅延補正（送り元にも値があり、取り出す
+    /// 位置が同じもの）の中身を引き継ぐ。遅延の長さが変わったものは無音から始める。
+    /// 同じグラフの中で同じ値を複数のノードに付けたら、それらのノードは引き継がない。
+    /// std::nullopt なら引き継がない（無音から始める）。
+    std::optional<HistoryKey> history_key;
     NodeKind kind = NodeKind::kOutput;    ///< ノードの種類
     std::shared_ptr<AudioSource> source;  ///< kSource のときのサンプルの取り出し先
     std::optional<FaderId> fader;         ///< kStrip、kBus のフェーダー
