@@ -1243,7 +1243,8 @@
     "type": "gain_ack",
     "entity_id": "ch1",
     "seq": 42,
-    "applied_revision": 6
+    "applied_revision": 6,
+    "origin": "m-3f9a0c1d"
   },
   {
     "type": "meters",

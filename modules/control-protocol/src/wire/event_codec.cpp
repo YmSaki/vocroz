@@ -119,11 +119,13 @@ void write_fields(nlohmann::json& out, const GainAck& event) {
     out["entity_id"] = event.entity_id;
     out["seq"] = event.seq;
     out["applied_revision"] = event.applied_revision;
+    out["origin"] = event.origin;
 }
 void read_fields(ObjectReader& r, GainAck& event) {
     event.entity_id = r.text("entity_id", kIdentifierRule);
     event.seq = r.counter("seq");
     event.applied_revision = r.counter("applied_revision");
+    event.origin = r.text("origin", kIdentifierRule);
 }
 
 void write_fields(nlohmann::json& out, const Meters& event) {

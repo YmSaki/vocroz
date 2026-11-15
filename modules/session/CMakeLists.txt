@@ -7,6 +7,7 @@ add_library(vocroz_session STATIC
   src/client_session.cpp
   src/detail/text_utils.cpp
   src/external_output_book.cpp
+  src/gain_sequence_gate.cpp
   src/host_command_handler.cpp
   src/host_context.cpp
   src/host_peer_handler.cpp
@@ -52,6 +53,7 @@ if(VOCROZ_BUILD_TESTS)
     tests/host_session_test.cpp
     tests/invite_book_test.cpp
     tests/invite_code_test.cpp
+    tests/gain_sequence_gate_test.cpp
     tests/midi_message_codec_test.cpp
     tests/midi_timeline_test.cpp
     tests/output_device_state_machine_test.cpp

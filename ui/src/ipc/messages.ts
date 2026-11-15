@@ -390,13 +390,19 @@ export type DiscreteCommand = DiscreteCommandBase & DiscreteCommandBody;
 
 /**
  * 連続値のコマンド。フェーダーや送信レベルなどに使う。
- * entity ごとのシーケンス番号で後勝ちにし、エンジンは gain_ack で適用を知らせる。
+ * 送り元の UI と entity ごとのシーケンス番号で後勝ちにし、エンジンは gain_ack で適用を知らせる。
  */
 export interface SetGainCommand {
   type: "set_gain";
   entity_id: string;
   seq: number;
   gain_db: GainDb;
+  /**
+   * 送り元の UI のインスタンスの ID。画面を作るたびに新しい値を振り、seq を 1 から数え直す。
+   * 開き直した画面の seq を、前の画面の seq と比べて捨てられないようにするため
+   * （docs/adr/0044-ui-instance-namespace.md）。
+   */
+  origin: string;
 }
 
 /** UI からエンジンへのメッセージ。 */
@@ -420,12 +426,14 @@ export interface RejectMessage {
   error_code: ErrorCode;
 }
 
-/** 連続値コマンドの適用完了。seq 以下のコマンドがすべて適用済みであることを表す。 */
+/** 連続値コマンドの適用完了。同じ送り元の seq 以下のコマンドがすべて適用済みであることを表す。 */
 export interface GainAckMessage {
   type: "gain_ack";
   entity_id: string;
   seq: number;
   applied_revision: number;
+  /** 適用した set_gain の送り元。接続を共有するほかの窓への応答を見分けるのに使う。 */
+  origin: string;
 }
 
 /**

@@ -551,6 +551,46 @@ TEST_F(HostSessionTest, IgnoresADuplicatedRequestId) {
     EXPECT_TRUE(ui_.all<cp::Reject>().empty());
 }
 
+TEST_F(HostSessionTest, AppliesTheFirstMuteOfAReopenedUiWithItsOwnRequestIds) {
+    // 開き直した画面は request_id を 1 から数え直す。送り元ごとの接頭辞が違えば、前の画面の
+    // request_id
+    // と重ならず、最初のミュートから適用される（docs/adr/0044-ui-instance-namespace.md）。
+    create();
+    session().handle_ui_message(cp::Hello{});
+    session().handle_ui_message(
+        cp::DiscreteCommand{"m-old.1", "master", revision_of("master"), cp::SetMasterMute{false}});
+    ASSERT_FALSE(session().snapshot().master.master_muted);
+    session().handle_ui_message(cp::Hello{});
+    session().handle_ui_message(
+        cp::DiscreteCommand{"m-new.1", "master", revision_of("master"), cp::SetMasterMute{true}});
+    EXPECT_TRUE(session().snapshot().master.master_muted);
+    const auto ack = ui_.last<cp::Ack>();
+    ASSERT_TRUE(ack);
+    EXPECT_EQ(ack->request_id, "m-new.1");
+}
+
+TEST_F(HostSessionTest, AppliesTheFadersOfAReopenedUiWhoseSeqRestartsFromOne) {
+    // 前の画面が大きな seq まで送った後でも、開き直した画面の seq 1 から適用する。
+    create();
+    const auto a = connect(1, "Vo");
+    session().handle_ui_message(cp::SetGain{"master", 20, -3.0, "m-old"});
+    session().handle_ui_message(cp::SetGain{a, 20, -3.0, "m-old"});
+    session().handle_ui_message(cp::Hello{});
+    session().handle_ui_message(cp::SetGain{"master", 1, -30.0, "m-new"});
+    session().handle_ui_message(cp::SetGain{a, 1, -12.0, "m-new"});
+    EXPECT_EQ(session().snapshot().master.gain_db, cp::GainDb{-30.0});
+    EXPECT_EQ(mixer_.master_gain_db(), cp::GainDb{-30.0});
+    EXPECT_EQ(strip(a).gain_db, cp::GainDb{-12.0});
+    const auto ack = ui_.last<cp::GainAck>();
+    ASSERT_TRUE(ack);
+    EXPECT_EQ(ack->seq, 1U);
+    EXPECT_EQ(ack->origin, "m-new");
+    // 同じ画面の中では、遅れて届いた古い seq を引き続き捨てる。
+    session().handle_ui_message(cp::SetGain{"master", 3, -6.0, "m-new"});
+    session().handle_ui_message(cp::SetGain{"master", 2, -40.0, "m-new"});
+    EXPECT_EQ(session().snapshot().master.gain_db, cp::GainDb{-6.0});
+}
+
 TEST_F(HostSessionTest, RejectsUnknownEntitiesAndCommandsForTheWrongKindOfEntity) {
     create();
     const auto a = connect(1, "Vo");
@@ -973,6 +1013,28 @@ TEST_F(HostSessionTest, RouteMuteAdvancesItsRevisionAndFadersDoNot) {
     ASSERT_NE(ack, nullptr);
     EXPECT_EQ(ack->seq, 5U);
     EXPECT_EQ(ack->applied_revision, *unmuted);
+}
+
+TEST_F(HostSessionTest, KeepsTheOrderOfEachWindowWhenTheRoutingWindowIsReopened) {
+    // ミキサーの窓とルーティングの窓は 1 本の接続を共有する。ルーティングの窓を開き直しても
+    // （hello が届いても）、ミキサーの窓の重複の判定と seq の順序は消さない。
+    create();
+    ASSERT_TRUE(command("routing", cp::StageRouting{cue_routing(connect(1, "Vo"))}));
+    ASSERT_TRUE(command("routing", cp::CommitRouting{false}));
+    const cp::DiscreteCommand mute{"m-a.1", "master", revision_of("master"),
+                                   cp::SetMasterMute{false}};
+    session().handle_ui_message(mute);
+    session().handle_ui_message(cp::SetGain{"master", 5, -3.0, "m-a"});
+    session().handle_ui_message(cp::SetGain{"bus-cue", 9, -3.0, "rt-old"});
+    session().handle_ui_message(cp::Hello{});
+    session().handle_ui_message(cp::SetGain{"bus-cue", 1, -9.0, "rt-new"});
+    EXPECT_EQ(mixer_.routes().at("bus-cue").gain_db, -9.0);
+
+    const auto acks = ui_.all<cp::Ack>().size();
+    session().handle_ui_message(mute);
+    EXPECT_EQ(ui_.all<cp::Ack>().size(), acks);
+    session().handle_ui_message(cp::SetGain{"master", 4, -40.0, "m-a"});
+    EXPECT_EQ(session().snapshot().master.gain_db, cp::GainDb{-3.0});
 }
 
 TEST_F(HostSessionTest, RemovingAStripDropsItsSendsFromTheRouting) {

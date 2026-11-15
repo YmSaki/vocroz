@@ -105,7 +105,7 @@ Participant& ParticipantRegistry::add_stream(std::string_view participant_id,
     // 初期ミュート: 後から足した入力のストリップもチャンネルミュートで始める。
     strip.strip.channel_muted = true;
     strip.strip.gain_db = 0.0;
-    strip.last_gain_seq.reset();
+    strip.gain_order.reset();
     apply_stream(strip, stream);
     return participants_.emplace_back(std::move(strip));
 }

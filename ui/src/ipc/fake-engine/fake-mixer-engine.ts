@@ -317,6 +317,7 @@ export class FakeMixerEngine extends FakeEngineBase {
       entity_id: message.entity_id,
       seq: message.seq,
       applied_revision: target.revision,
+      origin: message.origin,
     });
   }
 
@@ -330,6 +331,7 @@ export class FakeMixerEngine extends FakeEngineBase {
       entity_id: message.entity_id,
       seq: message.seq,
       applied_revision: level.revision,
+      origin: message.origin,
     });
   }
 

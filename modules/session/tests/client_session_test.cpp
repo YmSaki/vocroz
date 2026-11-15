@@ -286,6 +286,17 @@ TEST_F(ClientSessionTest, JoiningAgainStartsSendMuted) {
     EXPECT_TRUE(std::holds_alternative<wire::LeaveNotice>(*last_sent()));
 }
 
+TEST_F(ClientSessionTest, AppliesTheSendLevelOfAReopenedUiWhoseSeqRestartsFromOne) {
+    // 画面を読み込み直すと seq は 1 から数え直す。送り元が変われば前の画面の seq と比べない。
+    session().handle_ui_message(cp::SetGain{"client", 20, -6.0, "r-old"});
+    session().handle_ui_message(cp::Hello{});
+    session().handle_ui_message(cp::SetGain{"client", 1, -30.0, "r-new"});
+    EXPECT_EQ(capture_.level_db(), -30.0);
+    const auto ack = ui_.last<cp::GainAck>();
+    ASSERT_TRUE(ack);
+    EXPECT_EQ(ack->origin, "r-new");
+}
+
 TEST_F(ClientSessionTest, SendLevelIsClampedAndDoesNotAdvanceTheRevision) {
     const auto revision = session().snapshot().revision;
     session().handle_ui_message(cp::SetGain{"client", 1, 20.0});

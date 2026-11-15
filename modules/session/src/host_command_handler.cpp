@@ -333,7 +333,7 @@ HostCommandHandler::CommandResult HostCommandHandler::commit_routing(bool approv
         return common::make_unexpected(committed.error());
     }
     // 消えたバスとセンドの seq は、同じ entity_id が作り直されたときに古い値と比べないよう忘れる。
-    std::erase_if(last_route_gain_seq_, [this](const auto& entry) {
+    std::erase_if(route_gain_order_, [this](const auto& entry) {
         return ctx_.routing.find_level(entry.first) == nullptr;
     });
     ctx_.publish_routing();
@@ -503,15 +503,15 @@ HostCommandHandler::CommandResult HostCommandHandler::test_external_output() {
 void HostCommandHandler::handle_gain(const cp::SetGain& command) {
     const auto gain = clamp_fader(command.gain_db);
     if (command.entity_id == kMasterEntityId) {
-        if (last_master_gain_seq_ && command.seq < *last_master_gain_seq_) {
+        if (!master_gain_order_.admit(command.origin, command.seq)) {
             return;
         }
-        last_master_gain_seq_ = command.seq;
         ctx_.master.gain_db = gain;
         ctx_.settings.master_gain_db = gain;
         ctx_.ports.mixer.set_master_gain(gain);
         ctx_.publish_master();
-        ctx_.ports.ui.publish(cp::GainAck{command.entity_id, command.seq, ctx_.master.revision});
+        ctx_.ports.ui.publish(
+            cp::GainAck{command.entity_id, command.seq, ctx_.master.revision, command.origin});
         return;
     }
     if (auto* level = ctx_.routing.find_level(command.entity_id)) {
@@ -524,27 +524,26 @@ void HostCommandHandler::handle_gain(const cp::SetGain& command) {
         ctx_.log(common::LogLevel::kDebug, "フェーダーのない entity への SetGain を捨てました");
         return;
     }
-    if (p->last_gain_seq && command.seq < *p->last_gain_seq) {
+    if (!p->gain_order.admit(command.origin, command.seq)) {
         return;
     }
-    p->last_gain_seq = command.seq;
     p->strip.gain_db = gain;
     ctx_.ports.mixer.set_channel_gain(p->strip.entity_id, gain);
     ctx_.publish_channel(*p);
-    ctx_.ports.ui.publish(cp::GainAck{command.entity_id, command.seq, p->strip.revision});
+    ctx_.ports.ui.publish(
+        cp::GainAck{command.entity_id, command.seq, p->strip.revision, command.origin});
 }
 
 void HostCommandHandler::handle_route_gain(cp::RouteLevel& level, const cp::SetGain& command) {
-    const auto last = last_route_gain_seq_.find(level.entity_id);
-    if (last != last_route_gain_seq_.end() && command.seq < last->second) {
+    if (!route_gain_order_[level.entity_id].admit(command.origin, command.seq)) {
         return;
     }
-    last_route_gain_seq_[level.entity_id] = command.seq;
     // バスとセンドのフェーダーも、チャンネルと同じ範囲（-∞〜+10 dB）にする。
     level.gain_db = clamp_fader(command.gain_db);
     ctx_.ports.mixer.set_route_gain(level.entity_id, level.gain_db);
     ctx_.publish_route_level(level);
-    ctx_.ports.ui.publish(cp::GainAck{command.entity_id, command.seq, level.revision});
+    ctx_.ports.ui.publish(
+        cp::GainAck{command.entity_id, command.seq, level.revision, command.origin});
 }
 
 }  // namespace vocroz::session
