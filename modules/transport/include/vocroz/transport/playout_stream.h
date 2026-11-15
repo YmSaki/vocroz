@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 
 #include "vocroz/audio_core/realtime.h"
@@ -123,6 +124,13 @@ public:
     /// チャンネル数（1 か 2）を返す。
     /// スレッド安全性: どのスレッドからも呼び出し可能。
     [[nodiscard]] std::size_t channels() const noexcept;
+
+    /// 今の目標の深さを返す。画面に回線の実測値として出すために、コントロールスレッドから読む
+    /// （docs/adr/0037-latency-target-and-link-stats.md）。
+    /// @return 再生中なら目標の深さ。溜めている間と、途絶が続いて無音にしている間は std::nullopt
+    /// スレッド安全性: どのスレッドからも呼び出し可能。render() が終わるたびに置く値を
+    /// アトミック変数から読むだけで、ブロックしない。値は直近の render() の時点のもの。
+    [[nodiscard]] std::optional<std::chrono::microseconds> buffer_delay() const noexcept;
 
     /// 統計を返す。
     /// スレッド安全性: render() と同じスレッドから呼ぶ。

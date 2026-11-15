@@ -23,6 +23,7 @@
 //
 // 全体の目標レイテンシー（PlayoutControl）もここで持つ。ジッターバッファを作るのがここなので、
 // 今あるストリームに配り、あとから作るストリームも同じ目標で作る（docs/adr/0037-latency-target-and-link-stats.md）。
+// 同じ理由で、ストリップごとの回線の観測値（ジッターとバッファの深さ）もここで集める。
 //
 // session への通知（PeerEventSink）は、処理の最後にまとめて行う。通知の中から session が
 // PeerLink を呼んでも、処理中の接続を壊さないようにするため。
@@ -41,6 +42,7 @@
 
 #include "vocroz/common/ports/clock.h"
 #include "vocroz/common/ports/logger.h"
+#include "vocroz/control_protocol/events.h"
 #include "vocroz/network/host_rendezvous.h"
 #include "vocroz/network/ports/udp_endpoint.h"
 #include "vocroz/network/udp_address.h"
@@ -94,6 +96,12 @@ public:
     /// すべての接続の送信を止める（送信待ちに残ったものは送り切る）。
     /// オーディオ出力を閉じた後、UdpEndpoint を閉じる前に呼ぶ。
     void stop_sending();
+
+    /// 子機の受信ストリームをつないでいるストリップごとの、回線の観測値を返す
+    /// （link_stats、docs/adr/0037-latency-target-and-link-stats.md）。
+    /// @return ストリップの entity_id の昇順。閉じている途中の接続のストリップは含めない。
+    /// ジッターはまだ 2 フレーム届いていなければ、バッファの深さは再生していなければ null
+    [[nodiscard]] std::vector<control_protocol::LinkStat> read_link_stats() const;
 
     /// 今ある接続（閉じている途中のものを除く）の数を返す。
     [[nodiscard]] std::size_t peer_count() const noexcept;
