@@ -102,7 +102,7 @@ void HostContext::reapply_routing(const char* context) {
 }
 
 void HostContext::reconcile_inserts() {
-    inserts.reconcile(routing.info().applied.inserts, routing.plugins());
+    inserts.reconcile(routing.info().applied.inserts, routing.plugins(), plugin_states);
     publish_plugins();
 }
 
@@ -470,6 +470,7 @@ void HostContext::teardown() {
         forget_strip_in_routing(strip_id);
     }
     save_settings();
+    capture_plugin_states();
 }
 
 // Master をミュートする。理由が変わるだけでも revision を進め、古い表示に基づく解除を
@@ -499,6 +500,61 @@ void HostContext::save_settings() {
         media.saved_config([this](const std::string& id) { return is_master_or_bus(id); });
     if (const auto saved = ports.settings.save_host(settings); !saved) {
         log(common::LogLevel::kWarning, "親機の設定を保存できませんでした");
+    }
+}
+
+void HostContext::capture_plugin_states() {
+    // ストリップへの挿入は保存しない。保存するルーティング（settings.routing）にはもう入っていない。
+    auto ready = inserts.ready_for(settings.routing.inserts);
+    if (ready.empty()) {
+        store_plugin_states({});
+        return;
+    }
+    std::vector<std::string> ids;
+    ids.reserve(ready.size());
+    for (auto& plugin : ready) {
+        ids.push_back(std::move(plugin.entity_id));
+    }
+    ports.plugins.capture_states(std::move(ids));
+}
+
+void HostContext::store_plugin_states(std::vector<SavedPluginState> captured) {
+    const auto& saved_inserts = settings.routing.inserts;
+    const auto is_saved_insert = [&](const SavedPluginState& state) {
+        return std::any_of(
+            saved_inserts.begin(), saved_inserts.end(), [&](const cp::RoutingInsert& insert) {
+                return insert.entity_id == state.insert_id && insert.plugin_id == state.plugin_id;
+            });
+    };
+    auto next = plugin_states;
+    // 状態を取っている間に外したかプラグインを替えた挿入と、保存しなくなった挿入を除く。
+    std::erase_if(next, [&](const SavedPluginState& state) { return !is_saved_insert(state); });
+    for (auto& state : captured) {
+        if (!is_saved_insert(state)) {
+            continue;
+        }
+        if (state.state.size() > kMaxPluginStateBytes) {
+            log(common::LogLevel::kWarning,
+                "プラグインの状態が大きすぎるため保存しません。次の起動では既定の状態から始めます");
+            std::erase_if(
+                next, [&](const SavedPluginState& s) { return s.insert_id == state.insert_id; });
+            continue;
+        }
+        const auto it = std::find_if(next.begin(), next.end(), [&](const SavedPluginState& s) {
+            return s.insert_id == state.insert_id;
+        });
+        if (it == next.end()) {
+            next.push_back(std::move(state));
+        } else {
+            *it = std::move(state);
+        }
+    }
+    if (next == plugin_states) {
+        return;
+    }
+    plugin_states = std::move(next);
+    if (const auto saved = ports.settings.save_plugin_states(plugin_states); !saved) {
+        log(common::LogLevel::kWarning, "プラグインの状態を保存できませんでした");
     }
 }
 

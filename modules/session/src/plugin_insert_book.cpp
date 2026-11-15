@@ -27,7 +27,8 @@ InsertFailure failure_of(PluginLoadError error) noexcept {
 PluginInsertBook::PluginInsertBook(PluginRack& rack) : rack_(rack) {}
 
 void PluginInsertBook::reconcile(std::span<const control_protocol::RoutingInsert> inserts,
-                                 std::span<const PluginDescription> plugins) {
+                                 std::span<const PluginDescription> plugins,
+                                 std::span<const SavedPluginState> saved) {
     // なくなった挿入と、プラグインを替えた挿入を先に手放す。同じ entity_id で読み込み直す前に
     // 破棄を依頼しておく（PluginRack の契約）。
     for (auto it = slots_.begin(); it != slots_.end();) {
@@ -56,7 +57,14 @@ void PluginInsertBook::reconcile(std::span<const control_protocol::RoutingInsert
             slot.failure = InsertFailure::kNotFound;
         } else {
             slot.ticket = next_ticket_++;
-            rack_.load(insert.entity_id, slot.ticket, *description);
+            // プラグインを替えた挿入には、前のプラグインの状態を渡さない。形式が違うため。
+            const auto state =
+                std::find_if(saved.begin(), saved.end(), [&](const SavedPluginState& s) {
+                    return s.insert_id == insert.entity_id && s.plugin_id == insert.plugin_id;
+                });
+            rack_.load(insert.entity_id, slot.ticket, *description,
+                       state == saved.end() ? std::span<const std::uint8_t>{}
+                                            : std::span<const std::uint8_t>{state->state});
         }
         slots_.emplace(insert.entity_id, std::move(slot));
     }

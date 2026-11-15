@@ -40,6 +40,17 @@ protected:
     PluginInsertBook book_{rack_};
 };
 
+TEST_F(PluginInsertBookTest, PassesTheSavedStateOfTheSameInsertAndPlugin) {
+    const std::vector<cp::RoutingInsert> inserts{{"fx-1", "master", "eq"},
+                                                 {"fx-2", "master", "comp"}};
+    // fx-2 の状態は別のプラグイン（プラグインを替える前）のものなので渡さない。
+    const std::vector<SavedPluginState> saved{{"fx-1", "eq", {1, 2}}, {"fx-2", "eq", {3}}};
+    book_.reconcile(inserts, kPlugins, saved);
+    ASSERT_EQ(rack_.loads().size(), 2U);
+    EXPECT_EQ(rack_.loads()[0].state, (std::vector<std::uint8_t>{1, 2}));
+    EXPECT_TRUE(rack_.loads()[1].state.empty());
+}
+
 TEST_F(PluginInsertBookTest, RequestsLoadsForNewInsertsAndKeepsThemOutOfTheGraphUntilLoaded) {
     const std::vector<cp::RoutingInsert> inserts{{"fx-1", "ch1", "eq"}, {"fx-2", "master", "comp"}};
     book_.reconcile(inserts, kPlugins);

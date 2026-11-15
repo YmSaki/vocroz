@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -98,6 +99,30 @@ TEST_F(JsonSettingsStoreTest, HostAndClientUseSeparateFiles) {
     ASSERT_TRUE(store_.save_host(host_settings(0.0)));
     EXPECT_TRUE(std::filesystem::exists(host_path()));
     EXPECT_FALSE(std::filesystem::exists(client_path()));
+}
+
+TEST_F(JsonSettingsStoreTest, SavesPluginStatesInTheirOwnFile) {
+    const std::vector<session::SavedPluginState> states{{"fx-1", "VST3-EQ", {1, 2, 3}}};
+    ASSERT_TRUE(store_.save_host(host_settings(0.0)));
+    ASSERT_TRUE(store_.save_plugin_states(states));
+    EXPECT_TRUE(std::filesystem::exists(dir_.path() / "plugin-states.json"));
+
+    JsonSettingsStore reopened{dir_.path(), logger_};
+    const auto loaded = reopened.load_plugin_states();
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded.value(), states);
+    // 設定のファイルには状態を入れない。
+    EXPECT_EQ(reopened.load_host().value(), host_settings(0.0));
+}
+
+TEST_F(JsonSettingsStoreTest, ReadsPluginStateFilesLargerThanTheSettingsLimit) {
+    // 設定のファイルの上限（1 MiB）を超えても、状態のファイルは読める。
+    const std::vector<session::SavedPluginState> states{
+        {"fx-1", "VST3-EQ", std::vector<std::uint8_t>(session::kMaxPluginStateBytes, 0x5A)}};
+    ASSERT_TRUE(store_.save_plugin_states(states));
+    const auto loaded = store_.load_plugin_states();
+    ASSERT_TRUE(loaded);
+    EXPECT_EQ(loaded.value(), states);
 }
 
 TEST_F(JsonSettingsStoreTest, RestoresFromBackupWhenMainFileIsCorrupted) {

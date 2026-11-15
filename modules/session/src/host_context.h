@@ -85,7 +85,8 @@ struct HostContext {
     /// 新しい招待を作り、ランデブーサーバーへ登録を要求する。
     void issue_invite();
 
-    /// 招待を失効させ、すべての子機を切断し、ストリップを片付けて設定を保存する。
+    /// 招待を失効させ、すべての子機を切断し、ストリップを片付けて設定を保存する。挿入のプラグインの
+    /// 状態も取って保存する（セッションの終了時の保存、docs/adr/0042-plugin-insert.md）。
     void teardown();
 
     /// Master をミュートする。理由が変わるだけでも revision を進め、古い表示に基づく解除を
@@ -106,6 +107,16 @@ struct HostContext {
 
     /// 設定を保存する。失敗はログに残して続行する。
     void save_settings();
+
+    /// 保存するルーティング（settings.routing）の挿入のうち、読み込みの済んだものの状態を取るよう
+    /// PluginRack に依頼する。結果は store_plugin_states() で保存する。save_settings() の後に呼ぶ。
+    /// 取る挿入がなくても、保存しなくなった挿入の状態はここで消す。
+    void capture_plugin_states();
+
+    /// 取ったプラグインの状態を、保存してある状態に重ねて保存する。保存するルーティングにない挿入の
+    /// 状態と、上限より大きい状態は保存しない。変わらなければ書かない。
+    /// @param captured PluginRack::capture_states() の結果
+    void store_plugin_states(std::vector<SavedPluginState> captured);
 
     /// 申請を拒否して接続を閉じる。
     void deny(PeerHandle peer, control_protocol::ErrorCode reason);
@@ -212,6 +223,8 @@ struct HostContext {
     HostSession::Config config;
     HostSession::Ports ports;
     HostSettings settings;
+    /// 保存してある挿入のプラグインの状態。読み込むときに戻す（docs/adr/0042-plugin-insert.md）。
+    std::vector<SavedPluginState> plugin_states;
     control_protocol::SessionInfo session;
     control_protocol::MasterStrip master;
     RendezvousId rendezvous_id{};

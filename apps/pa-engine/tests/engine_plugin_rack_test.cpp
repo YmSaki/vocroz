@@ -2,7 +2,7 @@
 //
 // EnginePluginRack の単体テスト。メッセージスレッドの代わりに、積んだ処理をテストが順に
 // 実行するキューを使い、読み込みの結果の返し方と、インスタンスを破棄する時機（release() の後で、
-// グラフが処理を手放してから、メッセージスレッドで）を確かめる。
+// グラフが処理を手放してから、メッセージスレッドで）と、状態の復元と取り方を確かめる。
 
 #include "engine_plugin_rack.h"
 
@@ -62,6 +62,9 @@ protected:
                 delivered_.push_back(Delivered{insert_id, ticket, std::move(result)});
             },
             [this](const std::string& insert_id) { editor_failures_.push_back(insert_id); },
+            [this](std::vector<session::SavedPluginState> states) {
+                captured_.push_back(std::move(states));
+            },
             logger_});
     }
 
@@ -76,7 +79,7 @@ protected:
 
     std::shared_ptr<audio_core::PluginProcessor> load_eq(const std::string& id,
                                                          session::PluginLoadTicket ticket) {
-        rack_->load(id, ticket, eq());
+        rack_->load(id, ticket, eq(), {});
         run_message_thread();
         EXPECT_FALSE(delivered_.empty());
         auto result = std::move(delivered_.back().result);
@@ -89,6 +92,7 @@ protected:
     bool running_ = true;
     std::vector<Delivered> delivered_;
     std::vector<std::string> editor_failures_;
+    std::vector<std::vector<session::SavedPluginState>> captured_;
     session::FakePluginLoader* loader_ = nullptr;
     session::FakePluginEditorHost* editors_ = nullptr;
     std::unique_ptr<session::FakePluginLoader> owned_loader_ =
@@ -100,7 +104,7 @@ protected:
 };
 
 TEST_F(EnginePluginRackTest, LoadsOnTheMessageThreadAndDeliversTheProcessor) {
-    rack_->load("fx-1", 7, eq());
+    rack_->load("fx-1", 7, eq(), {});
     // 依頼しただけでは読み込まない（コントロールスレッドを止めない）。
     EXPECT_TRUE(delivered_.empty());
     run_message_thread();
@@ -116,7 +120,7 @@ TEST_F(EnginePluginRackTest, DeliversLoadFailures) {
     // 最初の読み込みでローダーを作るので、先に 1 回読み込んでから失敗させる。
     std::ignore = load_eq("fx-0", 1);
     loader_->fail_with(session::PluginLoadError::kUnsupportedLayout);
-    rack_->load("fx-1", 2, eq());
+    rack_->load("fx-1", 2, eq(), {});
     run_message_thread();
     ASSERT_FALSE(delivered_.back().result);
     EXPECT_EQ(delivered_.back().result.error(), session::PluginLoadError::kUnsupportedLayout);
@@ -182,7 +186,7 @@ TEST_F(EnginePluginRackTest, ClosesTheEditorWhenReleased) {
 
 TEST_F(EnginePluginRackTest, ReportsLoadsWhenTheMessageThreadIsStopped) {
     running_ = false;
-    rack_->load("fx-1", 1, eq());
+    rack_->load("fx-1", 1, eq(), {});
     EXPECT_TRUE(delivered_.empty());
     EXPECT_FALSE(logger_.entries().empty());
 }
@@ -217,6 +221,65 @@ TEST_F(EnginePluginRackTest, DoesNotOpenTheEditorOfAReleasedInsert) {
 
     EXPECT_EQ(editors_->open_count(), 0U);
     EXPECT_TRUE(editor_failures_.empty());
+}
+
+}  // namespace
+}  // namespace vocroz::engine
+
+namespace vocroz::engine {
+namespace {
+
+TEST_F(EnginePluginRackTest, RestoresTheSavedStateBeforeDelivering) {
+    const std::vector<std::uint8_t> saved{1, 2, 3};
+    rack_->load("fx-1", 1, eq(), saved);
+    run_message_thread();
+    ASSERT_EQ(delivered_.size(), 1U);
+    ASSERT_TRUE(delivered_[0].result);
+    // 戻した状態は、取り直すとそのまま返る。
+    rack_->capture_states({"fx-1"});
+    run_message_thread();
+    ASSERT_EQ(captured_.size(), 1U);
+    EXPECT_EQ(captured_[0], (std::vector<session::SavedPluginState>{{"fx-1", "VST3-EQ-1", saved}}));
+}
+
+TEST_F(EnginePluginRackTest, UsesTheDefaultStateWhenTheSavedStateIsRejected) {
+    std::ignore = load_eq("fx-0", 1);
+    loader_->reject_states(true);
+    const auto warnings = logger_.entries().size();
+    rack_->load("fx-1", 2, eq(), std::vector<std::uint8_t>{9});
+    run_message_thread();
+    ASSERT_EQ(delivered_.size(), 2U);
+    EXPECT_TRUE(delivered_[1].result);
+    EXPECT_GT(logger_.entries().size(), warnings);
+}
+
+TEST_F(EnginePluginRackTest, CapturesOnlyLoadedInsertsThatAccept) {
+    std::ignore = load_eq("fx-1", 1);
+    std::ignore = load_eq("fx-2", 2);
+    rack_->release("fx-2");
+    rack_->capture_states({"fx-1", "fx-2", "fx-unknown"});
+    // 依頼しただけでは取らない（コントロールスレッドを止めない）。
+    EXPECT_TRUE(captured_.empty());
+    run_message_thread();
+    ASSERT_EQ(captured_.size(), 1U);
+    ASSERT_EQ(captured_[0].size(), 1U);
+    EXPECT_EQ(captured_[0][0].insert_id, "fx-1");
+
+    // 状態を取れないプラグインは結果に入れず、結果は 1 回届ける。
+    loader_->reject_states(true);
+    rack_->capture_states({"fx-1"});
+    run_message_thread();
+    ASSERT_EQ(captured_.size(), 2U);
+    EXPECT_TRUE(captured_[1].empty());
+}
+
+TEST_F(EnginePluginRackTest, CaptureAllTakesEveryLoadedInsertOnTheSpot) {
+    std::ignore = load_eq("fx-1", 1);
+    std::ignore = load_eq("fx-2", 2);
+    const auto states = rack_->capture_all();
+    ASSERT_EQ(states.size(), 2U);
+    EXPECT_EQ(states[0].insert_id, "fx-1");
+    EXPECT_EQ(states[1].plugin_id, "VST3-EQ-1");
 }
 
 }  // namespace

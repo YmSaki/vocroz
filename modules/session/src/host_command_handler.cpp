@@ -377,7 +377,9 @@ HostCommandHandler::CommandResult HostCommandHandler::commit_routing(bool approv
     });
     ctx_.publish_routing();
     // 本番中に落ちても、次の起動で同じバスと出力の構成に戻れるよう、適用のたびに保存する。
+    // プラグインの状態も同じ時機に取る（docs/adr/0042-plugin-insert.md）。
     ctx_.save_settings();
+    ctx_.capture_plugin_states();
     return ctx_.routing.info().revision;
 }
 

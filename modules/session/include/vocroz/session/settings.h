@@ -5,6 +5,7 @@
 // 保存した値で音が出る状態に戻ることがないようにするため。
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -27,6 +28,24 @@ struct SavedRouteGain {
     control_protocol::GainDb gain_db = 0.0;
 
     friend bool operator==(const SavedRouteGain&, const SavedRouteGain&) = default;
+};
+
+/// 保存するプラグインの状態 1 つの大きさの上限（バイト）。エフェクトの状態はふつう数 KB から
+/// 数百 KB なので、壊れたプラグインが巨大な状態を返しても保存のたびに大きなファイルを書かないよう、
+/// 1 MiB で打ち切る。超えた状態は保存せず、次の起動ではプラグインの既定の状態から始める。
+inline constexpr std::size_t kMaxPluginStateBytes = std::size_t{1024} * 1024;
+
+/// 保存する挿入のプラグインの状態（docs/adr/0042-plugin-insert.md）。
+/// 保存するのは、保存するルーティング（HostSettings::routing）にある挿入のものだけ。
+struct SavedPluginState {
+    /// 挿入の entity_id。
+    std::string insert_id;
+    /// 状態を取ったプラグインの識別子。挿入のプラグインを替えたら、別のプラグインの状態は戻さない。
+    std::string plugin_id;
+    /// PluginInstance::save_state() のバイト列（プラグイン独自の形式）。
+    std::vector<std::uint8_t> state;
+
+    friend bool operator==(const SavedPluginState&, const SavedPluginState&) = default;
 };
 
 /// 親機の設定。

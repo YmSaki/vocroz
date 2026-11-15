@@ -65,6 +65,13 @@ public:
                                          latency <= cp::kMaxLatencyTargetMs
                                      ? latency
                                      : kDefaultLatencyTargetMs);
+        // 保存したルーティングの挿入を読み込むときに戻すので、ルーティングより先に読む。
+        if (auto states = ctx.ports.settings.load_plugin_states()) {
+            ctx.plugin_states = std::move(states).value();
+        } else if (states.error() != SettingsError::kNotFound) {
+            ctx.log(common::LogLevel::kWarning,
+                    "プラグインの状態を読めなかったため、挿入は既定の状態で始めます");
+        }
         ctx.restore_routing();
         ctx.restore_external_output();
         // 録る対象のバスを確かめるので、ルーティングを戻した後で戻す。録音も再生も止めたまま。
@@ -304,6 +311,10 @@ void HostSession::on_plugin_editor_failed(const std::string& insert_id) {
     // エディターを開けなくても処理は続けるので、状態ではなく一度だけの通知で知らせる。
     ctx.notice(control_protocol::NoticeSeverity::kWarning, "plugin_editor_failed",
                ctx.plugin_name(insert->plugin_id));
+}
+
+void HostSession::on_plugin_states_captured(std::vector<SavedPluginState> states) {
+    impl_->ctx.store_plugin_states(std::move(states));
 }
 
 void HostSession::on_plugin_loaded(

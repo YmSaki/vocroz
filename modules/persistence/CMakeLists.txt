@@ -6,12 +6,14 @@
 # nlohmann/json は実装の中だけで使い、公開ヘッダーには出さない。
 add_library(vocroz_persistence STATIC
   src/atomic_file.cpp
+  src/detail/base64_utils.cpp
   src/detail/time_format.cpp
   src/diagnostic_report.cpp
   src/factories.cpp
   src/json_plugin_catalog_store.cpp
   src/json_settings_store.cpp
   src/plugin_catalog_codec.cpp
+  src/plugin_state_codec.cpp
   src/rotating_file_logger.cpp
   src/secret_file_store.cpp
   src/secret_masker.cpp
@@ -39,10 +41,12 @@ vocroz_set_warnings(vocroz_persistence)
 if(VOCROZ_BUILD_TESTS)
   set(persistence_test_sources
     tests/atomic_file_test.cpp
+    tests/base64_utils_test.cpp
     tests/diagnostic_report_test.cpp
     tests/json_plugin_catalog_store_test.cpp
     tests/json_settings_store_test.cpp
     tests/plugin_catalog_codec_test.cpp
+    tests/plugin_state_codec_test.cpp
     tests/rotating_file_logger_test.cpp
     tests/secret_file_store_test.cpp
     tests/secret_masker_test.cpp
