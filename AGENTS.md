@@ -666,6 +666,11 @@ CI はビルドとテストの成否だけを検査します。構造のドリ�
 - **ラベル**: 種類（`type:`）、領域（`area:`）、状態（`status:`）、優先度（`priority:` の `high`、`mid`、`low`、`icebox`）の 4 軸で付ける。優先度は 1 つの Issue に 1 つだけ付ける。定義は `.github/labels.yml`。
 - **マイルストーン**: 実装計画のフェーズ（P0〜P6、Beta1〜6、RC1、v1.0）。定義は `.github/milestones.yml`。ラベルとマイルストーンを変更したら、Actions の「Repository setup」を手動実行して反映する。
 - **ブランチ名**: `<種類>/<短い説明>`（例: `feat/jitter-buffer`、`fix/reconnect-strip`、`refactor/move-constants`）。
+- **ブランチの起点と更新**: ブランチの履歴は「最新の `main` の上に、その PR の目的のコミットだけが載っている」状態に保つ。レビュアーが差分を PR の目的だけに絞って読めるようにし、マージ後の `main` の履歴を一直線にするため。
+    1. 新しい作業は、そのたびに最新の `origin/main` から新しいブランチを切る（`git fetch origin main && git switch -c <種類>/<短い説明> origin/main`）。マージ済みのブランチや、ほかの PR のブランチからは切らない。マージ済みのブランチに続きのコミットを積まず、続きの作業も最新の `main` から切った新しいブランチで行う。
+    2. 作業中に `main` が進んで取り込みが必要になったら、`main` をマージせず、最新の `origin/main` へリベースする（`git fetch origin main && git rebase origin/main`）。
+    3. マージの前に、ブランチが最新の `origin/main` の上にあることを確かめ、遅れていればリベースで付け替える。付け替えた後は `git push --force-with-lease` で push し、CI が成功してからマージする。
+    4. リベースで書き換えてよいのは自分が作ったブランチだけ。ほかの人のブランチを付け替える必要があるときは、作者に依頼する。
 - **コミットメッセージ**: Conventional Commits（`feat:`、`fix:`、`refactor:`、`docs:`、`test:`、`build:`、`ci:`）。本文は日本語でよい。
 - **PR**: テンプレートを埋め、`Closes #<Issue 番号>` で Issue をリンクする。CI の成功後にマージする。`main` へ直接 push しない。
 - **ドラフト PR と通常 PR**: 2 つは、レビュアーに何を求めるかで使い分ける。変更の大きさでは使い分けない。

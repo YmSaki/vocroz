@@ -148,10 +148,11 @@ VOCROZ は AGPL-3.0-only で配布します。依存するライブラリは、�
 ## 作業の流れ
 
 1. Issue を立てる（テンプレートは「機能」「不具合」「配置のずれ」の 3 種類）。
-2. `<種類>/<短い説明>` の名前でブランチを切る（例: `feat/jitter-buffer`）。
+2. 最新の `origin/main` から、`<種類>/<短い説明>` の名前でブランチを切る（例: `feat/jitter-buffer`）。マージ済みのブランチやほかの PR のブランチからは切らない。
 3. Conventional Commits 形式でコミットし、PR テンプレートを埋めて `Closes #<Issue 番号>` を書く。PR は最初にドラフト PR で作る。
-4. 作業が完了し CI が緑になったら、ドラフトを通常 PR（ready for review）に変える。
-5. レビューを経てマージする。`main` へ直接 push しない。
+4. 作業が完了し CI が緑になったら、ドラフトを通常 PR（ready for review）に変える。`main` の取り込みはマージではなく、最新の `origin/main` へのリベースで行う。
+5. マージの前に、ブランチを最新の `origin/main` へリベースで付け替え、`git push --force-with-lease` で push して CI が緑であることを確かめる。
+6. レビューを経てマージする。`main` へ直接 push しない。
 
 Issue や PR のコメントで `@claude` と書くと、Claude Code が AGENTS.md に従って作業します。
 詳しくは AGENTS.md 第 16 節を参照してください。
