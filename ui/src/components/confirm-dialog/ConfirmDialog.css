@@ -8,15 +8,36 @@
     align-items: center;
     justify-content: center;
     background: rgb(0 0 0 / 55%);
+    transition: opacity var(--duration-enter) var(--ease-out);
 }
 
 .confirm-dialog {
     width: 420px;
+    /* 子機の小さいウィンドウでもはみ出さないようにする。 */
+    max-width: calc(100vw - 32px);
     padding: 20px;
     color: var(--color-text);
     background: var(--color-panel-raised);
     border: 1px solid var(--color-border);
     border-radius: 6px;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+    transition:
+        opacity var(--duration-enter) var(--ease-out),
+        transform var(--duration-enter) var(--ease-out);
+}
+
+/* 開いたときに、背景を暗くしながら中央でわずかに拡大して現れる。
+   トリガーではなく画面に対して出るダイアログなので、拡大の基準は中央のままにする。
+   閉じるときは即座に消し、確認後の操作を待たせない。 */
+@starting-style {
+    .confirm-dialog__backdrop {
+        opacity: 0;
+    }
+
+    .confirm-dialog {
+        opacity: 0;
+        transform: scale(0.96);
+    }
 }
 
 .confirm-dialog h2 {
@@ -44,8 +65,4 @@
 .confirm-dialog__actions .confirm-dialog__danger {
     background: var(--color-mute);
     border-color: var(--color-mute);
-}
-
-.confirm-dialog__actions button:focus-visible {
-    box-shadow: 0 0 0 2px var(--color-focus);
 }

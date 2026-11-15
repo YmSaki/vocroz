@@ -19,10 +19,21 @@
 
 .client-header__title {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
     font-weight: 700;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ヘッダーのボタンは、カードの中のボタン（左上に寄せる）と違い、ヘッダーの高さの中央にそろえる。 */
+.client-header .client-button {
+    align-self: center;
+    flex-shrink: 0;
 }
 
 .client-header__state {
+    flex-shrink: 0;
     padding: 4px 10px;
     font-size: 13px;
     font-weight: 700;

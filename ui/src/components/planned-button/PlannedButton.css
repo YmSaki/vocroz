@@ -12,6 +12,8 @@
     white-space: nowrap;
 }
 
-.planned-button:hover {
-    color: var(--color-text);
+@media (hover: hover) and (pointer: fine) {
+    .planned-button:hover {
+        color: var(--color-text);
+    }
 }

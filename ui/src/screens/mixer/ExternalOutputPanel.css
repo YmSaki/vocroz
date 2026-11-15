@@ -7,6 +7,17 @@
     flex-shrink: 0;
     background: var(--color-panel);
     border-left: 1px solid var(--color-border);
+    transition:
+        opacity var(--duration-enter) var(--ease-out),
+        transform var(--duration-enter) var(--ease-out);
+}
+
+/* 右端から開くパネルなので、右からわずかに寄ってきて現れる。 */
+@starting-style {
+    .external-output-panel {
+        opacity: 0;
+        transform: translateX(var(--enter-shift));
+    }
 }
 
 .external-output-panel__header {
@@ -51,6 +62,10 @@
 
 .external-output-panel__status dd {
     margin: 0;
+    /* 送信先のアドレスやポートが変わっても桁がそろい、長いホスト名でも折り返す。 */
+    min-width: 0;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
 }
 
 .external-output-panel__state--RUNNING {

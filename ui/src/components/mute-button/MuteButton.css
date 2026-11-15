@@ -36,7 +36,3 @@
     outline: 2px dashed var(--color-focus);
     outline-offset: -4px;
 }
-
-.mute-button:focus-visible {
-    box-shadow: 0 0 0 2px var(--color-focus);
-}

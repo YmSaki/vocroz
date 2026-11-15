@@ -25,7 +25,23 @@
     --color-thumb-bottom: #9ea5b0;
     --color-thumb-border: #5c636e;
     --color-thumb-line: #20242b;
+    /* 動きの共通値。操作に対する反応は速く切れよく、ほかの画面要素の出入りも 200ms 未満に収める。
+       ease-out の強いカーブにするのは、動き始めを速くして操作への反応を遅れて見せないため。 */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --duration-press: 120ms;
+    --duration-enter: 180ms;
+    /* 押したときの縮み具合と、出てくるときのずらし幅。動きを減らす設定では 0 にする。 */
+    --press-scale: 0.97;
+    --enter-shift: 8px;
     color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* 動きを減らす設定では位置と大きさを変えず、不透明度の変化だけを残す。 */
+    :root {
+        --press-scale: 1;
+        --enter-shift: 0px;
+    }
 }
 
 * {
@@ -50,6 +66,31 @@ body {
 button:disabled {
     cursor: default;
     opacity: 0.5;
+}
+
+/* 押した瞬間にわずかに縮め、操作が受け付けられたことを指先に返す。
+   色（ミュートの点灯など）は状態そのものなので遷移させず、すぐに切り替える。 */
+button {
+    transition: transform var(--duration-press) var(--ease-out);
+}
+
+button:active:not(:disabled) {
+    transform: scale(var(--press-scale));
+}
+
+/* ホバーは、どの色のボタンでも同じように少し明るくする。
+   タッチ操作ではタップでホバーが残るので、マウスのときだけにする。 */
+@media (hover: hover) and (pointer: fine) {
+    button:hover:not(:disabled) {
+        filter: brightness(1.15);
+    }
+}
+
+/* キーボードで移動したときのフォーカスの枠を、どの操作要素でも同じ見た目にする。
+   :where で詳細度を 0 にし、各コンポーネントの枠（送信待ちの破線など）を優先させる。 */
+:where(button, select, input, [tabindex]):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-focus);
 }
 
 .screen-loading {
