@@ -149,6 +149,7 @@ void ClientCapture::flush_params() {
     if (app.device_lost.exchange(false, std::memory_order_acq_rel)) {
         stop(app);
         open(kAppAudioLane);
+        app_audio_reopened_ = app.input != nullptr;
     }
     for (Lane& lane : lanes_) {
         if (!lane.params_pending) {
@@ -163,6 +164,10 @@ void ClientCapture::flush_params() {
         // 溜まりきっていたら、次の周期で渡し直す。
         lane.params_pending = !lane.processor->set_params(params_);
     }
+}
+
+bool ClientCapture::take_app_audio_reopened() noexcept {
+    return std::exchange(app_audio_reopened_, false);
 }
 
 bool ClientCapture::take_device_lost() noexcept {

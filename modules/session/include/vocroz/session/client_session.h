@@ -101,6 +101,13 @@ public:
     /// @param devices 今ある入力デバイス
     void on_input_devices_changed(std::vector<control_protocol::InputDevice> devices);
 
+    /// キャプチャが入力デバイスを自分で開き直した（既定の再生デバイスが切り替わったアプリ音声など）。
+    /// 送信ミュートの解除中なら世代番号を進めて親機へ知らせ、再開したフレームを新しい区間として
+    /// 再生させる。ミュート中は何もしない（次の解除で世代番号が進む）。
+    /// 出演者が入力を選び直したとき（select_input）は session
+    /// が同じことをするので、呼ばなくてよい。
+    void on_capture_restarted();
+
     /// 返送を鳴らしていた出力デバイスが抜去された。出力を閉じ、ほかのデバイスへは切り替えない。
     /// 選択中の ID は残し、出演者が選び直すのを待つ。
     void on_output_device_lost();
