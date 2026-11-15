@@ -49,6 +49,10 @@ public:
         return channel_count_;
     }
 
+    [[nodiscard]] std::uint64_t length_frames() const noexcept override {
+        return length_;
+    }
+
     [[nodiscard]] common::Result<std::size_t, AudioFileError> read(
         std::span<float> interleaved) override {
         if (read_error_) {
