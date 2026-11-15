@@ -6,8 +6,10 @@
 import type {
   BusKind,
   RoutingBus,
+  RoutingCheck,
   RoutingConfig,
   RoutingInfo,
+  RoutingInsert,
   RoutingOutput,
   RoutingSend,
 } from "../../ipc/messages";
@@ -18,6 +20,7 @@ export const kRoutingIdPrefix = {
   output: "out-",
   send: "send-",
   delay: "delay-",
+  insert: "fx-",
 } as const;
 
 /** 新しい遅延ノードの遅延（ms）。フィードバックの戻りとして聞き分けやすい長さにする。 */
@@ -28,6 +31,16 @@ export const kMaxOutputFirstChannel = 62;
 
 /** メインの出力（チャンネル 0〜1）の次の、追加の出力が使える最初のチャンネル。 */
 const kFirstExtraChannel = 2;
+
+/**
+ * 編集欄の行のクラス。問題のある項目とループに含まれる項目を強調する。
+ * @param check ステージング中の構成の検証の結果。適用中の構成を出しているときは null
+ */
+export function rowClassOf(check: RoutingCheck | null, entityId: string): string {
+  if (check?.issue_entity_id === entityId) return "routing-row routing-row--issue";
+  if (check?.looped_entity_ids.includes(entityId) === true) return "routing-row routing-row--loop";
+  return "routing-row";
+}
 
 /** 画面で編集する構成。ステージング中の構成があればそれを、なければ適用中の構成を出す。 */
 export function editingConfig(routing: RoutingInfo): RoutingConfig {
@@ -60,6 +73,7 @@ function allIds(config: RoutingConfig): string[] {
     ...config.outputs.map((o) => o.entity_id),
     ...config.sends.map((s) => s.entity_id),
     ...config.delays.map((d) => d.entity_id),
+    ...config.inserts.map((i) => i.entity_id),
   ];
 }
 
@@ -112,6 +126,47 @@ export function removeNode(config: RoutingConfig, entityId: string): RoutingConf
     sends: config.sends.filter((s) => s.from !== entityId && s.to !== entityId),
     // 挿す先がなくなった挿入は、エンジンの検証で UNKNOWN_NODE になるので一緒に取り除く。
     inserts: config.inserts.filter((i) => i.target !== entityId),
+  };
+}
+
+/** 挿入を足す。挿す先の末尾（最後に処理する位置）に置く。 */
+export function addInsert(config: RoutingConfig, insert: RoutingInsert): RoutingConfig {
+  return { ...config, inserts: [...config.inserts, insert] };
+}
+
+/** 挿入を取り除く。 */
+export function removeInsert(config: RoutingConfig, entityId: string): RoutingConfig {
+  return { ...config, inserts: config.inserts.filter((i) => i.entity_id !== entityId) };
+}
+
+/**
+ * 挿入のプラグインを読み込み直す。同じ位置のまま、entity_id だけを新しくする。
+ * 失敗したプラグインの状態は分からないので、エンジンは同じ挿入を再開しない。新しい挿入として
+ * 読み込み直させるのが、失敗を解く唯一の操作になる（docs/adr/0041-plugin-editor-and-failure-notice.md）。
+ * @param newId 新しい entity_id
+ */
+export function reloadInsert(
+  config: RoutingConfig,
+  entityId: string,
+  newId: string,
+): RoutingConfig {
+  return {
+    ...config,
+    inserts: config.inserts.map((i) => (i.entity_id === entityId ? { ...i, entity_id: newId } : i)),
+  };
+}
+
+/** 挿入のプラグインを選び直す。選び直すと、エンジンは新しいプラグインを読み込む。 */
+export function updateInsertPlugin(
+  config: RoutingConfig,
+  entityId: string,
+  pluginId: string,
+): RoutingConfig {
+  return {
+    ...config,
+    inserts: config.inserts.map((i) =>
+      i.entity_id === entityId ? { ...i, plugin_id: pluginId } : i,
+    ),
   };
 }
 
