@@ -18,6 +18,7 @@ class FakeCaptureControl final : public CaptureControl {
 public:
     void select_input(const std::optional<std::string>& device_id) override {
         input_ = device_id;
+        ++select_count_;
     }
 
     void set_send_muted(bool muted, std::uint32_t epoch) override {
@@ -41,6 +42,11 @@ public:
         return input_;
     }
 
+    /// select_input() を呼ばれた回数（入力を開き直した回数）。
+    [[nodiscard]] int select_count() const noexcept {
+        return select_count_;
+    }
+
     [[nodiscard]] bool send_muted() const noexcept {
         return send_muted_;
     }
@@ -55,6 +61,7 @@ public:
 
 private:
     std::optional<std::string> input_;
+    int select_count_ = 0;
     bool send_muted_ = false;
     std::uint32_t epoch_ = 0;
     double level_db_ = 0.0;

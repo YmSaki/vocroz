@@ -233,6 +233,13 @@ public:
         const bool missing = selected_device_missing();
         const bool newly_missing = missing && !snapshot_.input_missing;
         const bool changed = missing != snapshot_.input_missing;
+        if (snapshot_.input_missing && !missing) {
+            // 選んでいたマイクが挿し直されて一覧に戻った。抜けたときにキャプチャは止まっているので、
+            // 出演者が選んだ同じデバイスを開き直す（ほかのデバイスへは切り替えない）。送信ミュートは
+            // 変えず、解除中なら select_input と同じく開き直してから送信の世代を進める。
+            ports_.capture.select_input(snapshot_.selected_input_id);
+            begin_send_segment();
+        }
         snapshot_.input_missing = missing;
         publish();
         if (newly_missing) {
