@@ -1,14 +1,15 @@
 # capture
 
-WASAPI のループバックで、子機のアプリ音声（PC で再生している伴奏など）を集めるアダプターのモジュールです。audio-core の `AudioInput` を実装します。
+WASAPI のプロセスループバックで、子機のアプリ音声（PC で再生している伴奏など）を集めるアダプターのモジュールです。audio-core の `AudioInput` を実装します。
 レイヤーはアダプターで、`audio-core` と `common` にだけ依存します（AGENTS.md 4.2）。
 子機の入力としての扱い（ストリーム ID、申告、既定で送らないこと）は [ADR-0035](../../docs/adr/0035-client-input-expansion.md) にあります。
 
 ## 責務
 
-- 既定の再生デバイス（コンソールの役割）の音を、共有モードのイベント駆動のループバックで集める
+- ほかのアプリが再生する音を、共有モードのイベント駆動のプロセスループバック（`PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE`）で集める。このプロセスとその子プロセスの音（子機の返送モニター）は集めない。返送の出力先が既定の再生デバイスでも、返送音をアプリ音声として親機へ送り返さないため
+- プロセスループバックのない Windows（Windows 10 2004 より前）では開始に失敗する。エンドポイント全体のループバックには切り替えない
 - 再生デバイスのチャンネル数とレートによらず、48kHz Float32 のステレオでコールバックに渡す（変換は OS に任せる）
-- 何も再生していない間も無音を渡し続ける（同じデバイスに無音の再生ストリームを開いておく）
+- 何も再生していない間も無音を渡し続ける（既定の再生デバイスに無音の再生ストリームを開いておく）
 - 再生デバイスの抜去と、既定の再生デバイスの切り替わりで、ストリームを止めて `AudioDeviceListener::on_device_lost()` を 1 回呼ぶ。自動では開き直さない
 - オーディオスレッドを MMCSS の「Pro Audio」に登録する（ADR-0008）
 
@@ -35,6 +36,7 @@ if (auto started = input->start(processor, listener); !started) { /* AudioDevice
 | ファイル | 役割 |
 | --- | --- |
 | `src/win/wasapi_loopback_input.{h,cpp}` | ループバックと無音の再生ストリームの寿命、オーディオスレッド、パケットの受け渡し |
+| `src/win/process_loopback_activation.{h,cpp}` | このプロセスの音を除くループバックの活性化（`ActivateAudioInterfaceAsync` と完了の通知） |
 | `src/win/default_render_watcher.{h,cpp}` | 既定の再生デバイスの切り替わりの通知（`IMMNotificationClient`） |
 | `src/win/com_utils.{h,cpp}`、`src/win/mmcss_registration.{h,cpp}` | COM と Win32 の RAII ラッパー、HRESULT の分類、MMCSS への登録 |
 
@@ -43,3 +45,4 @@ if (auto started = input->start(processor, listener); !started) { /* AudioDevice
 ## テスト
 
 WASAPI を呼ぶので、テストは Windows でだけビルドします。再生デバイスのない環境（CI のランナー）では、デバイスが要るテストをスキップします。
+`ExcludesSoundPlayedByThisProcess` は、テストのプロセスが既定の再生デバイスに鳴らした音（返送モニターの代わり）が集まらないことを確かめます。ほかのアプリが音を鳴らしていると失敗しうるので、静かな状態で実行します。

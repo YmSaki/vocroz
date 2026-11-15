@@ -76,7 +76,7 @@ public:
         network::NetworkEnvironment& environment;
         audio_core::AudioDeviceCatalog& devices;
         InputDeviceOpener& inputs;
-        InputDeviceOpener& app_audio;  ///< アプリ音声（既定の再生デバイスのループバック）を開く
+        InputDeviceOpener& app_audio;  ///< アプリ音声（このプロセスの音を除くループバック）を開く
         OutputDeviceOpener& outputs;  ///< 返送モニターの出力デバイスを開く
         session::RendezvousClient& rendezvous;  ///< 招待の解決（結果は invites に入る）
         InviteInbox& invites;
