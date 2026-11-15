@@ -71,6 +71,19 @@ protected:
         return std::nullopt;
     }
 
+    // 子機が送った T のメッセージの数。
+    template <typename T>
+    std::size_t sent_count_of() const {
+        std::size_t count = 0;
+        for (const auto& message : link_.sent()) {
+            const auto decoded = wire::decode_client_to_host(message);
+            if (decoded && std::holds_alternative<T>(decoded.value())) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
     ClientState state() {
         return session().snapshot().client_state;
     }
@@ -275,6 +288,69 @@ TEST_F(ClientSessionTest, UnmutingAdvancesTheEpochAndNotifiesTheHost) {
     ASSERT_TRUE(command(cp::SetSendMute{true}));
     ASSERT_TRUE(command(cp::SetSendMute{false}));
     EXPECT_EQ(capture_.epoch(), 2U);
+}
+
+TEST_F(ClientSessionTest, ReselectingAnInputWhileUnmutedStartsANewSegment) {
+    // 入力を「なし」にしてから戻すと、キャプチャのタイムスタンプが止まっていた分だけ遅れる。
+    // 世代番号を進めて、親機に再開後のフレームを新しい区間として再生させる。
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}, {"mic-2", "内蔵マイク"}});
+    ASSERT_TRUE(command(cp::SelectInput{"mic-1"}));
+    join_and_connect(token(1));
+    ASSERT_TRUE(command(cp::SetSendMute{false}));
+    ASSERT_EQ(capture_.epoch(), 1U);
+
+    ASSERT_TRUE(command(cp::SelectInput{std::nullopt}));
+    EXPECT_EQ(capture_.epoch(), 1U);  // 止めるだけなら区間は始めない
+    ASSERT_TRUE(command(cp::SelectInput{"mic-1"}));
+    EXPECT_FALSE(capture_.send_muted());
+    EXPECT_EQ(capture_.epoch(), 2U);
+    auto report = last_sent_of<wire::SendMuteReport>();
+    ASSERT_TRUE(report);
+    EXPECT_FALSE(report->send_muted);
+    EXPECT_EQ(report->epoch, 2U);
+
+    // 別のマイクへ変えても同じ。
+    ASSERT_TRUE(command(cp::SelectInput{"mic-2"}));
+    EXPECT_EQ(capture_.epoch(), 3U);
+    report = last_sent_of<wire::SendMuteReport>();
+    ASSERT_TRUE(report);
+    EXPECT_EQ(report->epoch, 3U);
+    EXPECT_FALSE(session().snapshot().send_muted);
+}
+
+TEST_F(ClientSessionTest, ReselectingAnInputWhileMutedKeepsTheEpochUntilUnmuted) {
+    session().on_input_devices_changed({{"mic-1", "USB マイク"}});
+    ASSERT_TRUE(command(cp::SelectInput{"mic-1"}));
+    join_and_connect(token(1));
+    ASSERT_TRUE(command(cp::SetSendMute{false}));
+    ASSERT_TRUE(command(cp::SetSendMute{true}));
+    const auto reports = sent_count_of<wire::SendMuteReport>();
+
+    ASSERT_TRUE(command(cp::SelectInput{std::nullopt}));
+    ASSERT_TRUE(command(cp::SelectInput{"mic-1"}));
+    EXPECT_TRUE(capture_.send_muted());
+    EXPECT_EQ(capture_.epoch(), 1U);
+    EXPECT_EQ(sent_count_of<wire::SendMuteReport>(), reports);  // 送らないので知らせない
+
+    // 解除で世代番号が進むので、再開後のフレームは新しい区間になる。
+    ASSERT_TRUE(command(cp::SetSendMute{false}));
+    EXPECT_EQ(capture_.epoch(), 2U);
+}
+
+TEST_F(ClientSessionTest, CaptureRestartedByItselfStartsANewSegmentOnlyWhileUnmuted) {
+    join_and_connect(token(1));
+    session().on_capture_restarted();
+    EXPECT_EQ(capture_.epoch(), 0U);  // ミュート中は何もしない
+    EXPECT_TRUE(capture_.send_muted());
+
+    ASSERT_TRUE(command(cp::SetSendMute{false}));
+    session().on_capture_restarted();
+    EXPECT_FALSE(capture_.send_muted());
+    EXPECT_EQ(capture_.epoch(), 2U);
+    const auto report = last_sent_of<wire::SendMuteReport>();
+    ASSERT_TRUE(report);
+    EXPECT_FALSE(report->send_muted);
+    EXPECT_EQ(report->epoch, 2U);
 }
 
 TEST_F(ClientSessionTest, JoiningAgainStartsSendMuted) {

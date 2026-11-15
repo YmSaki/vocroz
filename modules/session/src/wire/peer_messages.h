@@ -41,7 +41,7 @@ struct ReconnectRequest {
 /// 子機 → 親機: 送信ミュートの通知。
 struct SendMuteReport {
     bool send_muted = true;
-    /// ミュートの世代番号。解除のたびに 1 増える。
+    /// ミュートの世代番号。解除のたびと、解除中に入力を開き直すたびに 1 増える。
     std::uint32_t epoch = 0;
 
     friend bool operator==(const SendMuteReport&, const SendMuteReport&) = default;
