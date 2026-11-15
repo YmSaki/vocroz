@@ -21,7 +21,7 @@ endif()
 
 # JUCE のモジュールは、リンクしたターゲットごとにソースがコンパイルされる。複数のアダプターが
 # 別々にリンクすると同じシンボルが重複するので、使うモジュールを静的ライブラリ vocroz::juce に
-# 1 回だけコンパイルし、JUCE を使うアダプター（webui、plugin-host、device）はすべてこれをリンクする
+# 1 回だけコンパイルし、JUCE を使うアダプター（webui、plugin-host、device、media）はすべてこれをリンクする
 # （docs/adr/0020-ipc-pipe-and-webui-bridge.md、docs/adr/0034-single-juce-target.md）。
 # モジュールを足すときは、下の target_link_libraries の PRIVATE に加える。
 if(NOT TARGET vocroz_juce)
@@ -35,6 +35,8 @@ if(NOT TARGET vocroz_juce)
       juce::juce_audio_processors
       # device: MIDI デバイスの列挙、入力、抜去の検知（MidiInput）
       juce::juce_audio_devices
+      # media: 録音の書き出し（WAV、FLAC）と再生するファイルの読み込み
+      juce::juce_audio_formats
     PUBLIC juce::juce_recommended_config_flags)
   target_compile_definitions(vocroz_juce PUBLIC
     # ネットワークは network モジュールが Winsock で扱うので、JUCE の curl は使わない。

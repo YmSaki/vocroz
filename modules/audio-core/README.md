@@ -61,7 +61,8 @@ OS の API を呼ばないので、Linux の CI で単体テストと RealtimeSa
 | `vocroz/audio_core/playback_track.h` | `PlaybackTrack`（再生ノードの読み込み元。ディスク I/O スレッドが `fill()` で先読みする） | `render()` だけ呼び出し可能 |
 | `vocroz/audio_core/audio_file_error.h` | `AudioFileError` | 対象外 |
 | `vocroz/audio_core/ports/audio_file_writer.h` | `AudioFileWriter`（`media` が実装） | 対象外（ディスク I/O スレッド） |
-| `vocroz/audio_core/ports/audio_file_reader.h` | `AudioFileReader`（`media` が実装） | 対象外（ディスク I/O スレッド） |
+| `vocroz/audio_core/ports/audio_file_reader.h` | `AudioFileReader`（`media` が実装。長さは 48 kHz に換算したフレーム数） | 対象外（ディスク I/O スレッド） |
+| `vocroz/audio_core/audio_file_format.h` | 録音で書き出す形式 `AudioFileFormat`（WAV、FLAC。`docs/adr/0043-recording-and-media-player.md`） | 対象外 |
 
 ### 使い方（親機の固定ミキサー）
 
