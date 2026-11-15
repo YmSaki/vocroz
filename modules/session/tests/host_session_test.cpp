@@ -347,6 +347,27 @@ TEST_F(HostSessionTest, DropsAPendingRequestWhoseConnectionTimesOut) {
     EXPECT_TRUE(peers_.closed(7));
 }
 
+TEST_F(HostSessionTest, ClosesAConnectionThatTimesOutBeforeAnyRequest) {
+    create();
+    const auto a = connect(1, "Vo");
+    // 接続 9 は鍵交換だけを済ませ、申請を送らないまま途絶えた。
+    session().on_peer_timeout(9);
+    EXPECT_TRUE(peers_.closed(9));
+    EXPECT_TRUE(session().snapshot().pending.empty());
+    // 参加済みの接続には触れない。
+    EXPECT_FALSE(peers_.closed(1));
+    EXPECT_EQ(strip(a).connection_state, ConnectionState::kConnected);
+}
+
+TEST_F(HostSessionTest, TimeoutOfAParticipantKeepsItsConnectionForTheGracePeriod) {
+    create();
+    const auto a = connect(1, "Vo");
+    session().on_peer_timeout(1);
+    // 再接続の猶予のあいだは、同じ接続にパケットが戻れば復帰できるよう閉じない。
+    EXPECT_FALSE(peers_.closed(1));
+    EXPECT_EQ(strip(a).connection_state, ConnectionState::kReconnecting);
+}
+
 TEST_F(HostSessionTest, LimitsTheNumberOfPendingRequests) {
     create();
     for (PeerHandle peer = 1; peer <= 16; ++peer) {
