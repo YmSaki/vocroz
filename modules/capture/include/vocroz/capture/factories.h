@@ -14,7 +14,11 @@
 
 namespace vocroz::capture {
 
-/// 既定の再生デバイス（コンソールの役割）の音を、WASAPI のループバックで集める入力を作る。
+/// ほかのアプリが再生する音を、WASAPI のプロセスループバックで集める入力を作る。
+/// このプロセスとその子プロセスが再生する音（子機の返送モニターなど）は集めない。返送の出力先が
+/// 既定の再生デバイスでも、返送音をアプリ音声として親機へ送り返さないため（ADR-0035）。
+/// プロセスループバックのない Windows（Windows 10 2004 より前）では start() が失敗し、
+/// エンドポイント全体のループバックには切り替えない。
 /// コールバックには、常に 48kHz Float32 のステレオで渡す。
 /// デバイスのミックスフォーマットとの違い（レートやチャンネル数）は、OS に変換させる。
 /// 何も再生していない間も無音を渡し続け、送り側の時間を止めない（ADR-0035）。
@@ -23,7 +27,8 @@ namespace vocroz::capture {
 /// オーディオスレッドは MMCSS の「Pro Audio」に登録する（docs/adr/0008-runtime-behavior.md）。
 /// @param logger 開始の失敗と抜去の詳細の出力先。戻り値より長く生存させる
 /// @return 入力。生成そのものは失敗しない（ポートの形をそろえるため Result で返す）。
-///         既定の再生デバイスは start() で開くので、ないときは start() が kDeviceNotFound を返す
+///         既定の再生デバイス（無音の再生ストリームを開く先）は start() で開くので、
+///         ないときは start() が kDeviceNotFound を返す
 /// スレッド安全性: コントロールスレッドから呼ぶ。
 [[nodiscard]] common::Result<std::unique_ptr<audio_core::AudioInput>, audio_core::AudioDeviceError>
 make_wasapi_loopback_input(common::Logger& logger);

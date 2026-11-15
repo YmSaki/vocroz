@@ -18,6 +18,7 @@
 #include "capture_constants.h"
 #include "win/default_render_watcher.h"
 #include "win/mmcss_registration.h"
+#include "win/process_loopback_activation.h"
 
 namespace vocroz::capture::win {
 namespace {
@@ -25,11 +26,11 @@ namespace {
 using audio_core::AudioDeviceError;
 using Microsoft::WRL::ComPtr;
 
-// ループバックのストリームのフラグ。レート、サンプル形式、チャンネル数の違いを OS に変換させる。
-// SRC_DEFAULT_QUALITY は AUTOCONVERTPCM と組み合わせて、OS の標準品質のリサンプラーを使わせる。
+// ループバックのストリームのフラグ。プロセスループバックは仮想のデバイスで、要求したフォーマット
+// （48kHz Float32 のステレオ）への変換を自分で行うので、AUTOCONVERTPCM は付けない。
+// フラグは Microsoft の ApplicationLoopback のサンプルと同じにする。
 constexpr DWORD kLoopbackStreamFlags =
-    AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-    AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+    AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
 
 // 32 ビット浮動小数点のサンプルのビット数。
 constexpr WORD kFloat32Bits = 32;
@@ -201,15 +202,17 @@ void WasapiLoopbackInput::run(audio_core::AudioCaptureCallback& callback,
 common::Result<void, AudioDeviceError> WasapiLoopbackInput::open(IMMDevice& device,
                                                                  HANDLE audio_event,
                                                                  Streams& streams) {
-    HRESULT hr = activate(device, streams.capture);
+    // 子機は返送モニターを同じプロセスで再生する。既定の再生デバイスで返送を聞いても返送音を
+    // アプリ音声として送り返さないよう、このプロセスの音を除いて集める。除けない Windows では、
+    // エンドポイント全体のループバックに切り替えず、開けなかったとして返す（AGENTS.md 1.2）。
+    HRESULT hr = activate_loopback_excluding_this_process(streams.capture);
     if (FAILED(hr)) {
-        log_hresult(logger_, common::LogLevel::kError, "activate audio client", hr);
+        log_hresult(logger_, common::LogLevel::kError, "activate process loopback", hr);
         return common::make_unexpected(to_device_error(hr));
     }
     const WAVEFORMATEXTENSIBLE format = make_loopback_format();
-    // バッファ長 0 は、イベント駆動の共有モードでエンジンの既定の周期を使う指定。
-    hr = streams.capture->Initialize(AUDCLNT_SHAREMODE_SHARED, kLoopbackStreamFlags, 0, 0,
-                                     &format.Format, nullptr);
+    hr = streams.capture->Initialize(AUDCLNT_SHAREMODE_SHARED, kLoopbackStreamFlags,
+                                     kLoopbackBufferDuration, 0, &format.Format, nullptr);
     if (FAILED(hr)) {
         log_hresult(logger_, common::LogLevel::kError, "initialize loopback stream", hr);
         return common::make_unexpected(to_device_error(hr));
