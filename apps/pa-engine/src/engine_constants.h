@@ -42,7 +42,8 @@ inline constexpr std::size_t kMixerMeterCapacity = 256;
 inline constexpr std::size_t kCrashDumpsKeptAtStartup = 4;
 
 /// 同時に持つ子機との接続の上限。ストリップの上限（64 本）と同じにする。張り直しの途中の古い接続も
-/// 数えるので、上限に達したら新しい鍵交換を受け付けない（古い接続が閉じれば空く）。
+/// 数えるので、上限に達したら新しい鍵交換を受け付けない（古い接続が閉じれば空く）。閉じている途中の
+/// 接続と、同じ送信元が張り直した承認前の接続（置き換えて閉じる）は数えない。
 inline constexpr std::size_t kMaxPeerConnections = 64;
 
 /// コントロールスレッドからネットワーク受信スレッドへの指示（接続の追加、承認、送信ミュート、
