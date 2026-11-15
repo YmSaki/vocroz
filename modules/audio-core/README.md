@@ -124,7 +124,7 @@ if (auto valid = mixer.validate_graph(graph); !valid) { /* GraphError を UI へ
 ```cpp
 using namespace vocroz::audio_core;
 
-// チャンネルへの挿入: ソース → プラグイン → ストリップ。バスへの挿入: バス → プラグイン → 後段。
+// チャンネルへの挿入: ソース → プラグイン → ストリップ。バスへの挿入: 前段 → プラグイン → バス → 後段。
 std::shared_ptr<PluginProcessor> eq = ...;  // plugin-host が準備済みのものを返す
 GraphDescription graph;
 graph.nodes = {NodeSpec::make_source(NodeId{1}, source),
