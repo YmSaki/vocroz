@@ -30,6 +30,10 @@ namespace cp = control_protocol;
 // ゲインランプ（10ms = 480 サンプル）を確実に越えるフレーム数。
 constexpr std::size_t kAfterRamp = 1024;
 constexpr float kInput = 0.1F;
+// 入力ディレイ（500 ms = 24000 サンプル）を満たし、さらに 1 回ぶん余裕を見るコールバックの数。
+constexpr double kInputDelayMs = 500.0;
+constexpr std::size_t kInputDelaySamples = 24000;
+constexpr std::size_t kCallbacksToFillDelay = kInputDelaySamples / kAfterRamp + 2;
 
 // 入力に関わらず一定の値を出すプラグイン。無音の入力から音を作るプラグイン（発振するディレイ、
 // ノイズを足すエフェクトなど）の代わり。
@@ -77,6 +81,36 @@ protected:
         mixer_.render(ac::InterleavedBuffer{out, 2});
         engine_.collect();
         return out[out.size() - 2];
+    }
+
+    // callbacks 回のコールバックぶんを描画し、L が無音だったフレームの数を返す。
+    std::size_t count_silent_left_frames(std::size_t callbacks) {
+        std::size_t silent = 0;
+        for (std::size_t c = 0; c < callbacks; ++c) {
+            std::vector<float> out(kAfterRamp * 2, 1.0F);
+            mixer_.render(ac::InterleavedBuffer{out, 2});
+            engine_.collect();
+            for (std::size_t i = 0; i < out.size(); i += 2) {
+                silent += out[i] == 0.0F ? 1 : 0;
+            }
+        }
+        return silent;
+    }
+
+    // ch-1 に入力ディレイを付けて音を流し、ディレイが満たされて音が安定するまで描画する。
+    void play_delayed_strip(const cp::RoutingConfig& config) {
+        add_audible_strip("ch-1");
+        ASSERT_TRUE(engine_.apply_routing(config, false, {}));
+        for (std::size_t i = 0; i < kCallbacksToFillDelay; ++i) {
+            (void)render_last_left();
+        }
+        ASSERT_NEAR(render_last_left(), kInput, 1e-5F);
+    }
+
+    static cp::RoutingConfig delayed_ch1(double delay_ms) {
+        cp::RoutingConfig config;
+        config.input_delays.push_back({"ch-1", delay_ms});
+        return config;
     }
 
     std::shared_ptr<ac::AudioSource> constant_source() {
@@ -369,6 +403,50 @@ TEST_F(EngineMixerTest, AttachReturnFailsForUnknownStripOrNullSink) {
     EXPECT_FALSE(engine_.attach_return(1, {"ch-unknown"}, std::make_shared<ac::FakeAudioSink>()));
     EXPECT_FALSE(engine_.attach_return(1, {}, std::make_shared<ac::FakeAudioSink>()));
     EXPECT_FALSE(engine_.attach_return(1, {"ch-1"}, nullptr));
+}
+
+// グラフを組み立て直す操作の後も、入力ディレイで遅らせていた音が途切れないこと。
+// 操作の後、ディレイの長さより長く描画して、L の無音のフレームを数える。
+TEST_F(EngineMixerTest, AddingAnotherStripKeepsExistingInputDelayHistory) {
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    engine_.add_channel("ch-2");
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, AttachingSourceToAnotherStripKeepsExistingInputDelayHistory) {
+    engine_.add_channel("ch-2");
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    ASSERT_TRUE(engine_.attach_source("ch-2", constant_source()));
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, RemovingAnotherStripKeepsExistingInputDelayHistory) {
+    engine_.add_channel("ch-2");
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    engine_.remove_channel("ch-2");
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, AttachingReturnKeepsExistingInputDelayHistory) {
+    engine_.add_channel("ch-2");
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    ASSERT_TRUE(engine_.attach_return(1, {"ch-2"}, std::make_shared<ac::FakeAudioSink>()));
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, UnrelatedRoutingEditKeepsExistingInputDelayHistory) {
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    cp::RoutingConfig edited = delayed_ch1(kInputDelayMs);
+    edited.buses.push_back(cp::RoutingBus{"bus-1", "A"});
+    ASSERT_TRUE(engine_.apply_routing(edited, false, {}));
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), 0U);
+}
+
+TEST_F(EngineMixerTest, ChangingTheInputDelayRestartsItFromSilence) {
+    play_delayed_strip(delayed_ch1(kInputDelayMs));
+    // オペレーターが長さを変えたら、前の長さで遅らせていた音は出さず、新しい長さぶん無音にする。
+    ASSERT_TRUE(engine_.apply_routing(delayed_ch1(kInputDelayMs / 2), false, {}));
+    EXPECT_EQ(count_silent_left_frames(kCallbacksToFillDelay), kInputDelaySamples / 2);
 }
 
 }  // namespace
