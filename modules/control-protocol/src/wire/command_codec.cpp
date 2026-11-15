@@ -137,15 +137,24 @@ void read_fields(ObjectReader& r, SetExternalOutputRunning& command) {
     command.running = r.boolean("running");
 }
 
+void write_fields(nlohmann::json& out, const OpenPluginEditor& command) {
+    out["insert_id"] = command.insert_id;
+}
+void read_fields(ObjectReader& r, OpenPluginEditor& command) {
+    command.insert_id = r.text("insert_id", kIdentifierRule);
+}
+
 void write_fields(nlohmann::json& out, const SetGain& command) {
     out["entity_id"] = command.entity_id;
     out["seq"] = command.seq;
     out["gain_db"] = nullable(command.gain_db);
+    out["origin"] = command.origin;
 }
 void read_fields(ObjectReader& r, SetGain& command) {
     command.entity_id = r.text("entity_id", kIdentifierRule);
     command.seq = r.counter("seq");
     command.gain_db = r.gain("gain_db");
+    command.origin = r.text("origin", kIdentifierRule);
 }
 
 void write_fields(nlohmann::json& out, const DiscreteCommand& command) {

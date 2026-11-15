@@ -19,6 +19,7 @@
 - SRTP 外部出力: 設定（宛先、送り出すバス、プロファイル、ペイロードタイプ、暗号スイート）と鍵の検証と保存、開始と停止と接続テストの状態（`src/external_output_book`）。起動時は停止から始め、鍵と宛先がなければ始めない。送り出すバスがルーティングの適用でなくなったら止める
 - プラグインの一覧: スキャンの記録のキャッシュ、読み込み不可のファイルの記録、スキャンの進行（`PluginCatalog`、`docs/adr/0032-plugin-catalog-and-loader.md`）
 - プラグインの挿入: ルーティングの構成の挿入の検証、挿入ごとの読み込みの状態（読み込み中、使える、失敗）と、読み込みと破棄の依頼、処理中の失敗の検知（`src/plugin_insert_book`、`docs/adr/0042-plugin-insert.md`）
+- プラグインの一覧とスキャンの状態: 一覧の世代、ページ分け、上限を超える項目の除外、読み込み不可のファイル、再スキャンとエディターを開くコマンド（`src/plugin_status_book`、`docs/adr/0042-plugin-insert.md`）
 
 ワイヤーフォーマットの外枠と暗号化（`transport`）、DSP（`audio-core`）、ソケットと HTTP（`network`）、設定ファイルの形式（`persistence`）は持ちません。
 
@@ -53,6 +54,7 @@
 | `vocroz/session/ports/plugin_loader.h` | `PluginLoader`、`PluginInstance`（プラグインの読み込みと状態の保存と復元） |
 | `vocroz/session/ports/plugin_editor_host.h` | `PluginEditorHost`、`PluginEditorError`（プラグインのエディターのウィンドウ。`docs/adr/0041-plugin-editor-and-failure-notice.md`） |
 | `vocroz/session/ports/plugin_rack.h` | `PluginRack`、`PluginLoadTicket`（挿入のプラグインの読み込みと破棄の依頼。結果は `HostSession::on_plugin_loaded()` に届く。`docs/adr/0042-plugin-insert.md`） |
+| `vocroz/session/ports/plugin_scan_control.h` | `PluginScanControl`（プラグインの再スキャンの依頼。`docs/adr/0042-plugin-insert.md`） |
 
 テストでは `vocroz::session_fakes` をリンクすると、`fakes/fake_<役割名>.h` で各ポートのフェイクを使えます。
 

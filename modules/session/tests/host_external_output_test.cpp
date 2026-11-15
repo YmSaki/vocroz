@@ -22,6 +22,7 @@
 #include "fakes/fake_peer_link.h"
 #include "fakes/fake_playout_control.h"
 #include "fakes/fake_plugin_rack.h"
+#include "fakes/fake_plugin_scan_control.h"
 #include "fakes/fake_rendezvous_client.h"
 #include "fakes/fake_secret_store.h"
 #include "fakes/fake_secure_random.h"
@@ -63,10 +64,11 @@ class HostExternalOutputTest : public ::testing::Test {
 protected:
     HostSession& session() {
         if (!session_) {
-            session_.emplace(HostSession::Config{},
-                             HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_,
-                                                settings_, random_, clock_, logger_, playout_,
-                                                external_output_, secrets_, plugins_});
+            session_.emplace(
+                HostSession::Config{},
+                HostSession::Ports{ui_, mixer_, outputs_, peers_, rendezvous_, settings_, random_,
+                                   clock_, logger_, playout_, external_output_, secrets_, plugins_,
+                                   plugin_scan_});
             session_->start();
         }
         return *session_;
@@ -117,6 +119,7 @@ protected:
     FakeExternalOutputControl external_output_;
     FakeSecretStore secrets_;
     FakePluginRack plugins_;
+    FakePluginScanControl plugin_scan_;
     common::FakeClock clock_;
     common::FakeLogger logger_;
     std::optional<HostSession> session_;

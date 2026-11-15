@@ -31,7 +31,11 @@ nlohmann::json valid_mute() {
 
 /// 正しい set_gain。
 nlohmann::json valid_gain() {
-    return {{"type", "set_gain"}, {"entity_id", "ch1"}, {"seq", 1}, {"gain_db", 0.0}};
+    return {{"type", "set_gain"},
+            {"entity_id", "ch1"},
+            {"seq", 1},
+            {"gain_db", 0.0},
+            {"origin", "m-1"}};
 }
 
 DecodeError ui_error(const std::string& text) {
@@ -63,7 +67,16 @@ TEST(JsonCodecTest, DecodesNullGainAsNegativeInfinity) {
     message["gain_db"] = nullptr;
     const auto result = decode_ui_to_engine(message.dump());
     ASSERT_TRUE(result);
-    EXPECT_EQ(std::get<SetGain>(result.value()), (SetGain{"ch1", 1, std::nullopt}));
+    EXPECT_EQ(std::get<SetGain>(result.value()), (SetGain{"ch1", 1, std::nullopt, "m-1"}));
+}
+
+TEST(JsonCodecTest, RejectsGainWithoutOrigin) {
+    // origin がなければ、開き直した画面の seq を前の画面と区別できないので受け付けない。
+    auto message = valid_gain();
+    message.erase("origin");
+    EXPECT_EQ(ui_error(message).field, "origin");
+    message["origin"] = "";
+    EXPECT_EQ(ui_error(message).field, "origin");
 }
 
 TEST(JsonCodecTest, RejectsMalformedJson) {
@@ -196,7 +209,8 @@ TEST(JsonCodecTest, RejectsGainOutOfRange) {
         EXPECT_EQ(ui_error(message), (DecodeError{DecodeErrorCode::kOutOfRange, "gain_db"})) << db;
     }
     // 1e400 は double で表せず、パーサーが無限大として読むので、範囲外として拒否する。
-    const std::string overflow = R"({"type":"set_gain","entity_id":"ch1","seq":1,"gain_db":1e400})";
+    const std::string overflow =
+        R"({"type":"set_gain","entity_id":"ch1","seq":1,"gain_db":1e400,"origin":"m-1"})";
     const auto result = decode_ui_to_engine(overflow);
     EXPECT_FALSE(result);
 }
@@ -450,7 +464,8 @@ TEST(JsonCodecTest, RejectsInvalidRoutingCheck) {
 }
 
 TEST(JsonCodecTest, EncodesNegativeInfinityAndNonFiniteValuesAsNull) {
-    const auto gain = nlohmann::json::parse(encode_ui_to_engine(SetGain{"ch1", 2, std::nullopt}));
+    const auto gain =
+        nlohmann::json::parse(encode_ui_to_engine(SetGain{"ch1", 2, std::nullopt, "m-1"}));
     EXPECT_TRUE(gain.at("gain_db").is_null());
 
     const Meters meters{{{"ch1", std::numeric_limits<double>::quiet_NaN()},
@@ -521,6 +536,37 @@ TEST(JsonCodecTest, RejectsUnknownSrtpSuite) {
                                       {"payload_type", 111},
                                       {"crypto_suite", "NULL_HMAC_SHA1_80"}}}};
     EXPECT_EQ(ui_error(message).field, "config.crypto_suite");
+}
+
+TEST(JsonCodecTest, RejectsPluginCatalogPageOverTheEntryLimit) {
+    const nlohmann::json entry = {{"plugin_id", "VST3-EQ"},
+                                  {"name", "EQ"},
+                                  {"vendor", ""},
+                                  {"version", ""},
+                                  {"is_instrument", false}};
+    const auto page = [&](std::size_t count) {
+        return nlohmann::json{
+            {"type", "plugin_catalog_page"},
+            {"generation", 1},
+            {"offset", 0},
+            {"plugins", nlohmann::json(std::vector<nlohmann::json>(count, entry))}};
+    };
+    EXPECT_TRUE(decode_engine_to_ui(page(kMaxPluginCatalogPageEntries).dump()).has_value());
+    EXPECT_EQ(engine_error(page(kMaxPluginCatalogPageEntries + 1)),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "plugins"}));
+}
+
+TEST(JsonCodecTest, RejectsPluginIdOverTheLimit) {
+    const nlohmann::json message = {{"type", "plugin_catalog_page"},
+                                    {"generation", 1},
+                                    {"offset", 0},
+                                    {"plugins",
+                                     {{{"plugin_id", std::string(kMaxPluginIdBytes + 1, 'a')},
+                                       {"name", "EQ"},
+                                       {"vendor", ""},
+                                       {"version", ""},
+                                       {"is_instrument", false}}}}};
+    EXPECT_EQ(engine_error(message).code, DecodeErrorCode::kOutOfRange);
 }
 
 TEST(JsonCodecTest, RejectsMalformedLinkStats) {

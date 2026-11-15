@@ -54,14 +54,29 @@ protected:
         return published_;
     }
 
-    PluginScanWorker::Publish publish() {
-        return [this](std::vector<session::PluginDescription> plugins) {
-            {
-                const std::lock_guard lock{mutex_};
-                published_.push_back(std::move(plugins));
-            }
-            published_cv_.notify_all();
-        };
+    std::vector<std::vector<session::PluginScanRecord>> blocked() {
+        const std::lock_guard lock{mutex_};
+        return blocked_;
+    }
+
+    int started() {
+        const std::lock_guard lock{mutex_};
+        return started_;
+    }
+
+    PluginScanWorker::Listener publish() {
+        return {[this] {
+                    const std::lock_guard lock{mutex_};
+                    ++started_;
+                },
+                [this](PluginScanWorker::Catalog catalog) {
+                    {
+                        const std::lock_guard lock{mutex_};
+                        published_.push_back(std::move(catalog.plugins));
+                        blocked_.push_back(std::move(catalog.blocked));
+                    }
+                    published_cv_.notify_all();
+                }};
     }
 
     session::FakePluginScanner scanner_;
@@ -70,6 +85,8 @@ protected:
     std::mutex mutex_;
     std::condition_variable published_cv_;
     std::vector<std::vector<session::PluginDescription>> published_;
+    std::vector<std::vector<session::PluginScanRecord>> blocked_;
+    int started_ = 0;
 };
 
 TEST_F(PluginScanWorkerTest, LoadSavedReturnsThePluginsOfTheSavedRecords) {
@@ -78,10 +95,11 @@ TEST_F(PluginScanWorkerTest, LoadSavedReturnsThePluginsOfTheSavedRecords) {
                          {plugin("EQ", "C:/VST3/eq.vst3")}}});
     PluginScanWorker worker{scanner_, store_, publish(), logger_};
 
-    const auto plugins = worker.load_saved();
+    const auto catalog = worker.load_saved();
 
-    ASSERT_EQ(plugins.size(), 1U);
-    EXPECT_EQ(plugins[0].identifier, "VST3-EQ");
+    ASSERT_EQ(catalog.plugins.size(), 1U);
+    EXPECT_EQ(catalog.plugins[0].identifier, "VST3-EQ");
+    EXPECT_TRUE(catalog.blocked.empty());
     // 読むだけで、スキャンはしない。
     EXPECT_TRUE(scanner_.scanned().empty());
 }
@@ -89,7 +107,9 @@ TEST_F(PluginScanWorkerTest, LoadSavedReturnsThePluginsOfTheSavedRecords) {
 TEST_F(PluginScanWorkerTest, LoadSavedReturnsNothingWithoutRecords) {
     PluginScanWorker worker{scanner_, store_, publish(), logger_};
 
-    EXPECT_TRUE(worker.load_saved().empty());
+    const auto catalog = worker.load_saved();
+    EXPECT_TRUE(catalog.plugins.empty());
+    EXPECT_TRUE(catalog.blocked.empty());
 }
 
 TEST_F(PluginScanWorkerTest, PublishesThePluginsWhenTheFirstScanFinishes) {
@@ -104,6 +124,7 @@ TEST_F(PluginScanWorkerTest, PublishesThePluginsWhenTheFirstScanFinishes) {
     ASSERT_EQ(lists.size(), 1U);
     ASSERT_EQ(lists[0].size(), 1U);
     EXPECT_EQ(lists[0][0].identifier, "VST3-EQ");
+    EXPECT_EQ(started(), 1);
     // 済んだスキャンの記録を保存する。
     EXPECT_EQ(store_.save_count(), 1);
 }
@@ -152,6 +173,22 @@ TEST_F(PluginScanWorkerTest, StopsTheScanAndLogsWhenTheHelperCannotStart) {
     EXPECT_TRUE(std::any_of(entries.begin(), entries.end(), [](const auto& entry) {
         return entry.level == common::LogLevel::kError;
     }));
+}
+
+TEST_F(PluginScanWorkerTest, ReportsFilesThatCrashedTheScan) {
+    scanner_.fail("C:/VST3/eq.vst3", session::PluginScanFailure::kCrashed);
+    PluginScanWorker worker{scanner_, store_, publish(), logger_};
+    static_cast<void>(worker.load_saved());
+
+    worker.start();
+
+    ASSERT_TRUE(wait_for_publishes(1));
+    worker.stop();
+    EXPECT_TRUE(published()[0].empty());
+    const auto files = blocked();
+    ASSERT_EQ(files[0].size(), 1U);
+    EXPECT_EQ(files[0][0].file.path, "C:/VST3/eq.vst3");
+    EXPECT_EQ(files[0][0].status, session::PluginScanStatus::kCrashed);
 }
 
 TEST_F(PluginScanWorkerTest, StopWithoutStartDoesNothing) {

@@ -97,6 +97,31 @@ void read_fields(ObjectReader& r, ExternalOutputUpdated& event) {
     event.external_output = r.nested<ExternalOutput>("external_output", read_external_output);
 }
 
+void write_fields(nlohmann::json& out, const PluginsUpdated& event) {
+    out["plugins"] = write_json(event.plugins);
+}
+void read_fields(ObjectReader& r, PluginsUpdated& event) {
+    event.plugins = r.nested<PluginsInfo>("plugins", read_plugins_info);
+}
+
+void write_fields(nlohmann::json& out, const PluginCatalogPage& event) {
+    out["generation"] = event.generation;
+    out["offset"] = event.offset;
+    auto plugins = nlohmann::json::array();
+    for (const auto& entry : event.plugins) {
+        plugins.push_back(write_json(entry));
+    }
+    out["plugins"] = std::move(plugins);
+}
+void read_fields(ObjectReader& r, PluginCatalogPage& event) {
+    event.generation = r.counter("generation");
+    event.offset = r.counter("offset");
+    event.plugins = r.list<PluginEntry>("plugins", read_plugin_entry);
+    if (event.plugins.size() > kMaxPluginCatalogPageEntries) {
+        r.fail(DecodeErrorCode::kOutOfRange, "plugins");
+    }
+}
+
 void write_fields(nlohmann::json& out, const Ack& event) {
     out["request_id"] = event.request_id;
     out["applied_revision"] = event.applied_revision;
@@ -119,11 +144,13 @@ void write_fields(nlohmann::json& out, const GainAck& event) {
     out["entity_id"] = event.entity_id;
     out["seq"] = event.seq;
     out["applied_revision"] = event.applied_revision;
+    out["origin"] = event.origin;
 }
 void read_fields(ObjectReader& r, GainAck& event) {
     event.entity_id = r.text("entity_id", kIdentifierRule);
     event.seq = r.counter("seq");
     event.applied_revision = r.counter("applied_revision");
+    event.origin = r.text("origin", kIdentifierRule);
 }
 
 void write_fields(nlohmann::json& out, const Meters& event) {

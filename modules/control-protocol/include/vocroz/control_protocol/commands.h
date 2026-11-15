@@ -4,7 +4,8 @@
 //
 // 離散コマンド（ミュート、承認など）は request_id、entity_id、expected_revision を持ち、
 // エンジンは適用したら Ack、拒否したら Reject を返す。重複した request_id は無視される。
-// 連続値（フェーダー、送信レベル）は SetGain で送り、entity ごとのシーケンス番号で後勝ちにする。
+// 連続値（フェーダー、送信レベル）は SetGain で送り、送り元の UI と entity ごとのシーケンス番号で
+// 後勝ちにする。
 // SetGain は revision を進めず、expected_revision による競合の検出の対象外とする。
 #pragma once
 
@@ -181,12 +182,31 @@ struct TestExternalOutput {
     friend bool operator==(const TestExternalOutput&, const TestExternalOutput&) = default;
 };
 
+/// プラグインをスキャンし直す（親機）。対象は "plugins"。
+/// スキャン中なら、今のスキャンが済んでからもう一度スキャンする。変更のないファイルは
+/// スキャンしない（docs/adr/0032-plugin-catalog-and-loader.md）。
+struct RescanPlugins {
+    friend bool operator==(const RescanPlugins&, const RescanPlugins&) = default;
+};
+
+/// 挿入のプラグインのエディターを開く（親機）。対象は "plugins"。
+/// 開いていれば前面に出す。挿入がなければ NOT_FOUND、読み込みが済んでいなければ（読み込み中か
+/// 失敗）INVALID_STATE で拒否する。ウィンドウを開けなかったことは、後で通知
+/// （plugin_editor_failed）で知らせる（docs/adr/0041-plugin-editor-and-failure-notice.md）。
+struct OpenPluginEditor {
+    /// 適用中のルーティングの挿入の entity_id。
+    std::string insert_id;
+    friend bool operator==(const OpenPluginEditor&, const OpenPluginEditor&) = default;
+};
+
 /// 離散コマンドの種類ごとの本体。
-using DiscreteCommandBody = std::variant<
-    CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant, RejectParticipant,
-    RemoveStrip, Join, Leave, SelectInput, SetSendMute, StageRouting, CommitRouting, DiscardRouting,
-    SetRouteMute, SelectOutput, SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget,
-    SetExternalOutputConfig, SetExternalOutputKey, SetExternalOutputRunning, TestExternalOutput>;
+using DiscreteCommandBody =
+    std::variant<CreateSession, EndSession, SetChannelMute, SetMasterMute, ApproveParticipant,
+                 RejectParticipant, RemoveStrip, Join, Leave, SelectInput, SetSendMute,
+                 StageRouting, CommitRouting, DiscardRouting, SetRouteMute, SelectOutput,
+                 SetReturnMute, SetInputChannels, SetAppAudio, SetLatencyTarget,
+                 SetExternalOutputConfig, SetExternalOutputKey, SetExternalOutputRunning,
+                 TestExternalOutput, RescanPlugins, OpenPluginEditor>;
 
 /// 離散コマンド。
 struct DiscreteCommand {
@@ -206,9 +226,14 @@ struct DiscreteCommand {
 /// で送る。 エンジンは受け取るたびに 5〜20 ms のゲインランプで適用し、GainAck を返す。
 struct SetGain {
     std::string entity_id;
-    /// entity ごとのシーケンス番号。エンジンは適用済みより小さい番号を捨てる。
+    /// 送り元の UI の entity ごとのシーケンス番号。エンジンは、同じ送り元から届いた適用済みより
+    /// 小さい番号を捨てる。
     Sequence seq = 0;
     GainDb gain_db;
+    /// 送り元の UI のインスタンスの ID。UI は画面を作るたびに新しい値を振り、seq を 1
+    /// から数え直す。 開き直した画面の seq を、前の画面の seq と比べて捨てないため
+    /// （docs/adr/0044-ui-instance-namespace.md）。
+    std::string origin;
 
     friend bool operator==(const SetGain&, const SetGain&) = default;
 };

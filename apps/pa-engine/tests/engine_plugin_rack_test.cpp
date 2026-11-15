@@ -61,6 +61,7 @@ protected:
                    EnginePluginRack::LoadResult result) {
                 delivered_.push_back(Delivered{insert_id, ticket, std::move(result)});
             },
+            [this](const std::string& insert_id) { editor_failures_.push_back(insert_id); },
             logger_});
     }
 
@@ -87,6 +88,7 @@ protected:
     std::deque<EnginePluginRack::Task> tasks_;
     bool running_ = true;
     std::vector<Delivered> delivered_;
+    std::vector<std::string> editor_failures_;
     session::FakePluginLoader* loader_ = nullptr;
     session::FakePluginEditorHost* editors_ = nullptr;
     std::unique_ptr<session::FakePluginLoader> owned_loader_ =
@@ -183,6 +185,38 @@ TEST_F(EnginePluginRackTest, ReportsLoadsWhenTheMessageThreadIsStopped) {
     rack_->load("fx-1", 1, eq());
     EXPECT_TRUE(delivered_.empty());
     EXPECT_FALSE(logger_.entries().empty());
+}
+
+TEST_F(EnginePluginRackTest, OpensTheEditorOfALoadedInsert) {
+    auto processor = load_eq("fx-1", 1);
+
+    rack_->open_editor("fx-1", "EQ");
+    run_message_thread();
+
+    EXPECT_EQ(editors_->open_count(), 1U);
+    EXPECT_TRUE(editor_failures_.empty());
+}
+
+TEST_F(EnginePluginRackTest, ReportsAnEditorThatCannotOpen) {
+    auto processor = load_eq("fx-1", 1);
+    editors_->fail_with(session::PluginEditorError::kOpenFailed);
+
+    rack_->open_editor("fx-1", "EQ");
+    run_message_thread();
+
+    EXPECT_EQ(editors_->open_count(), 0U);
+    EXPECT_EQ(editor_failures_, std::vector<std::string>{"fx-1"});
+}
+
+TEST_F(EnginePluginRackTest, DoesNotOpenTheEditorOfAReleasedInsert) {
+    auto processor = load_eq("fx-1", 1);
+
+    rack_->release("fx-1");
+    rack_->open_editor("fx-1", "EQ");
+    run_message_thread();
+
+    EXPECT_EQ(editors_->open_count(), 0U);
+    EXPECT_TRUE(editor_failures_.empty());
 }
 
 }  // namespace

@@ -3,6 +3,8 @@
 // 子機の送信側のオーディオスレッドの処理（CaptureProcessor）のテスト。初期ミュートでは何も送らない
 // こと、解除するとミュートの世代番号つきで送ること、ミュートのランプの後は送らないこと、
 // 入力のピークを送信ミュート中も測ることを確かめる。
+// 入力を止めてから開き直したときに、新しい世代番号で親機の再生（PlayoutStream）が戻ることも、
+// 暗号化、Opus、ジッターバッファを通して確かめる。
 
 #include "capture_processor.h"
 
@@ -12,8 +14,10 @@
 
 #include <gtest/gtest.h>
 
+#include "vocroz/transport/media_frame.h"
 #include "vocroz/transport/media_payload.h"
 #include "vocroz/transport/opus_frame_decoder.h"
+#include "vocroz/transport/playout_stream.h"
 
 #include "fakes/fake_datagram_socket.h"
 #include "secure_pair.h"
@@ -202,6 +206,78 @@ TEST_F(CaptureProcessorTest, RestartAppliesLatestParamsEvenWhenQueueWasFull) {
     processor_.restart({.muted = true, .mute_epoch = 7, .gain = 1.0F});
     capture_frames(4);
     EXPECT_TRUE(socket_->datagrams.empty());
+}
+
+// 子機の CaptureProcessor から親機の PlayoutStream までを、5 ms ごとの周期で動かす。
+class InputRestartTest : public CaptureProcessorTest {
+protected:
+    // 1 周期分を進める。キャプチャしているなら 1 フレームを送って親機へ届け、親機は 1 フレーム分を
+    // 再生する。
+    void step(bool capturing) {
+        if (capturing) {
+            capture_frames(1);
+            for (const auto& m : sent_media()) {
+                const auto frame =
+                    transport::make_media_frame(m.timestamp, m.mute_epoch, m.opus_payload);
+                ASSERT_TRUE(frame);
+                ASSERT_TRUE(playout_->enqueue(frame.value()));
+            }
+        }
+        std::vector<float> out(kFrame);
+        playout_->render(out);
+    }
+
+    void run(std::size_t frames, bool capturing) {
+        for (std::size_t i = 0; i < frames; ++i) {
+            step(capturing);
+        }
+    }
+
+    std::unique_ptr<transport::PlayoutStream> playout_ =
+        transport::PlayoutStream::create({}).value();
+};
+
+TEST_F(InputRestartTest, ReopeningTheInputWhileUnmutedRestoresPlayoutWithANewEpoch) {
+    ASSERT_TRUE(processor_.set_params({.muted = false, .mute_epoch = 1, .gain = 1.0F}));
+    run(20, true);
+    ASSERT_TRUE(playout_->stats().playing);
+
+    // 入力を「なし」にして 1 秒。子機のタイムスタンプは止まり、親機の再生の下限は進む。
+    run(200, false);
+    EXPECT_FALSE(playout_->stats().playing);
+
+    // 開き直すときは今の世代のまま始め、session が新しい区間の世代番号を後から渡す。
+    processor_.restart({.muted = false, .mute_epoch = 1, .gain = 1.0F});
+    ASSERT_TRUE(processor_.set_params({.muted = false, .mute_epoch = 2, .gain = 1.0F}));
+    const auto before = playout_->stats();
+    run(400, true);
+
+    const auto after = playout_->stats();
+    EXPECT_TRUE(after.playing);
+    EXPECT_EQ(after.segments, before.segments + 1);
+    // 新しい区間のフレームは、溜める間の数フレームを除いてすべて再生する。
+    EXPECT_GE(after.frames_decoded - before.frames_decoded, 390U);
+    EXPECT_EQ(after.frames_late, before.frames_late);
+}
+
+TEST_F(InputRestartTest, ReopeningTheInputWhileMutedRestoresPlayoutAfterUnmute) {
+    ASSERT_TRUE(processor_.set_params({.muted = false, .mute_epoch = 1, .gain = 1.0F}));
+    run(20, true);
+    ASSERT_TRUE(processor_.set_params({.muted = true, .mute_epoch = 1, .gain = 1.0F}));
+    run(10, true);
+    run(200, false);
+
+    // ミュート中に開き直した。解除で世代番号が進む。
+    processor_.restart({.muted = true, .mute_epoch = 1, .gain = 1.0F});
+    run(20, true);
+    ASSERT_TRUE(processor_.set_params({.muted = false, .mute_epoch = 2, .gain = 1.0F}));
+    const auto before = playout_->stats();
+    run(400, true);
+
+    const auto after = playout_->stats();
+    EXPECT_TRUE(after.playing);
+    EXPECT_GE(after.frames_decoded - before.frames_decoded, 390U);
+    EXPECT_EQ(after.frames_late, before.frames_late);
 }
 
 }  // namespace

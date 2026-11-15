@@ -426,7 +426,7 @@ TEST(MixerGraphBuilderTest, CutsTheStripWhileAnInsertIsNotLoaded) {
     EXPECT_TRUE(is_valid(built.graph));
 }
 
-TEST(MixerGraphBuilderTest, MasterInsertsFeedTheLimiterAndTheSendsFromMaster) {
+TEST(MixerGraphBuilderTest, MasterInsertsSitBeforeTheMasterFader) {
     auto a = two_strips();
     a.route_faders.emplace("bus-1", ac::FaderId{3});
     a.route_faders.emplace("send-1", ac::FaderId{4});
@@ -438,20 +438,79 @@ TEST(MixerGraphBuilderTest, MasterInsertsFeedTheLimiterAndTheSendsFromMaster) {
     const auto built = build_mixer_graph(a, kMaster, config, false, plugins);
 
     const auto* master = node_with_fader(built.graph, ac::FaderId{0});
+    const auto* first_strip = node_with_fader(built.graph, ac::FaderId{1});
+    const auto* second_strip = node_with_fader(built.graph, ac::FaderId{2});
     const auto* plugin = node_with_plugin(built.graph, plugins[0]);
     const auto* bus = node_with_fader(built.graph, ac::FaderId{3});
     ASSERT_NE(master, nullptr);
+    ASSERT_NE(first_strip, nullptr);
+    ASSERT_NE(second_strip, nullptr);
     ASSERT_NE(plugin, nullptr);
     ASSERT_NE(bus, nullptr);
-    EXPECT_EQ(inputs_of(built.graph, plugin->id), std::vector<ac::NodeId>{master->id});
-    // Master から出る結線は、挿入の列への 1 本だけ。リミッターとセンドは挿入の後ろから取る。
+    // ストリップは挿入の列へ入り、Master のフェーダーとミュートは挿入の後ろにある。
+    // ミュートしたあとに、プラグインに残った音を後段へ流さないため。
+    EXPECT_EQ(inputs_of(built.graph, plugin->id),
+              (std::vector<ac::NodeId>{first_strip->id, second_strip->id}));
+    EXPECT_EQ(inputs_of(built.graph, master->id), std::vector<ac::NodeId>{plugin->id});
+    // プラグインから出る結線は Master への 1 本だけ。リミッターとセンドは Master から取る。
     for (const auto& c : built.graph.connections) {
-        if (c.from == master->id) {
-            EXPECT_EQ(c.to, plugin->id);
+        if (c.from == plugin->id) {
+            EXPECT_EQ(c.to, master->id);
         }
     }
-    EXPECT_TRUE(connected(built.graph, plugin->id, bus->id));
+    EXPECT_TRUE(connected(built.graph, master->id, bus->id));
     EXPECT_EQ(count_kind(built.graph, ac::NodeKind::kLimiter), 1U);
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, BusInsertsSitBeforeTheBusFader) {
+    auto a = two_strips();
+    a.route_faders.emplace("bus-1", ac::FaderId{3});
+    a.route_faders.emplace("send-1", ac::FaderId{4});
+    a.route_faders.emplace("send-2", ac::FaderId{5});
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-1", "FX"});
+    config.sends.push_back(cp::RoutingSend{"send-1", "ch-1", "bus-1"});
+    config.sends.push_back(cp::RoutingSend{"send-2", "bus-1", kMaster});
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "verb"});
+    const std::vector<session::InsertedPlugin> plugins{inserted("fx-1")};
+    const auto built = build_mixer_graph(a, kMaster, config, false, plugins);
+
+    const auto* strip = node_with_fader(built.graph, ac::FaderId{1});
+    const auto* plugin = node_with_plugin(built.graph, plugins[0]);
+    const auto* bus = node_with_fader(built.graph, ac::FaderId{3});
+    const auto* master = node_with_fader(built.graph, ac::FaderId{0});
+    ASSERT_NE(strip, nullptr);
+    ASSERT_NE(plugin, nullptr);
+    ASSERT_NE(bus, nullptr);
+    ASSERT_NE(master, nullptr);
+    EXPECT_EQ(inputs_of(built.graph, plugin->id), std::vector<ac::NodeId>{strip->id});
+    EXPECT_EQ(inputs_of(built.graph, bus->id), std::vector<ac::NodeId>{plugin->id});
+    for (const auto& c : built.graph.connections) {
+        if (c.level == ac::FaderId{5}) {
+            EXPECT_EQ(c.from, bus->id);
+            EXPECT_EQ(c.to, master->id);
+        }
+    }
+    EXPECT_TRUE(is_valid(built.graph));
+}
+
+TEST(MixerGraphBuilderTest, ExternalStreamIsTappedAfterTheBusFaderAndItsInserts) {
+    auto a = two_strips();
+    a.route_faders.emplace("bus-1", ac::FaderId{3});
+    a.external_stream =
+        ExternalStreamAssignment{"bus-1", std::make_shared<ac::FakeAudioStreamSink>()};
+    cp::RoutingConfig config;
+    config.buses.push_back(cp::RoutingBus{"bus-1", "配信"});
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "comp"});
+    const std::vector<session::InsertedPlugin> plugins{inserted("fx-1")};
+    const auto built = build_mixer_graph(a, kMaster, config, false, plugins);
+
+    const auto path = stream_tap_path(built.graph);
+    ASSERT_NE(path.tap, nullptr);
+    const auto* bus = node_with_fader(built.graph, ac::FaderId{3});
+    ASSERT_NE(bus, nullptr);
+    EXPECT_EQ(path.sources, std::vector<ac::NodeId>{bus->id});
     EXPECT_TRUE(is_valid(built.graph));
 }
 

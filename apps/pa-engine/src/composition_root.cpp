@@ -211,7 +211,8 @@ std::optional<int> CompositionRoot::start() {
         std::move(config),
         session::HostSession::Ports{*ui_publisher_, engine_mixer_, *outputs_, *peer_links_,
                                     *rendezvous_tap_, *settings_, random_, clock_, *logger_,
-                                    *peer_links_, *external_output_, *secrets_, *plugin_rack_});
+                                    *peer_links_, *external_output_, *secrets_, *plugin_rack_,
+                                    *plugin_scan_control_});
     peer_events_.bind(session_.get());
     const auto on_registered =
         [this](
@@ -224,7 +225,8 @@ std::optional<int> CompositionRoot::start() {
     // 保存した挿入を戻すには、使えるプラグインの一覧が start() の前に要る。スキャンには時間が
     // かかるので、前回のスキャンの記録から作った一覧を渡し、スキャンは start() の後に始める。
     if (plugin_scan_) {
-        session_->set_available_plugins(plugin_scan_->load_saved());
+        auto saved = plugin_scan_->load_saved();
+        session_->set_available_plugins(std::move(saved.plugins), saved.blocked);
     }
     // 保存した出力デバイスは session が start() で開く。
     session_->start();
@@ -372,6 +374,9 @@ void CompositionRoot::start_juce() {
                 session_->on_plugin_loaded(insert_id, ticket, result);
             });
         },
+        [this](const std::string& insert_id) {
+            loop_.post([this, insert_id] { session_->on_plugin_editor_failed(insert_id); });
+        },
         *logger_});
     plugin_rack_ = engine_plugin_rack_.get();
 
@@ -384,12 +389,20 @@ void CompositionRoot::start_juce() {
                                                               plugin_host::kDefaultScanTimeout);
     plugin_scan_ = std::make_unique<PluginScanWorker>(
         *plugin_scanner_, *plugin_catalog_store_,
-        [this](std::vector<session::PluginDescription> plugins) {
-            // スキャンのスレッドから呼ばれるので、コントロールスレッドへ移して session に渡す。
-            loop_.post(
-                [this, plugins = std::move(plugins)] { session_->set_available_plugins(plugins); });
-        },
+        PluginScanWorker::Listener{[this] {
+                                       // スキャンのスレッドから呼ばれるので、コントロールスレッドへ移して
+                                       // session に渡す。
+                                       loop_.post([this] { session_->set_plugin_scanning(true); });
+                                   },
+                                   [this](PluginScanWorker::Catalog catalog) {
+                                       loop_.post([this, catalog = std::move(catalog)] {
+                                           session_->set_available_plugins(catalog.plugins,
+                                                                           catalog.blocked);
+                                           session_->set_plugin_scanning(false);
+                                       });
+                                   }},
         *logger_);
+    plugin_scan_control_ = plugin_scan_.get();
 #endif
 }
 

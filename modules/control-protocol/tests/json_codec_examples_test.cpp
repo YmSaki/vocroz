@@ -81,6 +81,16 @@ public:
         see(output.last_result);
     }
 
+    void see(const PluginsInfo& plugins) {
+        for (const auto& file : plugins.blocked) {
+            see(file.reason);
+        }
+        for (const auto& insert : plugins.inserts) {
+            see(insert.state);
+            see(insert.failure);
+        }
+    }
+
     void see(const MasterStrip& master) {
         see(master.master_mute_reason);
     }
@@ -162,6 +172,8 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
                     coverage.see(event.client);
                 } else if constexpr (std::is_same_v<T, ExternalOutputUpdated>) {
                     coverage.see(event.external_output);
+                } else if constexpr (std::is_same_v<T, PluginsUpdated>) {
+                    coverage.see(event.plugins);
                 } else if constexpr (std::is_same_v<T, Reject>) {
                     coverage.see(event.error_code);
                 } else if constexpr (std::is_same_v<T, Notice>) {
@@ -188,6 +200,9 @@ TEST(JsonCodecExamplesTest, EngineToUiExamplesRoundTripAndCoverEveryTypeAndName)
     EXPECT_TRUE(coverage.covers_all_up_to(ExternalOutputProfile::kOpusMono));
     EXPECT_TRUE(coverage.covers_all_up_to(SrtpSuite::kAesCm128HmacSha1_32));
     EXPECT_TRUE(coverage.covers_all_up_to(ExternalOutputResult::kSendFailed));
+    EXPECT_TRUE(coverage.covers_all_up_to(BlockedPluginReason::kInvalidOutput));
+    EXPECT_TRUE(coverage.covers_all_up_to(PluginInsertState::kFailed));
+    EXPECT_TRUE(coverage.covers_all_up_to(PluginInsertFailure::kProcessingFailed));
 }
 
 }  // namespace

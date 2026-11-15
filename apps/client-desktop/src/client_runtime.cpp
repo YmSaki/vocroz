@@ -81,6 +81,9 @@ void ClientRuntime::poll() {
         });
     connection_.poll();
     capture_.flush_params();
+    if (capture_.take_app_audio_reopened()) {
+        session_.on_capture_restarted();
+    }
     if (capture_.take_device_lost()) {
         refresh_input_devices();
     }

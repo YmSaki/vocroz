@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -18,6 +19,7 @@
 #include "fakes/fake_audio_source.h"
 #include "fakes/fake_logger.h"
 #include "fakes/fake_midi_source.h"
+#include "fakes/fake_plugin_processor.h"
 
 namespace vocroz::engine {
 namespace {
@@ -32,6 +34,40 @@ constexpr float kInput = 0.1F;
 constexpr double kInputDelayMs = 500.0;
 constexpr std::size_t kInputDelaySamples = 24000;
 constexpr std::size_t kCallbacksToFillDelay = kInputDelaySamples / kAfterRamp + 2;
+
+// 入力に関わらず一定の値を出すプラグイン。無音の入力から音を作るプラグイン（発振するディレイ、
+// ノイズを足すエフェクトなど）の代わり。
+class ConstantPluginProcessor final : public ac::PluginProcessor {
+public:
+    explicit ConstantPluginProcessor(float value) : value_(value) {}
+
+    [[nodiscard]] ac::PluginBusLayout layout() const noexcept override {
+        return {};
+    }
+    [[nodiscard]] std::size_t latency_samples() const noexcept override {
+        return 0;
+    }
+    [[nodiscard]] ac::PluginProcessStatus process(const ac::PluginProcessContext& context) noexcept
+        VOCROZ_NONBLOCKING override {
+        for (std::size_t ch = 0; ch < layout().output_channels; ++ch) {
+            std::fill_n(context.channels[ch], context.frames, value_);
+        }
+        return ac::PluginProcessStatus::kOk;
+    }
+
+private:
+    float value_;
+};
+
+// 実際に音を保持する遅延（0.5 秒）のプラグインを挿す。ミュートの後もプラグインの中に音が残る。
+session::InsertedPlugin delaying_insert(const std::string& id) {
+    return session::InsertedPlugin{
+        id, std::make_shared<ac::FakePluginProcessor>(ac::PluginBusLayout{}, 24000),
+        std::make_shared<ac::PluginFault>()};
+}
+
+// 遅延のプラグインの中を音で満たすのに十分なコールバックの回数（30 × 1024 > 24000）。
+constexpr int kFillDelayCallbacks = 30;
 
 class EngineMixerTest : public ::testing::Test {
 protected:
@@ -395,6 +431,60 @@ TEST_F(EngineMixerTest, RemovingAStripNotifiesAndDetachesItsMidi) {
     const auto pulled = midi->pull_count();
     static_cast<void>(render_last_left());
     EXPECT_EQ(midi->pull_count(), pulled);
+}
+
+TEST_F(EngineMixerTest, MasterMuteSilencesTheSoundLeftInAMasterInsert) {
+    add_audible_strip("ch-1");
+    cp::RoutingConfig config;
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "master", "delay"});
+    const std::vector<session::InsertedPlugin> plugins{delaying_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    for (int i = 0; i < kFillDelayCallbacks; ++i) {
+        (void)render_last_left();
+    }
+    ASSERT_NEAR(render_last_left(), kInput, 1e-5F);
+
+    engine_.set_master_muted(true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_EQ(render_last_left(), 0.0F);
+}
+
+TEST_F(EngineMixerTest, MasterStaysMutedAgainstAnInsertThatMakesSoundFromSilence) {
+    cp::RoutingConfig config;
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "master", "gen"});
+    const std::vector<session::InsertedPlugin> plugins{
+        session::InsertedPlugin{"fx-1", std::make_shared<ConstantPluginProcessor>(kInput),
+                                std::make_shared<ac::PluginFault>()}};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+
+    // ストリップがなく、Master は初期ミュートのまま。プラグインが作る音も出さない。
+    EXPECT_EQ(render_last_left(), 0.0F);
+    engine_.set_master_muted(false);
+    EXPECT_NEAR(render_last_left(), kInput, 1e-5F);
+    engine_.set_master_muted(true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+}
+
+TEST_F(EngineMixerTest, BusMuteSilencesTheSoundLeftInABusInsert) {
+    add_audible_strip("ch-1");
+    auto config = prefader_send_through_bus();
+    config.inserts.push_back(cp::RoutingInsert{"fx-1", "bus-1", "delay"});
+    const std::vector<session::InsertedPlugin> plugins{delaying_insert("fx-1")};
+    ASSERT_TRUE(engine_.apply_routing(config, false, plugins));
+    for (const char* id : {"send-1", "send-2", "bus-1"}) {
+        engine_.set_route_muted(id, false);
+    }
+    // ストリップから Master への直接の経路を止め、バスを通る音だけを聞く（プリフェーダーの
+    // センドはストリップのミュートで止まらない）。
+    engine_.set_channel_muted("ch-1", true);
+    for (int i = 0; i < kFillDelayCallbacks; ++i) {
+        (void)render_last_left();
+    }
+    ASSERT_GT(render_last_left(), 0.0F);
+
+    engine_.set_route_muted("bus-1", true);
+    EXPECT_EQ(render_last_left(), 0.0F);
+    EXPECT_EQ(render_last_left(), 0.0F);
 }
 
 }  // namespace
