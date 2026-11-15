@@ -4,6 +4,7 @@
 
 #include "client_runtime.h"
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -72,6 +73,7 @@ void ClientRuntime::start() {
     const auto now = ports_.clock.now();
     next_tick_ = now + kSessionTickInterval;
     next_meter_ = now + kMeterInterval;
+    next_input_scan_ = now + kInputDeviceScanInterval;
 }
 
 void ClientRuntime::poll() {
@@ -103,6 +105,10 @@ void ClientRuntime::poll() {
     if (now >= next_meter_) {
         publish_meter();
         next_meter_ = now + kMeterInterval;
+    }
+    if (now >= next_input_scan_) {
+        rescan_input_devices();
+        next_input_scan_ = now + kInputDeviceScanInterval;
     }
 }
 
@@ -138,17 +144,38 @@ void ClientRuntime::leave() {
 }
 
 void ClientRuntime::refresh_input_devices() {
-    auto listed = ports_.devices.list(audio_core::AudioDeviceDirection::kInput);
-    if (!listed) {
+    auto devices = list_input_devices();
+    if (!devices) {
         ports_.logger.log(common::LogLevel::kWarning, "client: input devices could not be listed");
         return;
+    }
+    session_.on_input_devices_changed(std::move(*devices));
+}
+
+void ClientRuntime::rescan_input_devices() {
+    // 周期の数え直しで取れなかったときは、前の一覧のまま次の周期を待つ。
+    // 毎秒の警告でログを埋めないよう、ここでは記録しない。
+    auto devices = list_input_devices();
+    if (!devices || *devices == session_.snapshot().input_devices) {
+        // 変わっていなければ、UI へ同じ状態を毎秒送り直さない。
+        return;
+    }
+    // 一覧を知らせるだけで、入力は開き直さない。挿し直したマイクやつないだデバイスを使うかは
+    // 出演者が選んで決める（選び直すと select_input が開く）。
+    session_.on_input_devices_changed(std::move(*devices));
+}
+
+std::optional<std::vector<cp::InputDevice>> ClientRuntime::list_input_devices() {
+    auto listed = ports_.devices.list(audio_core::AudioDeviceDirection::kInput);
+    if (!listed) {
+        return std::nullopt;
     }
     std::vector<cp::InputDevice> devices;
     devices.reserve(listed.value().size());
     for (auto& info : listed.value()) {
         devices.push_back(cp::InputDevice{.id = std::move(info.id), .name = std::move(info.name)});
     }
-    session_.on_input_devices_changed(std::move(devices));
+    return devices;
 }
 
 void ClientRuntime::publish_meter() {

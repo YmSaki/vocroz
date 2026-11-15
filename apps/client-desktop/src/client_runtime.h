@@ -16,7 +16,9 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "vocroz/audio_core/ports/audio_device_catalog.h"
 #include "vocroz/common/ports/clock.h"
@@ -118,7 +120,7 @@ public:
 
     /// コントロールスレッドの周期の処理。数 ms〜十数 ms ごとに呼ぶ。
     /// 招待の解決の結果、親機との通信、入力と出力のデバイスの抜去、session の時刻の処理、
-    /// メーターを進める。
+    /// メーター、入力デバイスの一覧の数え直しを進める。
     void poll();
 
     /// 参加の手続き中か参加中（ウィンドウを閉じる前に確認が要る状態）なら true を返す。
@@ -135,7 +137,12 @@ public:
     void on_link_failed(control_protocol::ErrorCode reason) override;
 
 private:
+    // 入力の一覧を取り直して session に渡す（起動時と、開いている入力が抜けたとき）。
     void refresh_input_devices();
+    // 周期の数え直し。一覧が変わったときだけ session に渡す。WASAPI は挿し直しや新しい
+    // デバイスの接続を知らせないので、これで気付く。
+    void rescan_input_devices();
+    [[nodiscard]] std::optional<std::vector<control_protocol::InputDevice>> list_input_devices();
     void publish_meter();
 
     Ports ports_;
@@ -151,6 +158,7 @@ private:
     session::ClientSession session_;
     common::Clock::TimePoint next_tick_{};
     common::Clock::TimePoint next_meter_{};
+    common::Clock::TimePoint next_input_scan_{};
     // 送信スレッドは最後に作り、最初に止める（sender_ より先に破棄する）。
     SenderThread sender_thread_;
 };
