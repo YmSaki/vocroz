@@ -8,6 +8,7 @@
 
 #include "vocroz/session/host_session.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -176,6 +177,7 @@ public:
             // ノードは失敗の印で既に無音にしている。経路は挿入を外して挿し直すまで戻さない。
             ctx.log(common::LogLevel::kWarning,
                     "挿入のプラグインが処理中に失敗したため、その経路を無音にしました");
+            ctx.publish_plugins();
         }
         for (auto& p : ctx.registry.participants()) {
             if (p.strip.connection_state == ConnectionState::kReconnecting &&
@@ -256,14 +258,48 @@ void HostSession::on_external_output_test_finished(control_protocol::ExternalOut
     }
 }
 
-void HostSession::set_available_plugins(std::vector<PluginDescription> plugins) {
+void HostSession::set_available_plugins(std::vector<PluginDescription> plugins,
+                                        std::span<const PluginScanRecord> blocked) {
     auto& ctx = impl_->ctx;
+    const auto dropped = ctx.plugin_status.set_catalog(plugins, blocked);
+    if (dropped.plugins > 0) {
+        ctx.log(common::LogLevel::kWarning,
+                "識別子か名前が長すぎるプラグインを、プラグインの一覧に載せませんでした");
+    }
+    if (dropped.blocked > 0) {
+        ctx.log(common::LogLevel::kInfo,
+                "読み込み不可のファイルが多いか、パスが長すぎるため、一部を UI に載せませんでした");
+    }
     const bool staged = ctx.routing.info().staged.has_value();
     ctx.routing.set_plugins(std::move(plugins), ctx.strip_ids());
     if (staged) {
         // 一覧が変わると、ステージング中の挿入の検証の結果が変わることがある。
         ctx.publish_routing();
     }
+    ctx.publish_plugins();
+    ctx.publish_plugin_catalog();
+}
+
+void HostSession::set_plugin_scanning(bool scanning) {
+    auto& ctx = impl_->ctx;
+    if (ctx.plugin_status.set_scanning(scanning)) {
+        ctx.publish_plugins();
+    }
+}
+
+void HostSession::on_plugin_editor_failed(const std::string& insert_id) {
+    auto& ctx = impl_->ctx;
+    const auto& inserts = ctx.routing.info().applied.inserts;
+    const auto insert = std::find_if(
+        inserts.begin(), inserts.end(),
+        [&](const control_protocol::RoutingInsert& i) { return i.entity_id == insert_id; });
+    if (insert == inserts.end()) {
+        return;
+    }
+    ctx.log(common::LogLevel::kWarning, "プラグインのエディターを開けませんでした");
+    // エディターを開けなくても処理は続けるので、状態ではなく一度だけの通知で知らせる。
+    ctx.notice(control_protocol::NoticeSeverity::kWarning, "plugin_editor_failed",
+               ctx.plugin_name(insert->plugin_id));
 }
 
 void HostSession::on_plugin_loaded(
@@ -278,11 +314,13 @@ void HostSession::on_plugin_loaded(
         // 経路は無音のまま（フェイルセーフ）。プラグインを通らない音は出さない。
         ctx.log(common::LogLevel::kWarning,
                 "挿入のプラグインを読み込めなかったため、その経路を無音のままにします");
+        ctx.publish_plugins();
         return;
     }
     // 構成は変えず、読み込みの済んだ挿入の経路をつないだグラフに差し替える。
     // 観測値の変化なので revision は進めない。
     ctx.reapply_routing("プラグインを読み込んだあとのルーティングをミキサーに適用できませんでした");
+    ctx.publish_plugins();
 }
 
 void HostSession::revoke_invite() {

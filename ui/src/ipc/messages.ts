@@ -97,6 +97,16 @@ export type SrtpSuite = "AES_CM_128_HMAC_SHA1_80" | "AES_CM_128_HMAC_SHA1_32";
 /** 外部出力の開始か接続テストの結果。 */
 export type ExternalOutputResult = "OK" | "RESOLVE_FAILED" | "SEND_FAILED";
 
+/** スキャンで読み込み不可にしたプラグインファイルの理由。 */
+export type BlockedPluginReason = "CRASHED" | "TIMED_OUT" | "INVALID_OUTPUT";
+
+/** 挿入のプラグインの読み込みの状態（docs/adr/0042-plugin-insert.md）。 */
+export type PluginInsertState = "LOADING" | "READY" | "FAILED";
+
+/** 挿入のプラグインが失敗した理由。 */
+export type PluginInsertFailure =
+  "NOT_FOUND" | "INSTANTIATE_FAILED" | "UNSUPPORTED_LAYOUT" | "PROCESSING_FAILED";
+
 // ---------------------------------------------------------------------------
 // 親機モードの状態
 // ---------------------------------------------------------------------------
@@ -295,6 +305,47 @@ export interface ExternalOutput {
   last_result: ExternalOutputResult | null;
 }
 
+/** 挿入に使えるプラグイン 1 つ（プラグインの一覧の 1 項目）。 */
+export interface PluginEntry {
+  /** 挿入の plugin_id に使う識別子。 */
+  plugin_id: string;
+  name: string;
+  vendor: string;
+  version: string;
+  /** 音声入力を持たない VSTi。挿入にはできない。 */
+  is_instrument: boolean;
+}
+
+/** スキャンで読み込み不可にしたプラグインファイル。 */
+export interface BlockedPluginFile {
+  /** ファイルのパス。長すぎればファイル名だけ。 */
+  path: string;
+  reason: BlockedPluginReason;
+}
+
+/** 挿入 1 つの読み込みの状態。 */
+export interface PluginInsertStatus {
+  entity_id: string;
+  state: PluginInsertState;
+  /** FAILED のときの理由。それ以外は null。 */
+  failure: PluginInsertFailure | null;
+}
+
+/**
+ * プラグインのスキャンと挿入の状態。entity_id は "plugins"。
+ * スナップショットとは別のメッセージ（plugins_updated）で届く。プラグインの一覧は、同じ
+ * catalog_generation のページ（plugin_catalog_page）を catalog_size 件そろえて作る。
+ */
+export interface PluginsInfo {
+  entity_id: string;
+  revision: number;
+  scanning: boolean;
+  catalog_generation: number;
+  catalog_size: number;
+  blocked: BlockedPluginFile[];
+  inserts: PluginInsertStatus[];
+}
+
 /** 親機モードの全状態。接続時にエンジンから届く。 */
 export interface MixerSnapshot {
   session: SessionInfo;
@@ -383,7 +434,9 @@ export type DiscreteCommandBody =
   | { type: "set_external_output_config"; config: ExternalOutputConfig }
   | { type: "set_external_output_key"; key: string }
   | { type: "set_external_output_running"; running: boolean }
-  | { type: "test_external_output" };
+  | { type: "test_external_output" }
+  | { type: "rescan_plugins" }
+  | { type: "open_plugin_editor"; insert_id: string };
 
 /** 離散コマンド。 */
 export type DiscreteCommand = DiscreteCommandBase & DiscreteCommandBody;
@@ -477,6 +530,8 @@ export type EngineToUiMessage =
   | { type: "routing_updated"; routing: RoutingInfo }
   | { type: "route_level_updated"; level: RouteLevel }
   | { type: "external_output_updated"; external_output: ExternalOutput }
+  | { type: "plugins_updated"; plugins: PluginsInfo }
+  | { type: "plugin_catalog_page"; generation: number; offset: number; plugins: PluginEntry[] }
   | AckMessage
   | RejectMessage
   | GainAckMessage

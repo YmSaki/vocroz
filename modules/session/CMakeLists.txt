@@ -19,6 +19,7 @@ add_library(vocroz_session STATIC
   src/plugin_catalog.cpp
   src/request_deduplicator.cpp
   src/plugin_insert_book.cpp
+  src/plugin_status_book.cpp
   src/routing_book.cpp
   src/routing_delay.cpp
   src/routing_validator.cpp

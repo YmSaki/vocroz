@@ -1399,5 +1399,63 @@
       "state": "STOPPED",
       "last_result": "SEND_FAILED"
     }
+  },
+  {
+    "type": "plugins_updated",
+    "plugins": {
+      "entity_id": "plugins",
+      "revision": 1,
+      "scanning": true,
+      "catalog_generation": 2,
+      "catalog_size": 3,
+      "blocked": [
+        { "path": "C:/Program Files/Common Files/VST3/Broken.vst3", "reason": "CRASHED" },
+        { "path": "C:/Program Files/Common Files/VST3/Slow.vst3", "reason": "TIMED_OUT" },
+        { "path": "Garbled.vst3", "reason": "INVALID_OUTPUT" }
+      ],
+      "inserts": [
+        { "entity_id": "fx-1", "state": "READY", "failure": null },
+        { "entity_id": "fx-2", "state": "LOADING", "failure": null },
+        { "entity_id": "fx-3", "state": "FAILED", "failure": "NOT_FOUND" },
+        { "entity_id": "fx-4", "state": "FAILED", "failure": "INSTANTIATE_FAILED" },
+        { "entity_id": "fx-5", "state": "FAILED", "failure": "UNSUPPORTED_LAYOUT" },
+        { "entity_id": "fx-6", "state": "FAILED", "failure": "PROCESSING_FAILED" }
+      ]
+    }
+  },
+  {
+    "type": "plugin_catalog_page",
+    "generation": 2,
+    "offset": 0,
+    "plugins": [
+      {
+        "plugin_id": "VST3-Room Reverb-1a2b3c4d-5e6f7a8b",
+        "name": "Room Reverb",
+        "vendor": "Example Audio",
+        "version": "1.2.0",
+        "is_instrument": false
+      },
+      {
+        "plugin_id": "VST3-Piano-9c8b7a6d-5e4f3a2b",
+        "name": "Piano",
+        "vendor": "Example Audio",
+        "version": "2.0.1",
+        "is_instrument": true
+      }
+    ]
+  },
+  {
+    "type": "plugin_catalog_page",
+    "generation": 2,
+    "offset": 2,
+    "plugins": [
+      {
+        "plugin_id": "VST3-EQ-11223344-55667788",
+        "name": "EQ",
+        "vendor": "",
+        "version": "",
+        "is_instrument": false
+      }
+    ]
   }
 ]

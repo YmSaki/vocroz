@@ -466,6 +466,90 @@ common::Result<ExternalOutput, DecodeError> read_external_output(const nlohmann:
     });
 }
 
+nlohmann::json write_json(const PluginEntry& entry) {
+    return {
+        {"plugin_id", entry.plugin_id},
+        {"name", entry.name},
+        {"vendor", entry.vendor},
+        {"version", entry.version},
+        {"is_instrument", entry.is_instrument},
+    };
+}
+
+common::Result<PluginEntry, DecodeError> read_plugin_entry(const nlohmann::json& value) {
+    return read_object<PluginEntry>(value, [](ObjectReader& r) {
+        PluginEntry entry;
+        entry.plugin_id = r.text("plugin_id", kPluginIdRule);
+        entry.name = r.text("name", kTextRule);
+        entry.vendor = r.text("vendor", kTextRule);
+        entry.version = r.text("version", kTextRule);
+        entry.is_instrument = r.boolean("is_instrument");
+        return entry;
+    });
+}
+
+nlohmann::json write_json(const BlockedPluginFile& file) {
+    return {{"path", file.path}, {"reason", enum_json(file.reason)}};
+}
+
+common::Result<BlockedPluginFile, DecodeError> read_blocked_plugin_file(
+    const nlohmann::json& value) {
+    return read_object<BlockedPluginFile>(value, [](ObjectReader& r) {
+        BlockedPluginFile file;
+        file.path = r.text("path", kTextRule);
+        file.reason = r.enumeration<BlockedPluginReason>("reason");
+        return file;
+    });
+}
+
+nlohmann::json write_json(const PluginInsertStatus& status) {
+    return {
+        {"entity_id", status.entity_id},
+        {"state", enum_json(status.state)},
+        {"failure", enum_json(status.failure)},
+    };
+}
+
+common::Result<PluginInsertStatus, DecodeError> read_plugin_insert_status(
+    const nlohmann::json& value) {
+    return read_object<PluginInsertStatus>(value, [](ObjectReader& r) {
+        PluginInsertStatus status;
+        status.entity_id = r.text("entity_id", kIdentifierRule);
+        status.state = r.enumeration<PluginInsertState>("state");
+        status.failure = r.nullable_enumeration<PluginInsertFailure>("failure");
+        return status;
+    });
+}
+
+nlohmann::json write_json(const PluginsInfo& plugins) {
+    return {
+        {"entity_id", plugins.entity_id},
+        {"revision", plugins.revision},
+        {"scanning", plugins.scanning},
+        {"catalog_generation", plugins.catalog_generation},
+        {"catalog_size", plugins.catalog_size},
+        {"blocked", write_array(plugins.blocked)},
+        {"inserts", write_array(plugins.inserts)},
+    };
+}
+
+common::Result<PluginsInfo, DecodeError> read_plugins_info(const nlohmann::json& value) {
+    return read_object<PluginsInfo>(value, [](ObjectReader& r) {
+        PluginsInfo plugins;
+        plugins.entity_id = r.text("entity_id", kIdentifierRule);
+        plugins.revision = r.counter("revision");
+        plugins.scanning = r.boolean("scanning");
+        plugins.catalog_generation = r.counter("catalog_generation");
+        plugins.catalog_size = r.counter("catalog_size");
+        plugins.blocked = r.list<BlockedPluginFile>("blocked", read_blocked_plugin_file);
+        if (plugins.blocked.size() > kMaxBlockedPluginFiles) {
+            r.fail(DecodeErrorCode::kOutOfRange, "blocked");
+        }
+        plugins.inserts = r.list<PluginInsertStatus>("inserts", read_plugin_insert_status);
+        return plugins;
+    });
+}
+
 nlohmann::json write_json(const MixerSnapshot& snapshot) {
     return {
         {"session", write_json(snapshot.session)},

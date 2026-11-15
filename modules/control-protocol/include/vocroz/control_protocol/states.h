@@ -156,4 +156,26 @@ enum class ExternalOutputResult {
     kSendFailed,     ///< SEND_FAILED: ソケットを開けないか、送信に失敗した
 };
 
+/// スキャンで読み込み不可にしたプラグインファイルの理由（docs/adr/0041-plugin-editor-and-failure-notice.md）。
+enum class BlockedPluginReason {
+    kCrashed,        ///< CRASHED: スキャン中にヘルパーが異常終了した
+    kTimedOut,       ///< TIMED_OUT: スキャンが制限時間内に終わらなかった
+    kInvalidOutput,  ///< INVALID_OUTPUT: スキャンの結果を読めなかった
+};
+
+/// 挿入のプラグインの読み込みの状態（docs/adr/0042-plugin-insert.md）。
+enum class PluginInsertState {
+    kLoading,  ///< LOADING: 読み込み中。その挿入を通る経路は無音
+    kReady,    ///< READY: 読み込みが済み、経路をつないでいる
+    kFailed,  ///< FAILED: 読み込みか処理に失敗した。挿入を外して挿し直すまで経路は無音のまま
+};
+
+/// 挿入のプラグインが失敗した理由。
+enum class PluginInsertFailure {
+    kNotFound,           ///< NOT_FOUND: プラグインが見つからない
+    kInstantiateFailed,  ///< INSTANTIATE_FAILED: インスタンスを作れなかった
+    kUnsupportedLayout,  ///< UNSUPPORTED_LAYOUT: チャンネル構成が合わない
+    kProcessingFailed,   ///< PROCESSING_FAILED: 処理中に失敗した（例外か NaN）
+};
+
 }  // namespace vocroz::control_protocol

@@ -282,6 +282,60 @@ struct ExternalOutput {
     friend bool operator==(const ExternalOutput&, const ExternalOutput&) = default;
 };
 
+/// 挿入に使えるプラグイン 1 つ（プラグインの一覧の 1 項目）。
+struct PluginEntry {
+    /// 挿入の plugin_id に使う識別子。
+    std::string plugin_id;
+    std::string name;     ///< 表示名
+    std::string vendor;   ///< 製造元
+    std::string version;  ///< プラグインのバージョン（表示用）
+    /// 音声入力を持たない VSTi なら true。VSTi は挿入にできない（UNSUPPORTED_PLUGIN）。
+    bool is_instrument = false;
+
+    friend bool operator==(const PluginEntry&, const PluginEntry&) = default;
+};
+
+/// スキャンで読み込み不可にしたプラグインファイル。
+struct BlockedPluginFile {
+    /// ファイルのパス。長すぎればファイル名だけにする。
+    std::string path;
+    BlockedPluginReason reason = BlockedPluginReason::kCrashed;
+
+    friend bool operator==(const BlockedPluginFile&, const BlockedPluginFile&) = default;
+};
+
+/// 挿入 1 つの読み込みの状態。entity_id は適用中のルーティングの挿入のもの。
+struct PluginInsertStatus {
+    std::string entity_id;
+    PluginInsertState state = PluginInsertState::kLoading;
+    /// state が FAILED のときの理由。それ以外は std::nullopt。
+    std::optional<PluginInsertFailure> failure;
+
+    friend bool operator==(const PluginInsertStatus&, const PluginInsertStatus&) = default;
+};
+
+/// プラグインのスキャンと挿入の状態。entity_id は "plugins"（docs/adr/0042-plugin-insert.md）。
+/// スナップショットとは別のメッセージ（plugins_updated）で、スナップショットの直後と変化のたびに
+/// 送る。スナップショットは 1 メッセージの上限の近くまで使うため。
+/// revision はどのコマンドでも進まない（スキャンの状態と挿入の状態は観測値）。
+struct PluginsInfo {
+    std::string entity_id;
+    Revision revision = 0;
+    /// スキャン中なら true。
+    bool scanning = false;
+    /// プラグインの一覧の世代。一覧が変わるたびに進む。UI は同じ世代のページ
+    /// （plugin_catalog_page）を catalog_size 件そろえて一覧にする。
+    std::uint64_t catalog_generation = 0;
+    /// プラグインの一覧の件数。
+    std::uint64_t catalog_size = 0;
+    /// 読み込み不可のファイル（kMaxBlockedPluginFiles 件まで）。
+    std::vector<BlockedPluginFile> blocked;
+    /// 適用中のルーティングの挿入の状態。挿入の並びの順。
+    std::vector<PluginInsertStatus> inserts;
+
+    friend bool operator==(const PluginsInfo&, const PluginsInfo&) = default;
+};
+
 /// 親機モードの全状態。UI の接続時にエンジンが送る。
 struct MixerSnapshot {
     SessionInfo session;

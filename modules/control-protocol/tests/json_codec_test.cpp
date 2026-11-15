@@ -523,6 +523,37 @@ TEST(JsonCodecTest, RejectsUnknownSrtpSuite) {
     EXPECT_EQ(ui_error(message).field, "config.crypto_suite");
 }
 
+TEST(JsonCodecTest, RejectsPluginCatalogPageOverTheEntryLimit) {
+    const nlohmann::json entry = {{"plugin_id", "VST3-EQ"},
+                                  {"name", "EQ"},
+                                  {"vendor", ""},
+                                  {"version", ""},
+                                  {"is_instrument", false}};
+    const auto page = [&](std::size_t count) {
+        return nlohmann::json{
+            {"type", "plugin_catalog_page"},
+            {"generation", 1},
+            {"offset", 0},
+            {"plugins", nlohmann::json(std::vector<nlohmann::json>(count, entry))}};
+    };
+    EXPECT_TRUE(decode_engine_to_ui(page(kMaxPluginCatalogPageEntries).dump()).has_value());
+    EXPECT_EQ(engine_error(page(kMaxPluginCatalogPageEntries + 1)),
+              (DecodeError{DecodeErrorCode::kOutOfRange, "plugins"}));
+}
+
+TEST(JsonCodecTest, RejectsPluginIdOverTheLimit) {
+    const nlohmann::json message = {{"type", "plugin_catalog_page"},
+                                    {"generation", 1},
+                                    {"offset", 0},
+                                    {"plugins",
+                                     {{{"plugin_id", std::string(kMaxPluginIdBytes + 1, 'a')},
+                                       {"name", "EQ"},
+                                       {"vendor", ""},
+                                       {"version", ""},
+                                       {"is_instrument", false}}}}};
+    EXPECT_EQ(engine_error(message).code, DecodeErrorCode::kOutOfRange);
+}
+
 TEST(JsonCodecTest, RejectsMalformedLinkStats) {
     EXPECT_EQ(engine_error({{"type", "link_stats"}, {"stats", {{"ch1", 2.5}}}}).code,
               DecodeErrorCode::kWrongType);

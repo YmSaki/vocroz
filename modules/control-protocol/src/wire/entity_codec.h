@@ -21,6 +21,10 @@ namespace vocroz::control_protocol::wire {
 [[nodiscard]] nlohmann::json write_json(const RoutingInfo& routing);
 [[nodiscard]] nlohmann::json write_json(const ExternalOutputConfig& config);
 [[nodiscard]] nlohmann::json write_json(const ExternalOutput& output);
+[[nodiscard]] nlohmann::json write_json(const PluginEntry& entry);
+[[nodiscard]] nlohmann::json write_json(const BlockedPluginFile& file);
+[[nodiscard]] nlohmann::json write_json(const PluginInsertStatus& status);
+[[nodiscard]] nlohmann::json write_json(const PluginsInfo& plugins);
 [[nodiscard]] nlohmann::json write_json(const MixerSnapshot& snapshot);
 [[nodiscard]] nlohmann::json write_json(const InputDevice& device);
 [[nodiscard]] nlohmann::json write_json(const ClientSnapshot& snapshot);
@@ -43,6 +47,10 @@ namespace vocroz::control_protocol::wire {
 [[nodiscard]] common::Result<ExternalOutputConfig, DecodeError> read_external_output_config(
     const nlohmann::json& value);
 [[nodiscard]] common::Result<ExternalOutput, DecodeError> read_external_output(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<PluginEntry, DecodeError> read_plugin_entry(
+    const nlohmann::json& value);
+[[nodiscard]] common::Result<PluginsInfo, DecodeError> read_plugins_info(
     const nlohmann::json& value);
 [[nodiscard]] common::Result<MixerSnapshot, DecodeError> read_mixer_snapshot(
     const nlohmann::json& value);

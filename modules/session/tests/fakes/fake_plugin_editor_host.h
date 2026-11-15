@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <set>
 #include <string_view>
 
@@ -16,8 +17,16 @@ class FakePluginEditorHost final : public PluginEditorHost {
 public:
     [[nodiscard]] common::Result<void, PluginEditorError> open(
         PluginInstance& instance, std::string_view /*title*/) override {
+        if (fail_with_) {
+            return common::make_unexpected(*fail_with_);
+        }
         open_.insert(&instance);
         return {};
+    }
+
+    /// 以降の open() を error で失敗させる。
+    void fail_with(PluginEditorError error) noexcept {
+        fail_with_ = error;
     }
 
     void close(const PluginInstance& instance) override {
@@ -45,6 +54,7 @@ public:
 
 private:
     std::set<const PluginInstance*> open_;
+    std::optional<PluginEditorError> fail_with_;
     int close_count_ = 0;
 };
 
