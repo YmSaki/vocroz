@@ -83,7 +83,7 @@ protected:
 };
 
 TEST_F(MinusMeTest, EachReturnContainsEveryoneButItsOwnStrip) {
-    const std::vector<NodeId> strips = {kStripA, kStripB, kStripC};
+    const std::vector<MinusMeInput> strips = {kStripA, kStripB, kStripC};
     const auto returns = returns_for_each_strip();
     ASSERT_TRUE(add_minus_me_returns(graph_, strips, returns).has_value());
     ASSERT_TRUE(mixer_.apply_graph(graph_).has_value());
@@ -97,7 +97,7 @@ TEST_F(MinusMeTest, EachReturnContainsEveryoneButItsOwnStrip) {
 }
 
 TEST_F(MinusMeTest, ReturnTapReceivesEveryRenderedSample) {
-    const std::vector<NodeId> strips = {kStripA, kStripB, kStripC};
+    const std::vector<MinusMeInput> strips = {kStripA, kStripB, kStripC};
     const auto returns = returns_for_each_strip();
     ASSERT_TRUE(add_minus_me_returns(graph_, strips, returns).has_value());
     ASSERT_TRUE(mixer_.apply_graph(graph_).has_value());
@@ -110,7 +110,7 @@ TEST_F(MinusMeTest, ReturnTapReceivesEveryRenderedSample) {
 }
 
 TEST_F(MinusMeTest, ReturnFollowsChannelFadersBecauseItIsPostFader) {
-    const std::vector<NodeId> strips = {kStripA, kStripB, kStripC};
+    const std::vector<MinusMeInput> strips = {kStripA, kStripB, kStripC};
     const auto returns = returns_for_each_strip();
     ASSERT_TRUE(add_minus_me_returns(graph_, strips, returns).has_value());
     ASSERT_TRUE(mixer_.apply_graph(graph_).has_value());
@@ -129,7 +129,7 @@ TEST_F(MinusMeTest, BusCarryingOwnVoiceIsExcludedFromThatReturnOnly) {
     graph_.nodes.push_back(NodeSpec::make_bus(NodeId{30}, FaderId{4}, std::nullopt));
     graph_.connections.emplace_back(kStripA, NodeId{30}, SendTap::kPostFader, FaderId{5});
     graph_.connections.emplace_back(NodeId{30}, NodeId{20});
-    const std::vector<NodeId> candidates = {kStripA, kStripB, kStripC, NodeId{30}};
+    const std::vector<MinusMeInput> candidates = {kStripA, kStripB, kStripC, NodeId{30}};
     const auto returns = returns_for_each_strip();
     ASSERT_TRUE(add_minus_me_returns(graph_, candidates, returns).has_value());
     ASSERT_TRUE(mixer_.apply_graph(graph_).has_value());
@@ -145,9 +145,34 @@ TEST_F(MinusMeTest, BusCarryingOwnVoiceIsExcludedFromThatReturnOnly) {
     EXPECT_NEAR(sink_b_->last(), 0.1F + 0.1F + 0.4F, kTolerance);
 }
 
+TEST_F(MinusMeTest, ReturnFollowsTheMuteAndLevelOfTheSendIntoMaster) {
+    // A をストリップのミュートのまま、プリフェーダーのセンド（フェーダー 5）でバス 30 へ送り、
+    // バス 30 をポストフェーダーのセンド（フェーダー 6）で Master へ送る。
+    graph_.nodes.push_back(NodeSpec::make_bus(NodeId{30}, FaderId{4}, std::nullopt));
+    graph_.connections.emplace_back(kStripA, NodeId{30}, SendTap::kPreFader, FaderId{5});
+    graph_.connections.emplace_back(NodeId{30}, NodeId{20}, SendTap::kPostFader, FaderId{6});
+    const std::vector<MinusMeInput> candidates = {
+        kStripA, kStripB, kStripC, MinusMeInput{NodeId{30}, SendTap::kPostFader, FaderId{6}}};
+    const std::vector<MinusMeReturn> returns = {{{kStripB}, sink_b_}};
+    ASSERT_TRUE(add_minus_me_returns(graph_, candidates, returns).has_value());
+    ASSERT_TRUE(mixer_.apply_graph(graph_).has_value());
+    ASSERT_TRUE(mixer_.set_fader_muted(FaderId{4}, false).has_value());
+    ASSERT_TRUE(mixer_.set_fader_muted(FaderId{5}, false).has_value());
+
+    // バス 30 → Master のセンドがミュートの間は、B の返送にもバスの音が乗らない。
+    render();
+    EXPECT_EQ(sink_b_->last(), 0.0F);
+
+    // センドを解除して 0.1 倍（-20 dB）にすると、返送も 0.1 倍になる。
+    ASSERT_TRUE(mixer_.set_fader_muted(FaderId{6}, false).has_value());
+    ASSERT_TRUE(mixer_.set_fader_gain_db(FaderId{6}, -20.0F).has_value());
+    render();
+    EXPECT_NEAR(sink_b_->last(), 0.1F * 0.1F, kTolerance);
+}
+
 TEST_F(MinusMeTest, ReturnWithSeveralOwnInputsExcludesAllOfThem) {
     // 1 台の子機が A と B の 2 本のストリップを持つ場合。
-    const std::vector<NodeId> strips = {kStripA, kStripB, kStripC};
+    const std::vector<MinusMeInput> strips = {kStripA, kStripB, kStripC};
     const std::vector<MinusMeReturn> returns = {{{kStripA, kStripB}, sink_a_}};
     ASSERT_TRUE(add_minus_me_returns(graph_, strips, returns).has_value());
     ASSERT_TRUE(mixer_.apply_graph(graph_).has_value());
@@ -159,7 +184,7 @@ TEST_F(MinusMeTest, ReturnWithSeveralOwnInputsExcludesAllOfThem) {
 }
 
 TEST_F(MinusMeTest, DuplicateCandidatesAreConnectedOnce) {
-    const std::vector<NodeId> candidates = {kStripB, kStripB};
+    const std::vector<MinusMeInput> candidates = {kStripB, kStripB};
     const std::vector<MinusMeReturn> returns = {{{kStripA}, sink_a_}};
     ASSERT_TRUE(add_minus_me_returns(graph_, candidates, returns).has_value());
     ASSERT_TRUE(mixer_.apply_graph(graph_).has_value());
@@ -172,7 +197,7 @@ TEST_F(MinusMeTest, DuplicateCandidatesAreConnectedOnce) {
 
 TEST_F(MinusMeTest, ReturnsStaySilentWhileChannelsAreMuted) {
     // 初期ミュート: チャンネルのフェーダーはミュートで始まるので、返送も無音で始まる。
-    const std::vector<NodeId> strips = {kStripA, kStripB, kStripC};
+    const std::vector<MinusMeInput> strips = {kStripA, kStripB, kStripC};
     const auto returns = returns_for_each_strip();
     ASSERT_TRUE(add_minus_me_returns(graph_, strips, returns).has_value());
     ASSERT_TRUE(mixer_.apply_graph(graph_).has_value());
@@ -185,7 +210,7 @@ TEST_F(MinusMeTest, ReturnsStaySilentWhileChannelsAreMuted) {
 }
 
 TEST_F(MinusMeTest, AddedNodesUseUnusedIdsAndReportTheTaps) {
-    const std::vector<NodeId> strips = {kStripA, kStripB};
+    const std::vector<MinusMeInput> strips = {kStripA, kStripB};
     const std::vector<MinusMeReturn> returns = {{{kStripA}, sink_a_}, {{kStripB}, sink_b_}};
     const auto report = add_minus_me_returns(graph_, strips, returns);
     ASSERT_TRUE(report.has_value());
@@ -198,13 +223,13 @@ TEST_F(MinusMeTest, AddedNodesUseUnusedIdsAndReportTheTaps) {
 
 TEST_F(MinusMeTest, RejectsUnknownNodesWithoutChangingTheGraph) {
     const auto before = graph_.nodes.size();
-    const std::vector<NodeId> strips = {kStripA, NodeId{99}};
+    const std::vector<MinusMeInput> strips = {kStripA, NodeId{99}};
     const std::vector<MinusMeReturn> returns = {{{kStripB}, sink_b_}};
     const auto result = add_minus_me_returns(graph_, strips, returns);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), GraphError::kUnknownNode);
 
-    const std::vector<NodeId> valid = {kStripA};
+    const std::vector<MinusMeInput> valid = {kStripA};
     const std::vector<MinusMeReturn> unknown_own = {{{NodeId{98}}, sink_b_}};
     const auto own_result = add_minus_me_returns(graph_, valid, unknown_own);
     ASSERT_FALSE(own_result.has_value());
@@ -214,7 +239,7 @@ TEST_F(MinusMeTest, RejectsUnknownNodesWithoutChangingTheGraph) {
 
 TEST_F(MinusMeTest, RejectsReturnWithoutSink) {
     const auto before = graph_.nodes.size();
-    const std::vector<NodeId> strips = {kStripA};
+    const std::vector<MinusMeInput> strips = {kStripA};
     const std::vector<MinusMeReturn> returns = {{{kStripB}, nullptr}};
     const auto result = add_minus_me_returns(graph_, strips, returns);
     ASSERT_FALSE(result.has_value());

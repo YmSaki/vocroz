@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// FaderBank の単体テスト。初期ミュート、ミュートとゲインの合成、リセット、範囲外の扱いを検証する。
+// FaderBank の単体テスト。初期ミュート、ミュートとゲインの合成、リセット、範囲外の扱い、
+// ランプを進めない follow() を検証する。
 
 #include "fader_bank.h"
 
@@ -84,6 +85,46 @@ TEST(FaderBankTest, SilencesUnknownFaderAndIgnoresOutOfRangeChanges) {
     bank.apply(mute(FaderId{5}, false));
     EXPECT_EQ(process_ones(bank, FaderId{5}), 0.0F);
     EXPECT_EQ(process_ones(bank, FaderId{0}), 0.0F);
+}
+
+// 一定値 1 のモノラル 8 サンプルに、process() か follow() でフェーダーを掛けた結果を返す。
+std::array<float, 8> ramp_of(FaderBank& bank, FaderId fader, bool follow) {
+    std::array<float, 8> samples{};
+    samples.fill(1.0F);
+    std::array<float*, 1> channels{samples.data()};
+    if (follow) {
+        bank.follow(fader, channels.data(), 1, samples.size());
+    } else {
+        bank.process(fader, channels.data(), 1, samples.size());
+    }
+    return samples;
+}
+
+TEST(FaderBankTest, FollowMatchesProcessInTheSameBlockInEitherOrder) {
+    FaderBank bank(1, 16);
+    const FaderId fader{0};
+    bank.apply(mute(fader, false));
+
+    // ランプの途中でも、同じブロックなら process() の前後どちらで follow() しても同じゲイン列。
+    bank.begin_block();
+    const auto followed_before = ramp_of(bank, fader, true);
+    const auto processed = ramp_of(bank, fader, false);
+    EXPECT_EQ(followed_before, processed);
+
+    bank.begin_block();
+    const auto processed_next = ramp_of(bank, fader, false);
+    const auto followed_after = ramp_of(bank, fader, true);
+    EXPECT_EQ(followed_after, processed_next);
+    // follow() はランプを進めないので、2 ブロック目は 1 ブロック目の続きになる。
+    EXPECT_GT(processed_next[0], processed[7]);
+}
+
+TEST(FaderBankTest, FollowSilencesOutOfRangeFader) {
+    FaderBank bank(1, 2);
+    bank.begin_block();
+    const auto samples = ramp_of(bank, FaderId{5}, true);
+    EXPECT_EQ(samples[0], 0.0F);
+    EXPECT_EQ(samples[7], 0.0F);
 }
 
 }  // namespace
