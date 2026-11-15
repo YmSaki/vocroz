@@ -73,7 +73,6 @@ bool TarStagedPackage::extract(const update::SemanticVersion& version) {
     const fs::path partial = install_dir_ / ("partial-" + name);
     std::error_code error;
     fs::remove_all(partial, error);
-    fs::remove_all(target, error);
     if (!fs::create_directories(partial, error)) {
         return false;
     }
@@ -86,6 +85,9 @@ bool TarStagedPackage::extract(const update::SemanticVersion& version) {
         fs::remove_all(partial, error);
         return false;
     }
+    // 同じ版のフォルダ（以前に失敗した適用の残り）は、展開が成功してから置き換える。
+    // 展開の前に消すと、展開に失敗したときにそのフォルダを失う。
+    fs::remove_all(target, error);
     fs::rename(partial, target, error);
     if (error) {
         fs::remove_all(partial, error);

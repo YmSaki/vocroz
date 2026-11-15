@@ -4,8 +4,10 @@
 // 手順と失敗時の扱いは docs/adr/0013-installer-and-updater.md。
 #pragma once
 
+#include <optional>
 #include <string_view>
 
+#include "vocroz/update/install_pointer.h"
 #include "vocroz/update/manifest_verifier.h"
 #include "vocroz/update/ports/code_signature_verifier.h"
 #include "vocroz/update/ports/health_checker.h"
@@ -49,7 +51,8 @@ struct UpdateApplierPorts {
 class UpdateApplier {
 public:
     /// @param verifier 埋め込みの公開鍵を持つマニフェストの検証器
-    /// @param running_version 現在動いている pa-updater のバージョン（現行版）
+    /// @param running_version 現在動いている pa-updater のバージョン。ポインターファイルの現行版と
+    ///        新しいほうを現行版として扱う
     /// @param ports 使うポート。参照先は UpdateApplier より長く生きること
     UpdateApplier(ManifestVerifier verifier, SemanticVersion running_version,
                   UpdateApplierPorts ports);
@@ -62,6 +65,10 @@ public:
     [[nodiscard]] ApplyOutcome apply(std::string_view manifest_text, bool user_requested);
 
 private:
+    /// ポインターファイルを読む。ないか壊れていれば std::nullopt。
+    [[nodiscard]] std::optional<InstallPointer> read_install_pointer();
+    /// 候補と比べる現行版。ポインターの現行版と、動いている pa-updater の版の新しいほう。
+    [[nodiscard]] SemanticVersion installed_current();
     [[nodiscard]] bool verify_package(const UpdateManifest& manifest);
     [[nodiscard]] bool verify_signature(const UpdateManifest& manifest);
     [[nodiscard]] bool switch_to(const SemanticVersion& version);
