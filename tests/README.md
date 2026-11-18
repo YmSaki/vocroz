@@ -9,7 +9,7 @@
 | `netsim/` | 障害の設定（`FaultProfile`）と判定（`FaultInjector`）、プロセス内のネットワーク（`SimulatedNetwork`） |
 | `harness/` | transport の部品を製品と同じ順序で組み立てた送信側と受信側、session をつないだ親機と子機（`SimulatedHost`、`SimulatedClient`）、仮想時刻の駆動、遅延計測 |
 | `integration/` | 結合テスト（GoogleTest。`ctest` で動く） |
-| `tools/` | `vocroz-latency`（遅延の見積もり）と `vocroz-udp-fault-proxy`（実ソケットの障害注入、Linux だけ） |
+| `tools/` | `vocroz-latency`（遅延の見積もり）、`vocroz-udp-fault-proxy`（実ソケットの障害注入、Linux だけ）、`vocroz-av-sync`（A/V 同期の試験パターンと計測。使い方は [docs/testing/av-sync.md](../docs/testing/av-sync.md)） |
 | `nat/` | ネットワーク名前空間で NAT を模し、ホールパンチの成否を確かめるスクリプト |
 
 ## 結合テスト
