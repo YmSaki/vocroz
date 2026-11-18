@@ -22,3 +22,27 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   vocroz_add_unit_test(udp_fault_proxy_tests udp-fault-proxy/udp_fault_proxy_test.cpp)
   target_link_libraries(udp_fault_proxy_tests PRIVATE vocroz_udp_fault_proxy)
 endif()
+
+# A/V 同期の試験パターンの発生とずれの計測（Issue #144）。
+# 標準ライブラリだけで書いているので、Windows と Linux の両方でビルドする。
+add_library(vocroz_av_sync STATIC
+  av-sync/av_sync_pattern.cpp
+  av-sync/av_sync_detector.cpp
+  av-sync/wav_file.cpp
+  av-sync/y4m_file.cpp
+  av-sync/av_sync_measurement.cpp)
+target_include_directories(vocroz_av_sync PUBLIC av-sync)
+target_link_libraries(vocroz_av_sync PUBLIC vocroz::common)
+vocroz_set_warnings(vocroz_av_sync)
+
+add_executable(vocroz-av-sync av-sync/main.cpp)
+target_link_libraries(vocroz-av-sync PRIVATE vocroz_av_sync)
+vocroz_set_warnings(vocroz-av-sync)
+
+vocroz_add_unit_test(av_sync_tests
+  av-sync/av_sync_pattern_test.cpp
+  av-sync/av_sync_detector_test.cpp
+  av-sync/wav_file_test.cpp
+  av-sync/y4m_file_test.cpp
+  av-sync/av_sync_measurement_test.cpp)
+target_link_libraries(av_sync_tests PRIVATE vocroz_av_sync)
