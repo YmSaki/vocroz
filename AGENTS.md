@@ -118,6 +118,7 @@ infra/         Go 製のランデブーサーバー
 installer/     WiX Burn バンドルと MSI の定義、ビルドと署名のスクリプト
 tools/         リリース作業用のツール（tools/release/: 更新マニフェストの鍵の生成と署名）
 docs/adr/      ADR
+docs/research/ 方式の選定に使う調査資料（候補ごとの条件、出典、未確認事項）
 docs/spec/     製品要求・実装仕様書
 docs/testing/  実機確認の手順書（受け入れテストの手順、合否の基準、残す証拠）
 tests/         モジュールをまたぐ結合テストと、その試験基盤と試験ツール（docs/adr/0025-integration-test-harness.md）
