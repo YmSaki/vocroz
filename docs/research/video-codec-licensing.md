@@ -30,9 +30,9 @@ Issue #135 の調査です。Issue #136 の ADR で方式を選ぶ材料にし�
 
 | 候補 | ソフトウェアのライセンス | AGPL-3.0-only との組み合わせ | 特許 | 配布の条件と注意 | 出典 |
 | --- | --- | --- | --- | --- | --- |
-| MP4 [15] | 規格文書。実装のライセンスは要確認です。 [15] | 要確認。規格文書と読み書きの実装は別に確認します。 [15] | 要確認 | ISO BMFF の初期化部分を W3C が説明しています。 [15] | [15] |
-| fragmented MP4 [15] | 規格文書。実装のライセンスは要確認です。 [15] | 要確認。規格文書と読み書きの実装は別に確認します。 [15] | 要確認 | W3C は moof と mdat を含むメディアセグメントを定義しています。 [15] | [15] |
-| Matroska [16] | 規格文書。実装のライセンスは要確認です。 [16] | 要確認。規格文書と読み書きの実装は別に確認します。 [16] | 要確認 | RFC 9559 が要素と格納形式を定義しています。 [16] | [16] |
+| MP4 [15] | Bento4 は GPL-2.0-or-later と商用ライセンスの選択制です。 [27] [28] | 要確認。GPLv3 を選ぶ際は、配布する構成と開発元の GPL 版の適用条件を照合します。 [26] [27] [28] | 要確認 | Bento4 は MP4 を読み書きします。 商用ライセンスの条件は Axiomatic Systems に確認します。 [27] [29] | [15] [26] [27] [28] [29] |
+| fragmented MP4 [15] | Bento4 は GPL-2.0-or-later と商用ライセンスの選択制です。 [27] [28] | 要確認。GPLv3 を選ぶ際は、配布する構成と開発元の GPL 版の適用条件を照合します。 [26] [27] [28] | 要確認 | Bento4 の mp4fragment は MP4 をフラグメント化します。 商用ライセンスの条件は Axiomatic Systems に確認します。 [27] [29] | [15] [26] [27] [28] [29] |
+| Matroska [16] | libmatroska は Matroska を読み書きする C++ ライブラリで、LGPL 2.1 の本文を同梱しています。 [30] [31] | 要確認。libebml を含む配布構成で LGPL の条件を確認します。 [30] [31] | 要確認 | 既定は静的リンクです。LGPL 2.1 第6節は、利用者が改変版と再リンクできる形式の提供や、条件を満たす共有ライブラリの仕組みを挙げています。 [30] [31] | [16] [30] [31] |
 | MP4・Sink Writer [17] | OS 付属（同梱しない） [17] | 要確認。OS 側の sink を呼びます。 [17] | 要確認 | Microsoft の MPEG-4 File Sink は MP4 の書き出しに対応します。 [17] | [17] |
 
 ## 外部出力の方式
@@ -53,7 +53,7 @@ Issue #135 の調査です。Issue #136 の ADR で方式を選ぶ材料にし�
 - AVC・HEVC は配布地域、製品区分、OS ベンダーの契約がアプリ配布者をカバーするかを各プールに確認します。
 - AV1・VP9 は許諾対象外の第三者特許と実装別の対象範囲を権利者に確認します。
 - 各 MFT の Windows エディション・拡張・GPU 別の供給と再配布条件を Microsoft および GPU ベンダーに確認します。
-- コンテナの特許と実装ライブラリの再配布条件を規格団体・実装の権利者に確認します。
+- コンテナの特許は規格団体と権利者に確認します。Bento4 の配布構成は Axiomatic Systems に、libmatroska と libebml のリンク方法に応じた再配布条件は各開発元と専門家に確認します。
 - SRT のプロトコルの利用条件と MPL の適用範囲を Haivision に確認します。
 - RTMP 仕様の特許と配布条件は仕様の権利者に確認します。https://rtmp.veriskope.com/docs/spec/ と https://rtmp.veriskope.com/pdf/rtmp_specification_1.0.pdf は HTTP 403、https://www.adobe.com/content/dam/acom/en/devnet/rtmp/pdf/rtmp_specification_1.0.pdf は HTTP 404 でした。
 - librtmp の対象版の LGPL 条件は開発元に確認します。
@@ -88,3 +88,8 @@ Issue #135 の調査です。Issue #136 の ADR で方式を選ぶ材料にし�
 24. Cisco, libSRTP v2.7.0 LICENSE, https://raw.githubusercontent.com/cisco/libsrtp/v2.7.0/LICENSE, 2026-11-19 に確認
 25. NDI, NDI SDK download, https://ndi.video/for-developers/ndi-sdk/download/, 2026-11-19 に確認
 26. Free Software Foundation, Various Licenses and Comments about Them, https://www.gnu.org/licenses/license-list.html, 2026-11-19 に確認
+27. Axiomatic Systems, About Bento4, https://www.bento4.com/about/, 2026-11-19 に確認
+28. Axiomatic Systems, Bento4 Ap4File.cpp（許諾ヘッダー）, https://raw.githubusercontent.com/axiomatic-systems/Bento4/b8c50a078356a1c3444ce0a8744634ed488424a4/Source/C%2B%2B/Core/Ap4File.cpp, 2026-11-19 に確認
+29. Axiomatic Systems, Bento4 README, https://raw.githubusercontent.com/axiomatic-systems/Bento4/master/README.md, 2026-11-19 に確認
+30. Matroska-Org, libmatroska README, https://raw.githubusercontent.com/Matroska-Org/libmatroska/68e939111c77cce82667bf1f87bbf718b92a6515/README.md, 2026-11-19 に確認
+31. Matroska-Org, libmatroska LICENSE.LGPL, https://raw.githubusercontent.com/Matroska-Org/libmatroska/68e939111c77cce82667bf1f87bbf718b92a6515/LICENSE.LGPL, 2026-11-19 に確認
